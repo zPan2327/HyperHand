@@ -30,7 +30,7 @@ $sdk = Find-Sdk
 $btVersion = if ($env:BUILD_TOOLS_VERSION) { $env:BUILD_TOOLS_VERSION } else { '36.0.0' }
 $platformVersion = if ($env:PLATFORM_VERSION) { $env:PLATFORM_VERSION } else { '35' }
 $keystorePass = if ($env:KEYSTORE_PASS) { $env:KEYSTORE_PASS } else { 'onehand123' }
-$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '1.0' }
+$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '1.0.2' }
 # 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
 $versionCode = $env:VERSION_CODE
 if (-not $versionCode) {

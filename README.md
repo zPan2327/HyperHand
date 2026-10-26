@@ -34,6 +34,20 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 - **无需 root 改系统**：不修改 `/system`、不替换任何 APK，OTA 不受影响；停用模块即恢复原状。
 - **参数可在手机上直接调**：自带配置界面，写入 `Settings.Global`，保存即生效。
 
+## 界面
+
+设置页按 HyperOS / Miuix 的设计语言重做（参照 [SonyPods](https://github.com/Mercury000/SonyPods)）：`#F7F7F7` 页面底色、
+白色 16dp 圆角卡片、14sp 段落标题、17sp 行标题 + 14sp 摘要、0.75dp 左内缩分隔线、`#3482FF` 强调色，深色模式跟随系统。
+右侧直接显示当前值，点一行用滑杆改，底部一次性提交。
+
+<p>
+<img src="docs/screenshots/light.png" width="250" alt="浅色">
+<img src="docs/screenshots/dark.png" width="250" alt="深色">
+<img src="docs/screenshots/dialog.png" width="250" alt="数值对话框">
+</p>
+
+设计稿来源与逐条 token 对照见 [docs/设计稿对照.md](docs/设计稿对照.md)。没有引入 Compose / AndroidX，全部是原生 View 代码绘制，APK 仍然只有 33 KB。
+
 ## 验证环境
 
 | 项目 | 值 |
@@ -172,14 +186,17 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 ├── CHANGELOG.md
 ├── LICENSE
 ├── docs/
-│   └── 单手模式增强.md      # 完整技术文档：调查结论 / 调用链 / 方案比较 / 实测日志 / 回滚
+│   ├── 单手模式增强.md      # 完整技术文档：调查结论 / 调用链 / 方案比较 / 实测日志 / 回滚
+│   ├── 设计稿对照.md        # 设置界面的 Miuix / HyperOS token 对照
+│   └── screenshots/         # 界面的浅色 / 深色 / 对话框截图
 ├── module/
 │   ├── AndroidManifest.xml
 │   ├── assets/xposed_init
 │   ├── src/com/onehandtuner/
 │   │   ├── OneHandTuner.java   # 钩子主体（SystemUI 触发判定 + 桌面侧闸门）
 │   │   ├── Cfg.java            # 参数读写
-│   │   └── MainActivity.java   # 参数调节界面
+│   │   ├── MainActivity.java   # 参数调节界面（页面组装 + 保存）
+│   │   └── Ui.java             # Miuix 风格组件：卡片 / 行 / 开关 / 按钮 / 数值对话框
 │   ├── lib/api-82.jar          # 编译期 Xposed API stub
 │   ├── build.ps1 / build.sh
 │   └── out/                    # 构建产物（gitignore）

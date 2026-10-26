@@ -1,226 +1,386 @@
 package com.onehandtuner;
 
+import android.app.ActionBar;
 import android.app.Activity;
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.os.Build;
 import android.os.Bundle;
-import android.text.InputType;
-import android.util.TypedValue;
-import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * 参数调节界面。数值通过广播交给 SystemUI 进程写入 Settings.Global，
- * 因此不需要 root，也不需要重新编译模块。
+ * 参数调节界面。
+ *
+ * 视觉参照 SonyPods（Miuix / HyperOS 设置页）：
+ * 页面底色 surface，卡片 surfaceContainer + 16dp 圆角，
+ * 段落标题 14sp Medium、行标题 17sp Medium、摘要 14sp，行高 56dp、内边距 16dp，
+ * 分隔线 0.75dp 且左侧内缩 16dp。
  */
 public class MainActivity extends Activity {
 
-    private Switch mEnabled;
-    private Switch mMonitor;
-    private Switch mDebug;
-    private Switch mShadeGuard;
-    private Switch mClaimZone;
-    private EditText mZone;
-    private EditText mMinDy;
-    private EditText mVelocity;
-    private EditText mSlope;
-    private EditText mWidth;
-    private EditText mCooldown;
-    private EditText mLauncherHot;
-    private TextView mStatus;
+    private Ui.Pal pal;
+
+    private Ui.SwitchView swEnabled;
+    private Ui.SwitchView swMonitor;
+    private Ui.SwitchView swDebug;
+    private Ui.SwitchView swShadeGuard;
+    private Ui.SwitchView swClaimZone;
+
+    private Ui.ValueRow rZone;
+    private Ui.ValueRow rMinDy;
+    private Ui.ValueRow rVelocity;
+    private Ui.ValueRow rSlope;
+    private Ui.ValueRow rWidth;
+    private Ui.ValueRow rCooldown;
+    private Ui.ValueRow rHotDp;
+
+    private TextView status;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ActionBar bar = getActionBar();
+        if (bar != null) {
+            bar.hide();
+        }
+
+        pal = Ui.pal(this);
+
+        Window w = getWindow();
+        w.setBackgroundDrawable(new ColorDrawable(pal.bg));
+        w.setStatusBarColor(Color.TRANSPARENT);
+        w.setNavigationBarColor(Color.TRANSPARENT);
+        // API 30+ 的 edge-to-edge 必须走 decorFitsSystemWindows(false)；
+        // 只设 SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN 在 31 上不会再撑开窗口，会导致状态栏高度被算两次。
+        w.setDecorFitsSystemWindows(false);
+        android.view.WindowInsetsController ctrl = w.getInsetsController();
+        if (ctrl != null) {
+            int mask = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            ctrl.setSystemBarsAppearance(Ui.isNight(this) ? 0 : mask, mask);
+        }
+
         setContentView(buildUi());
         loadCurrent();
     }
 
     private View buildUi() {
-        final int pad = dp(18);
+        final int page = dp(12);
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(Color.parseColor("#FFF7F7F7"));
-        LinearLayout root = new LinearLayout(this);
+        scroll.setBackgroundColor(pal.bg);
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(true);
+        scroll.setVerticalScrollBarEnabled(false);
+
+        final LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
+        root.setPadding(page, 0, page, dp(28));
         scroll.addView(root, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView title = text("单手模式增强", 22, true);
-        root.addView(title);
-        TextView desc = text("在原生单手模式（底部胶囊条下滑）之外，额外提供一条「旁路」触发通道：\n"
-                + "底部区域内的下滑手势同样会调用系统的 startOneHanded()，\n"
-                + "缩小动画、缩小布局、触摸映射、退出方式全部保持原生。", 14, false);
-        desc.setPadding(0, dp(8), 0, dp(14));
-        root.addView(desc);
+        // ---------------------------------------------------------- 头部
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(4), dp(10), dp(4), dp(4));
+        TextView title = Ui.text(this, "单手模式增强", 30, pal.title, true);
+        header.addView(title);
+        TextView sub = Ui.text(this, "小米 14 · HyperOS 3 · 旁路触发通道", 14, pal.section, false);
+        sub.setPadding(0, dp(4), 0, 0);
+        header.addView(sub);
+        root.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        mEnabled = switchRow(root, "启用模块", true);
-        mMonitor = switchRow(root, "启用扩展触发（推荐）", true);
-        mDebug = switchRow(root, "输出调试日志（logcat 标签 OneHandTuner）", true);
-        mShadeGuard = switchRow(root, "与下拉通知/控制中心互斥（推荐）", true);
-        mClaimZone = switchRow(root, "底部区域优先单手模式（桌面下拉手势让位）", true);
+        // ---------------------------------------------------------- 模块
+        root.addView(Ui.sectionTitle(this, pal, "模块"));
+        LinearLayout cardModule = Ui.card(this, pal);
+        swEnabled = Ui.switchRow(this, cardModule, pal, "启用模块",
+                "总开关。关闭后所有钩子立即失效，系统恢复原生行为", true);
+        swMonitor = Ui.switchRow(this, cardModule, pal, "扩展触发",
+                "在系统的一手模式监视通道上判定底部下滑", true);
+        Ui.SwitchView.OnCheckedChange dirtyOnChange = new Ui.SwitchView.OnCheckedChange() {
+            @Override
+            public void onCheckedChanged(boolean checked) {
+                markDirty();
+            }
+        };
+        swEnabled.setOnCheckedChange(dirtyOnChange);
+        swMonitor.setOnCheckedChange(dirtyOnChange);
+        root.addView(cardModule);
 
-        mZone = editRow(root, "触发区高度（dp，从屏幕底部算起）", "56");
-        mMinDy = editRow(root, "最小下滑距离（dp）", "4");
-        mVelocity = editRow(root, "触发最小速度（px/s，0=关闭速度判定）", "500");
-        mSlope = editRow(root, "最大横向偏移比 |dx|/dy", "1.2");
-        mWidth = editRow(root, "有效宽度占比 0.2~1.0", "1.0");
-        mCooldown = editRow(root, "触发冷却（毫秒）", "500");
-        mLauncherHot = editRow(root, "原生胶囊条窗口高度（dp，0=不改动）", "0");
+        // ---------------------------------------------------------- 触发区
+        root.addView(Ui.sectionTitle(this, pal, "触发区"));
+        LinearLayout cardZone = Ui.card(this, pal);
+        rZone = valueRow(cardZone, "触发区高度", "从屏幕最底部往上算的高度",
+                Cfg.DEF_ZONE_DP, 0, 20, 140, 1, "dp");
+        rMinDy = valueRow(cardZone, "最小下滑距离", "低于这个位移不算一次下滑",
+                Cfg.DEF_MIN_DY_DP, 0, 1, 40, 1, "dp");
+        rWidth = valueRow(cardZone, "有效宽度占比", "触发区在屏幕水平方向上的占比，居中",
+                Cfg.DEF_WIDTH_RATIO, 2, 0.2f, 1.0f, 0.05f, "");
+        root.addView(cardZone);
 
-        Button save = new Button(this);
-        save.setText("保存并立即生效");
+        // ---------------------------------------------------------- 判定
+        root.addView(Ui.sectionTitle(this, pal, "判定"));
+        LinearLayout cardJudge = Ui.card(this, pal);
+        rVelocity = valueRow(cardJudge, "起效速度", "向下峰值速度门限，慢拖不触发，0 表示关闭速度判定",
+                Cfg.DEF_MIN_VELOCITY, 0, 0, 3000, 50, "px/s");
+        rSlope = valueRow(cardJudge, "最大横向偏移", "|dx| / dy 超过该值视为斜滑，不触发",
+                Cfg.DEF_MAX_SLOPE, 1, 0.5f, 4.0f, 0.1f, "倍");
+        rCooldown = valueRow(cardJudge, "触发冷却", "两次触发之间的最小间隔",
+                Cfg.DEF_COOLDOWN_MS, 0, 0, 2000, 50, "ms");
+        root.addView(cardJudge);
+
+        // ---------------------------------------------------------- 互斥
+        root.addView(Ui.sectionTitle(this, pal, "互斥"));
+        LinearLayout cardGuard = Ui.card(this, pal);
+        swShadeGuard = Ui.switchRow(this, cardGuard, pal, "与下拉手势互斥",
+                "手势过程中出现通知/控制中心的意图就放弃单手模式", true);
+        swClaimZone = Ui.switchRow(this, cardGuard, pal, "底部区域优先单手模式",
+                "触发区内的桌面下拉手势让位，不再打开通知/控制中心", true);
+        rHotDp = valueRow(cardGuard, "原生胶囊条高度", "覆盖系统 25dp 的底部窗口，0 表示不改动",
+                Cfg.DEF_LAUNCHER_HOT_DP, 0, 0, 40, 1, "dp");
+        root.addView(cardGuard);
+
+        // ---------------------------------------------------------- 调试
+        root.addView(Ui.sectionTitle(this, pal, "调试"));
+        LinearLayout cardDebug = Ui.card(this, pal);
+        swDebug = Ui.switchRow(this, cardDebug, pal, "调试日志",
+                "用 logcat -s OneHandTuner 观察判定过程", true);
+        swShadeGuard.setOnCheckedChange(dirtyOnChange);
+        swClaimZone.setOnCheckedChange(dirtyOnChange);
+        swDebug.setOnCheckedChange(dirtyOnChange);
+        root.addView(cardDebug);
+
+        // ---------------------------------------------------------- 操作
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        actions.setPadding(0, dp(20), 0, 0);
+
+        TextView save = Ui.primaryButton(this, pal, "保存并立即生效");
         save.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 save();
             }
         });
-        LinearLayout.LayoutParams saveLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        saveLp.topMargin = dp(16);
-        root.addView(save, saveLp);
+        actions.addView(save, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
-        Button reset = new Button(this);
-        reset.setText("恢复默认值");
+        TextView reset = Ui.secondaryButton(this, pal, "恢复默认值");
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        rlp.topMargin = dp(10);
         reset.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                mEnabled.setChecked(true);
-                mMonitor.setChecked(true);
-                mDebug.setChecked(true);
-                mShadeGuard.setChecked(true);
-                mClaimZone.setChecked(true);
-                mZone.setText("56");
-                mMinDy.setText("4");
-                mVelocity.setText("500");
-                mSlope.setText("1.2");
-                mWidth.setText("1.0");
-                mCooldown.setText("500");
-                mLauncherHot.setText("0");
+                applyDefaults();
                 save();
             }
         });
-        root.addView(reset);
+        actions.addView(reset, rlp);
+        root.addView(actions);
 
-        mStatus = text("", 13, false);
-        mStatus.setPadding(0, dp(16), 0, dp(8));
-        root.addView(mStatus);
+        status = Ui.text(this, "", 13, pal.summary, false);
+        status.setPadding(dp(4), dp(12), dp(4), 0);
+        status.setLineSpacing(dp(3), 1f);
+        root.addView(status);
 
-        TextView tips = text("说明：\n"
-                + "• 需要先在 LSPosed/Vector 里启用本模块，作用域勾选「系统界面(System UI)」；\n"
-                + "  若想用「原生胶囊条加高」方案，再勾选「小米桌面(com.miui.home)」。\n"
-                + "• 改动通过系统界面进程写入 Settings.Global，保存后立即生效，无需重启。\n"
-                + "• 想「快甩才触发、慢滑不触发」：调大「触发最小速度」；想更灵敏：调小到 0 即取消速度判定。\n"
-                + "• 想完全恢复原状：把「启用模块」关掉即可（也可在 LSPosed 里停用模块）。", 12, false);
-        root.addView(tips);
+        // ---------------------------------------------------------- 说明
+        root.addView(Ui.sectionTitle(this, pal, "说明"));
+        LinearLayout cardTips = Ui.card(this, pal);
+        TextView tips = Ui.text(this, "• 先在 Vector / LSPosed 里启用模块，作用域勾选「系统界面」；\n"
+                + "  想用「原生胶囊条高度」这一项时，再勾选「小米桌面」。\n"
+                + "• 保存后立即生效，不需要重启；改动由系统界面进程写入 Settings.Global。\n"
+                + "• 快甩才触发、慢滑不触发：调大「起效速度」；想更灵敏就调到 0 关闭速度判定。\n"
+                + "• 想完全恢复原状：关掉「启用模块」，或在 LSPosed 里停用模块。", 13,
+                pal.summary, false);
+        tips.setLineSpacing(dp(4), 1f);
+        tips.setPadding(dp(16), dp(14), dp(16), dp(16));
+        cardTips.addView(tips);
+        root.addView(cardTips);
+
+        TextView footer = Ui.text(this, "OneHandTuner " + versionName() + " · MIT", 12, pal.chevron, false);
+        footer.setGravity(android.view.Gravity.CENTER);
+        footer.setPadding(0, dp(18), 0, 0);
+        root.addView(footer);
 
         scroll.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
-                root.setPadding(pad, pad + insets.getSystemWindowInsetTop(),
-                        pad, pad + insets.getSystemWindowInsetBottom());
+                android.graphics.Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                // 内容裁在状态栏/导航栏内侧，滚动时不会糊到图标上
+                v.setPadding(0, bars.top, 0, bars.bottom);
+                header.setPadding(dp(4), dp(14), dp(4), dp(4));
+                root.setPadding(page, 0, page, dp(28));
                 return insets;
             }
         });
+
+        // 触摸任何控件都算“有未保存的更改”，提示文案统一在 markDirty 里更新
         return scroll;
+    }
+
+    /** 数值行工厂：负责弹对话框、回填显示。 */
+    private Ui.ValueRow valueRow(LinearLayout card, final String title, String summary,
+                                 float def, int decimals, final float min, final float max,
+                                 final float step, final String unit) {
+        final int dec = decimals;
+        final String u = unit == null || unit.length() == 0 ? "" : unit;
+        float current = read(keyOf(title), def);
+        final Ui.ValueRow row = Ui.valueRow(this, card, pal, title, summary, current, dec);
+        row.row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Ui.numberDialog(MainActivity.this, pal, title, u, min, max, step, dec, row.value,
+                        new Ui.OnNumber() {
+                            @Override
+                            public void onNumber(float value) {
+                                row.value = value;
+                                row.label.setText(Ui.fmt(value, dec));
+                                markDirty();
+                            }
+                        });
+            }
+        });
+        return row;
+    }
+
+    private String keyOf(String title) {
+        if ("触发区高度".equals(title)) return Cfg.K_ZONE_DP;
+        if ("最小下滑距离".equals(title)) return Cfg.K_MIN_DY_DP;
+        if ("有效宽度占比".equals(title)) return Cfg.K_WIDTH_RATIO;
+        if ("起效速度".equals(title)) return Cfg.K_MIN_VELOCITY;
+        if ("最大横向偏移".equals(title)) return Cfg.K_MAX_SLOPE;
+        if ("触发冷却".equals(title)) return Cfg.K_COOLDOWN_MS;
+        if ("原生胶囊条高度".equals(title)) return Cfg.K_LAUNCHER_HOT_DP;
+        return title;
+    }
+
+    private float read(String key, float def) {
+        try {
+            ContentResolver cr = getContentResolver();
+            if (Cfg.K_MIN_VELOCITY.equals(key) || Cfg.K_COOLDOWN_MS.equals(key)) {
+                return Cfg.intOf(cr, key, Math.round(def));
+            }
+            return Cfg.floatOf(cr, key, def);
+        } catch (Throwable t) {
+            return def;
+        }
+    }
+
+    private void markDirty() {
+        if (status != null) {
+            status.setText("有未保存的更改，点「保存并立即生效」提交。");
+        }
     }
 
     private void loadCurrent() {
         try {
-            android.content.ContentResolver cr = getContentResolver();
-            mEnabled.setChecked(Cfg.intOf(cr, Cfg.K_ENABLED, 1) != 0);
-            mMonitor.setChecked(Cfg.intOf(cr, Cfg.K_MONITOR_ENABLED, 1) != 0);
-            mDebug.setChecked(Cfg.intOf(cr, Cfg.K_DEBUG, 1) != 0);
-            mShadeGuard.setChecked(Cfg.intOf(cr, Cfg.K_SHADE_GUARD, 1) != 0);
-            mClaimZone.setChecked(Cfg.intOf(cr, Cfg.K_CLAIM_ZONE, 1) != 0);
-            mZone.setText(String.valueOf(Cfg.floatOf(cr, Cfg.K_ZONE_DP, Cfg.DEF_ZONE_DP)));
-            mMinDy.setText(String.valueOf(Cfg.floatOf(cr, Cfg.K_MIN_DY_DP, Cfg.DEF_MIN_DY_DP)));
-            mVelocity.setText(String.valueOf(Cfg.intOf(cr, Cfg.K_MIN_VELOCITY, Cfg.DEF_MIN_VELOCITY)));
-            mSlope.setText(String.valueOf(Cfg.floatOf(cr, Cfg.K_MAX_SLOPE, Cfg.DEF_MAX_SLOPE)));
-            mWidth.setText(String.valueOf(Cfg.floatOf(cr, Cfg.K_WIDTH_RATIO, Cfg.DEF_WIDTH_RATIO)));
-            mCooldown.setText(String.valueOf(Cfg.intOf(cr, Cfg.K_COOLDOWN_MS, Cfg.DEF_COOLDOWN_MS)));
-            mLauncherHot.setText(String.valueOf(Cfg.floatOf(cr, Cfg.K_LAUNCHER_HOT_DP, Cfg.DEF_LAUNCHER_HOT_DP)));
-            mStatus.setText("当前生效值已从系统设置读取。");
+            ContentResolver cr = getContentResolver();
+            switchWithoutMark(swEnabled, Cfg.intOf(cr, Cfg.K_ENABLED, 1) != 0);
+            switchWithoutMark(swMonitor, Cfg.intOf(cr, Cfg.K_MONITOR_ENABLED, 1) != 0);
+            switchWithoutMark(swDebug, Cfg.intOf(cr, Cfg.K_DEBUG, 1) != 0);
+            switchWithoutMark(swShadeGuard, Cfg.intOf(cr, Cfg.K_SHADE_GUARD, 1) != 0);
+            switchWithoutMark(swClaimZone, Cfg.intOf(cr, Cfg.K_CLAIM_ZONE, 1) != 0);
+
+            rZone.value = Cfg.floatOf(cr, Cfg.K_ZONE_DP, Cfg.DEF_ZONE_DP);
+            rMinDy.value = Cfg.floatOf(cr, Cfg.K_MIN_DY_DP, Cfg.DEF_MIN_DY_DP);
+            rVelocity.value = Cfg.intOf(cr, Cfg.K_MIN_VELOCITY, Cfg.DEF_MIN_VELOCITY);
+            rSlope.value = Cfg.floatOf(cr, Cfg.K_MAX_SLOPE, Cfg.DEF_MAX_SLOPE);
+            rWidth.value = Cfg.floatOf(cr, Cfg.K_WIDTH_RATIO, Cfg.DEF_WIDTH_RATIO);
+            rCooldown.value = Cfg.intOf(cr, Cfg.K_COOLDOWN_MS, Cfg.DEF_COOLDOWN_MS);
+            rHotDp.value = Cfg.floatOf(cr, Cfg.K_LAUNCHER_HOT_DP, Cfg.DEF_LAUNCHER_HOT_DP);
+
+            rZone.label.setText(Ui.fmt(rZone.value, 0));
+            rMinDy.label.setText(Ui.fmt(rMinDy.value, 0));
+            rVelocity.label.setText(Ui.fmt(rVelocity.value, 0));
+            rSlope.label.setText(Ui.fmt(rSlope.value, 1));
+            rWidth.label.setText(Ui.fmt(rWidth.value, 2));
+            rCooldown.label.setText(Ui.fmt(rCooldown.value, 0));
+            rHotDp.label.setText(Ui.fmt(rHotDp.value, 0));
+
+            status.setText("当前值来自系统设置，修改后点下方按钮提交。");
         } catch (Throwable t) {
-            mStatus.setText("读取当前值失败：" + t);
+            status.setText("读取当前值失败：" + t);
         }
+    }
+
+    private void switchWithoutMark(Ui.SwitchView sw, boolean v) {
+        if (sw != null) {
+            sw.setCheckedNoAnim(v);
+        }
+    }
+
+    private void applyDefaults() {
+        switchWithoutMark(swEnabled, true);
+        switchWithoutMark(swMonitor, true);
+        switchWithoutMark(swDebug, true);
+        switchWithoutMark(swShadeGuard, true);
+        switchWithoutMark(swClaimZone, true);
+
+        rZone.value = Cfg.DEF_ZONE_DP;
+        rMinDy.value = Cfg.DEF_MIN_DY_DP;
+        rVelocity.value = Cfg.DEF_MIN_VELOCITY;
+        rSlope.value = Cfg.DEF_MAX_SLOPE;
+        rWidth.value = Cfg.DEF_WIDTH_RATIO;
+        rCooldown.value = Cfg.DEF_COOLDOWN_MS;
+        rHotDp.value = Cfg.DEF_LAUNCHER_HOT_DP;
+
+        rZone.label.setText(Ui.fmt(rZone.value, 0));
+        rMinDy.label.setText(Ui.fmt(rMinDy.value, 0));
+        rVelocity.label.setText(Ui.fmt(rVelocity.value, 0));
+        rSlope.label.setText(Ui.fmt(rSlope.value, 1));
+        rWidth.label.setText(Ui.fmt(rWidth.value, 2));
+        rCooldown.label.setText(Ui.fmt(rCooldown.value, 0));
+        rHotDp.label.setText(Ui.fmt(rHotDp.value, 0));
     }
 
     private void save() {
         Intent i = new Intent(OneHandTuner.ACTION_SET);
         i.setPackage("com.android.systemui");
-        i.putExtra(Cfg.K_ENABLED, mEnabled.isChecked() ? "1" : "0");
-        i.putExtra(Cfg.K_MONITOR_ENABLED, mMonitor.isChecked() ? "1" : "0");
-        i.putExtra(Cfg.K_DEBUG, mDebug.isChecked() ? "1" : "0");
-        i.putExtra(Cfg.K_SHADE_GUARD, mShadeGuard.isChecked() ? "1" : "0");
-        i.putExtra(Cfg.K_CLAIM_ZONE, mClaimZone.isChecked() ? "1" : "0");
-        i.putExtra(Cfg.K_ZONE_DP, value(mZone, "56"));
-        i.putExtra(Cfg.K_MIN_DY_DP, value(mMinDy, "4"));
-        i.putExtra(Cfg.K_MIN_VELOCITY, value(mVelocity, "500"));
-        i.putExtra(Cfg.K_MAX_SLOPE, value(mSlope, "1.2"));
-        i.putExtra(Cfg.K_WIDTH_RATIO, value(mWidth, "1.0"));
-        i.putExtra(Cfg.K_COOLDOWN_MS, value(mCooldown, "500"));
-        i.putExtra(Cfg.K_LAUNCHER_HOT_DP, value(mLauncherHot, "0"));
+        i.putExtra(Cfg.K_ENABLED, swEnabled.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_MONITOR_ENABLED, swMonitor.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_DEBUG, swDebug.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_SHADE_GUARD, swShadeGuard.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_CLAIM_ZONE, swClaimZone.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_ZONE_DP, Ui.fmt(rZone.value, 0));
+        i.putExtra(Cfg.K_MIN_DY_DP, Ui.fmt(rMinDy.value, 0));
+        i.putExtra(Cfg.K_MIN_VELOCITY, Ui.fmt(rVelocity.value, 0));
+        i.putExtra(Cfg.K_MAX_SLOPE, Ui.fmt(rSlope.value, 1));
+        i.putExtra(Cfg.K_WIDTH_RATIO, Ui.fmt(rWidth.value, 2));
+        i.putExtra(Cfg.K_COOLDOWN_MS, Ui.fmt(rCooldown.value, 0));
+        i.putExtra(Cfg.K_LAUNCHER_HOT_DP, Ui.fmt(rHotDp.value, 0));
         sendBroadcast(i);
-        Toast.makeText(this, "已发送。若长时间无反应，请确认模块已启用并已勾选“系统界面”作用域。",
-                Toast.LENGTH_LONG).show();
-        mStatus.setText("已提交配置。可下滑底部区域测试，并用 logcat -s OneHandTuner 观察。");
+
+        status.setText("已提交到系统界面进程，立即生效。可下滑底部区域测试，"
+                + "用 logcat -s OneHandTuner 观察。");
+        Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
     }
 
-    private static String value(EditText e, String def) {
-        String s = e.getText() == null ? "" : e.getText().toString().trim();
-        return s.length() == 0 ? def : s;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
     }
 
-    private LinearLayout.LayoutParams rowLp() {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(10);
-        return lp;
-    }
-
-    private Switch switchRow(LinearLayout parent, String label, boolean def) {
-        Switch s = new Switch(this);
-        s.setText(label);
-        s.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        s.setChecked(def);
-        parent.addView(s, rowLp());
-        return s;
-    }
-
-    private EditText editRow(LinearLayout parent, String label, String def) {
-        TextView t = text(label, 14, false);
-        t.setPadding(0, dp(10), 0, dp(2));
-        parent.addView(t);
-        EditText e = new EditText(this);
-        e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        e.setText(def);
-        e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        parent.addView(e, rowLp());
-        return e;
-    }
-
-    private TextView text(String s, int sp, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        if (bold) t.setTypeface(null, android.graphics.Typeface.BOLD);
-        t.setGravity(Gravity.START);
-        return t;
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Throwable t) {
+            return "1.0";
+        }
     }
 
     private int dp(int v) {
-        return Math.round(v * getResources().getDisplayMetrics().density);
+        return Ui.dp(this, v);
     }
 }

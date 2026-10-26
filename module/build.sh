@@ -27,8 +27,16 @@ fi
 BT_VERSION="${BUILD_TOOLS_VERSION:-36.0.0}"
 PLATFORM_VERSION="${PLATFORM_VERSION:-35}"
 KEYSTORE_PASS="${KEYSTORE_PASS:-onehand123}"
-VERSION_CODE="${VERSION_CODE:-1}"
 VERSION_NAME="${VERSION_NAME:-1.0}"
+# 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
+VERSION_CODE="${VERSION_CODE:-}"
+if [ -z "$VERSION_CODE" ]; then
+  if [[ "$VERSION_NAME" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    VERSION_CODE=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
+  else
+    VERSION_CODE=1
+  fi
+fi
 
 BT="$SDK/build-tools/$BT_VERSION"
 ANDROID_JAR="$SDK/platforms/android-$PLATFORM_VERSION/android.jar"

@@ -7,7 +7,7 @@
 ### Fixed
 
 - **CI 构建失败**：`android-actions/setup-android@v3` 在托管 runner 上失败（cmdline-tools 下载/安装问题）。改为直接使用 runner 预装的 Android SDK（`ANDROID_HOME=/usr/local/lib/android/sdk`），并在 `build-tools` / `platforms` 缺失时自动退到镜像内的最新版本。
-- 构建脚本支持 `VERSION_CODE` / `VERSION_NAME` 环境变量；打 tag 构建时版本号自动写进 APK。
+- 构建脚本支持 `VERSION_CODE` / `VERSION_NAME` 环境变量；`versionCode` 可由版本号自动推导（`1.0.1` → `10001`），打 tag 构建时版本号自动写进 APK。
 
 ## [1.0.0] - 2026-10-26
 

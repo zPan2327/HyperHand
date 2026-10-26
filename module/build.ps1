@@ -30,8 +30,16 @@ $sdk = Find-Sdk
 $btVersion = if ($env:BUILD_TOOLS_VERSION) { $env:BUILD_TOOLS_VERSION } else { '36.0.0' }
 $platformVersion = if ($env:PLATFORM_VERSION) { $env:PLATFORM_VERSION } else { '35' }
 $keystorePass = if ($env:KEYSTORE_PASS) { $env:KEYSTORE_PASS } else { 'onehand123' }
-$versionCode = if ($env:VERSION_CODE) { $env:VERSION_CODE } else { '1' }
 $versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '1.0' }
+# 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
+$versionCode = $env:VERSION_CODE
+if (-not $versionCode) {
+    if ($versionName -match '^(\d+)\.(\d+)\.(\d+)$') {
+        $versionCode = [string]([int]$Matches[1] * 10000 + [int]$Matches[2] * 100 + [int]$Matches[3])
+    } else {
+        $versionCode = '1'
+    }
+}
 
 $buildTools = Join-Path $sdk "build-tools\$btVersion"
 $androidJar = Join-Path $sdk "platforms\android-$platformVersion\android.jar"

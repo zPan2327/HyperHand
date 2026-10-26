@@ -30,6 +30,8 @@ $sdk = Find-Sdk
 $btVersion = if ($env:BUILD_TOOLS_VERSION) { $env:BUILD_TOOLS_VERSION } else { '36.0.0' }
 $platformVersion = if ($env:PLATFORM_VERSION) { $env:PLATFORM_VERSION } else { '35' }
 $keystorePass = if ($env:KEYSTORE_PASS) { $env:KEYSTORE_PASS } else { 'onehand123' }
+$versionCode = if ($env:VERSION_CODE) { $env:VERSION_CODE } else { '1' }
+$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '1.0' }
 
 $buildTools = Join-Path $sdk "build-tools\$btVersion"
 $androidJar = Join-Path $sdk "platforms\android-$platformVersion\android.jar"
@@ -82,7 +84,7 @@ $unsigned = Join-Path $outDir 'unsigned.apk'
     '-I' $androidJar `
     '-A' (Join-Path $root 'assets') `
     '--min-sdk-version' '31' '--target-sdk-version' '36' `
-    '--version-code' '1' '--version-name' '1.0'
+    '--version-code' $versionCode '--version-name' $versionName
 if ($LASTEXITCODE -ne 0) { throw 'aapt2 link failed' }
 
 Write-Host '==> add classes.dex'

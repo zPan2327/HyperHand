@@ -158,6 +158,12 @@ pwsh -File module/build.ps1
 签名密钥固定放在 `module/signing/onehand.keystore`（已 gitignore，首次构建自动生成）—— 保留它才能持续用 `adb install -r` 覆盖升级。
 产物：`module/out/OneHandTuner.apk`。
 
+CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI 产物和本地构建同签名，在仓库 **Settings → Secrets and variables → Actions** 里加一个 `ANDROID_KEYSTORE_B64`，值为本地 keystore 的 base64：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("module\signing\onehand.keystore")) | Set-Clipboard
+```
+
 ## 目录结构
 
 ```

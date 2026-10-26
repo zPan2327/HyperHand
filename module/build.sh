@@ -27,6 +27,8 @@ fi
 BT_VERSION="${BUILD_TOOLS_VERSION:-36.0.0}"
 PLATFORM_VERSION="${PLATFORM_VERSION:-35}"
 KEYSTORE_PASS="${KEYSTORE_PASS:-onehand123}"
+VERSION_CODE="${VERSION_CODE:-1}"
+VERSION_NAME="${VERSION_NAME:-1.0}"
 
 BT="$SDK/build-tools/$BT_VERSION"
 ANDROID_JAR="$SDK/platforms/android-$PLATFORM_VERSION/android.jar"
@@ -91,7 +93,7 @@ UNSIGNED="$OUT_DIR/unsigned.apk"
   -I "$ANDROID_JAR" \
   -A "$ROOT/assets" \
   --min-sdk-version 31 --target-sdk-version 36 \
-  --version-code 1 --version-name 1.0
+  --version-code "$VERSION_CODE" --version-name "$VERSION_NAME"
 
 echo "==> add classes.dex"
 # 用 JDK 自带的 jar 写入 dex：git-bash / 精简容器里通常没有 zip 命令

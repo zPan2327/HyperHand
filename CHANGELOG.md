@@ -2,6 +2,21 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.0] - 2026-10-29
+
+包名再改一次：`com.hyperhand.tuner` → `io.github.zpan2327.hyperhand`。
+
+### Changed
+
+- **包名改为 `io.github.zpan2327.hyperhand`**。原包名对应的域名 `hyperhand.com` 不归本项目所有，
+  LSPosed 模块仓库的提交机器人判定为「无法验证归属」并关闭了申请（issue #2343）。
+  `io.github.<用户名>.*` 属于 GitHub Pages 自带的命名空间（`zpan2327.github.io`），无需域名验证即可收录。
+- 入口类、广播 action 随之变更：`io.github.zpan2327.hyperhand.HyperHand` /
+  `io.github.zpan2327.hyperhand.action.SET`。
+- `Settings.Global` 里的 `oh_tuner_*` 键保持不变，已调好的参数在升级后继续生效。
+
+> 2.0.0 只发布了十几分钟、包名不可用于模块仓库，可直接用 2.1.0 覆盖；两者包名不同，需先卸载再装。
+
 ## [2.0.0] - 2026-10-29
 
 **不兼容升级**：包名、模块入口、Xposed API 全部变更，1.x 无法覆盖安装。

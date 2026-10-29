@@ -91,7 +91,7 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 
 | 文件 | 作用 | 内容 |
 |---|---|---|
-| `META-INF/xposed/java_init.list` | 入口类 | `com.hyperhand.tuner.HyperHand` |
+| `META-INF/xposed/java_init.list` | 入口类 | `io.github.zpan2327.hyperhand.HyperHand` |
 | `META-INF/xposed/scope.list` | **静态作用域** | `com.android.systemui` / `com.miui.home` |
 | `META-INF/xposed/module.prop` | 版本与行为 | `minApiVersion=102`、`targetApiVersion=102`、`staticScope=true` |
 
@@ -109,7 +109,7 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 
 ### 方式一：直接装 release APK
 
-> **从 1.x 升级需先卸载旧包**：包名已从 `com.onehandtuner` 改为 `com.hyperhand.tuner`，
+> **从 1.x 升级需先卸载旧包**：包名已从 `com.onehandtuner` 改为 `io.github.zpan2327.hyperhand`，
 > 两者是彼此独立的应用。`adb uninstall com.onehandtuner`（或手动卸载「单手模式增强」）后再装。
 
 1. 从 [Releases](../../releases) 下载 `HyperHand.apk` 并安装。
@@ -149,7 +149,7 @@ adb logcat -d -s HyperHand
 全部存于 `Settings.Global`，前缀 `oh_tuner_`，App 界面可改，也可用 `adb`：
 
 ```bash
-adb shell am broadcast -a com.hyperhand.tuner.action.SET --es oh_tuner_min_velocity_px_s 800
+adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_min_velocity_px_s 800
 ```
 
 | 键 | 含义 | 默认 |
@@ -215,7 +215,7 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 ├── module/
 │   ├── AndroidManifest.xml
 │   ├── META-INF/xposed/        # libxposed 现代 API 的模块声明
-│   │   ├── java_init.list      #   入口类：com.hyperhand.tuner.HyperHand
+│   │   ├── java_init.list      #   入口类：io.github.zpan2327.hyperhand.HyperHand
 │   │   ├── scope.list          #   静态作用域：systemui + miui.home
 │   │   └── module.prop         #   minApiVersion / targetApiVersion / staticScope
 │   ├── res/values/strings.xml  # 模块名与简介（android:label / android:description）
@@ -236,16 +236,16 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://github.com/Xposed-Modules-Repo)，
 每个模块一个仓库。收录要求（[官方说明](https://github.com/Xposed-Modules-Repo/.github)）：
 
-1. 仓库名 **必须等于模块包名** → `com.hyperhand.tuner`
+1. 仓库名 **必须等于模块包名** → `io.github.zpan2327.hyperhand`
 2. 仓库 description 非空，作为模块显示名 → `HyperHand`
 3. 至少有一个 release，且 release 的 tag 必须是 `VersionCode-VersionName` 格式 → `20000-2.0.0`
 4. release 里至少有一个 `.apk` 资源
 
 流程：
 
-1. 打开 <https://modules.lsposed.org/submission>，用 GitHub 登录并提交 `com.hyperhand.tuner`；
+1. 打开 <https://modules.lsposed.org/submission>，用 GitHub 登录并提交 `io.github.zpan2327.hyperhand`；
    机器人会建好仓库并把维护权限给你。
-2. 在本仓库的 Secrets 里配置 `MODULE_REPO_TOKEN`：一个对 `Xposed-Modules-Repo/com.hyperhand.tuner`
+2. 在本仓库的 Secrets 里配置 `MODULE_REPO_TOKEN`：一个对 `Xposed-Modules-Repo/io.github.zpan2327.hyperhand`
    有写权限的 PAT（classic token，勾 `repo`）。
 3. 之后每次打 `v*` tag，CI 除了在本仓库发 Release，还会把同一个 APK 以
    `版本号-版本名` 的 tag 同步到模块仓库（`.github/workflows/build.yml` 里的
@@ -284,9 +284,9 @@ LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://gith
 
 ## 回滚 / 停用
 
-1. App 里关掉「启用模块」，或 `adb shell am broadcast -a com.hyperhand.tuner.action.SET --es oh_tuner_enabled 0`；
+1. App 里关掉「启用模块」，或 `adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_enabled 0`；
 2. Vector 里停用模块（作用域是静态声明的，无法单独取消）→ `adb shell am crash com.android.systemui`；
-3. `adb uninstall com.hyperhand.tuner`（残留的 `oh_tuner_*` 设置项可忽略，模块不再读取）。
+3. `adb uninstall io.github.zpan2327.hyperhand`（残留的 `oh_tuner_*` 设置项可忽略，模块不再读取）。
 
 全程未修改任何系统分区文件，无需备份原文件，OTA 不受影响。
 

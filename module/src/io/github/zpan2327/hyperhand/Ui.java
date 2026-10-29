@@ -1,4 +1,4 @@
-package com.hyperhand.tuner;
+package io.github.zpan2327.hyperhand;
 
 import android.app.Activity;
 import android.app.Dialog;

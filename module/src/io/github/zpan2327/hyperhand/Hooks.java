@@ -1,4 +1,4 @@
-package com.hyperhand.tuner;
+package io.github.zpan2327.hyperhand;
 
 import android.content.Context;
 import android.util.Log;

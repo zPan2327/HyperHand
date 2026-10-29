@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.hyperhand.tuner">
+    package="io.github.zpan2327.hyperhand">
 
     <!-- libxposed 现代 API（102）不再使用 xposedmodule / xposedminversion 这些 meta-data：
          模块名取 android:label，简介取 android:description，

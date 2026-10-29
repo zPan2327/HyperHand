@@ -1,4 +1,4 @@
-package com.hyperhand.tuner;
+package io.github.zpan2327.hyperhand;
 
 import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
@@ -73,7 +73,7 @@ public class HyperHand extends XposedModule {
     static final String CLS_CC_HANDLER =
             "com.miui.systemui.controlcenter.container.ControlCenterEventHandlerImpl";
 
-    static final String ACTION_SET = "com.hyperhand.tuner.action.SET";
+    static final String ACTION_SET = "io.github.zpan2327.hyperhand.action.SET";
 
     /** transaction code: ISystemUiProxy.onStatusBarMotionEvent(MotionEvent)。 */
     static final int TX_ON_STATUS_BAR_MOTION_EVENT = 10;

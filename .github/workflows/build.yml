@@ -123,6 +123,8 @@ jobs:
       - name: Publish to Xposed-Modules-Repo
         # 打 tag 时自动同步；也允许手动 Run workflow 补发（创建模块仓库后用它把 2.0.0 补进去）
         if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.MODULE_REPO_TOKEN != ''
+        # 模块仓库还没创建/还没批准时，这一步 404 属于预期，不要因此把整个构建标红
+        continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
           repository: Xposed-Modules-Repo/io.github.zpan2327.hyperhand

@@ -1,27 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.onehandtuner">
+    package="com.hyperhand.tuner">
 
+    <!-- libxposed 现代 API（102）不再使用 xposedmodule / xposedminversion 这些 meta-data：
+         模块名取 android:label，简介取 android:description，
+         入口在 META-INF/xposed/java_init.list，作用域在 META-INF/xposed/scope.list。 -->
     <application
-        android:label="单手模式增强"
+        android:label="@string/app_name"
+        android:description="@string/app_description"
         android:icon="@android:drawable/ic_menu_manage"
         android:hasCode="true"
         android:theme="@android:style/Theme.DeviceDefault.DayNight">
 
-        <meta-data
-            android:name="xposedmodule"
-            android:value="true" />
-        <meta-data
-            android:name="xposeddescription"
-            android:value="扩大单手模式底部触发区域，降低识别阈值，保留原生动画与退出方式" />
-        <meta-data
-            android:name="xposedminversion"
-            android:value="82" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="单手模式增强">
+            android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

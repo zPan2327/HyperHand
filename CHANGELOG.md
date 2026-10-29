@@ -2,6 +2,34 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.0] - 2026-10-29
+
+**不兼容升级**：包名、模块入口、Xposed API 全部变更，1.x 无法覆盖安装。
+
+### Changed
+
+- **改名 HyperHand**：包名 `com.onehandtuner` → `com.hyperhand.tuner`，应用名/模块名改为 HyperHand
+  （旧版请先 `adb uninstall com.onehandtuner`）。
+- **迁移到 libxposed 现代 API 102**：入口类改为 `HyperHand extends XposedModule`，
+  钩子换成拦截器链（`Hooker#intercept`），新增 `Hooks.java` 把 `findClass` / `hookMethods` /
+  `hookConstructors` / `call` 等 legacy 习惯封装回来；`startOneHanded()` 改用 `getInvoker`。
+  需要实现 API 102 的框架（Vector 2.x / 新版 LSPosed），LSPosed 1.9.x 会跳过本模块。
+- **静态作用域**：`META-INF/xposed/scope.list` + `module.prop` 的 `staticScope=true` 声明
+  `com.android.systemui` 与 `com.miui.home`，用户无需（也无法）手动勾选作用域。
+- 模块声明改为 `META-INF/xposed/{java_init.list,scope.list,module.prop}`，
+  移除 `assets/xposed_init` 与 `xposedmodule / xposedminversion` 等 legacy meta-data。
+- 模块名与简介改用 `res/values/strings.xml`（`android:label` / `android:description`）；
+  构建脚本新增 `aapt2 compile --dir res` 步骤。
+- 签名密钥文件更名为 `module/signing/hyperhand.keystore`。
+- 设置页文案随打包名与静态作用域更新。
+
+### Added
+
+- CI 增加结构自检（校验 APK 内三个 `META-INF/xposed/*` 文件）与
+  `Publish to Xposed-Modules-Repo` 步骤：打 tag 时以 `版本号-版本名` 的 tag 同步到官方模块仓库
+  （需配置 `MODULE_REPO_TOKEN`）。
+- 新增 [docs/发布到模块仓库.md](docs/发布到模块仓库.md)：收录要求、提交步骤、校验与排错。
+
 ## [1.0.2] - 2026-10-26
 
 ### Changed

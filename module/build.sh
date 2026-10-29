@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# OneHandTuner 构建脚本（Linux / macOS）
+# HyperHand 构建脚本（Linux / macOS）
 #
 # 用法：./module/build.sh
 #
@@ -27,7 +27,7 @@ fi
 BT_VERSION="${BUILD_TOOLS_VERSION:-36.0.0}"
 PLATFORM_VERSION="${PLATFORM_VERSION:-35}"
 KEYSTORE_PASS="${KEYSTORE_PASS:-onehand123}"
-VERSION_NAME="${VERSION_NAME:-1.0.2}"
+VERSION_NAME="${VERSION_NAME:-2.0.0}"
 # 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
 VERSION_CODE="${VERSION_CODE:-}"
 if [ -z "$VERSION_CODE" ]; then
@@ -64,13 +64,13 @@ if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/javac" ]; then
   export PATH="$JAVA_HOME/bin:$PATH"
 fi
 
-XPOSED_API="$ROOT/lib/api-82.jar"
+XPOSED_API="$ROOT/lib/api-102.jar"
 [ -f "$XPOSED_API" ] || { echo "缺少 Xposed API: $XPOSED_API" >&2; exit 1; }
 
 OUT_DIR="$ROOT/build"
 CLASSES_DIR="$OUT_DIR/classes"
 DEX_DIR="$OUT_DIR/dex"
-OUT_APK="$ROOT/out/OneHandTuner.apk"
+OUT_APK="$ROOT/out/HyperHand.apk"
 
 rm -rf "$OUT_DIR"
 mkdir -p "$CLASSES_DIR" "$DEX_DIR" "$(dirname "$OUT_APK")"
@@ -80,7 +80,7 @@ mkdir -p "$CLASSES_DIR" "$DEX_DIR" "$(dirname "$OUT_APK")"
 LIB_DIR="$OUT_DIR/libs"
 mkdir -p "$LIB_DIR"
 cp "$ANDROID_JAR" "$LIB_DIR/android.jar"
-cp "$XPOSED_API" "$LIB_DIR/api-82.jar"
+cp "$XPOSED_API" "$LIB_DIR/api-102.jar"
 
 echo "==> javac"
 mapfile -t SRCS < <(find "$ROOT/src" -name '*.java')
@@ -94,19 +94,31 @@ mapfile -t CLASSES < <(find "$CLASSES_DIR" -name '*.class')
 "$D8" --release --min-api 31 --lib "$ANDROID_JAR" --output "$DEX_DIR" "${CLASSES[@]}"
 [ -f "$DEX_DIR/classes.dex" ] || { echo "classes.dex 未生成" >&2; exit 1; }
 
+echo "==> aapt2 compile (res)"
+RES_ZIP="$OUT_DIR/res.zip"
+LINK_INPUTS=()
+if [ -d "$ROOT/res" ]; then
+  "$AAPT2" compile --dir "$ROOT/res" -o "$RES_ZIP"
+  LINK_INPUTS+=("$RES_ZIP")
+fi
+
 echo "==> aapt2 link"
 UNSIGNED="$OUT_DIR/unsigned.apk"
 "$AAPT2" link -o "$UNSIGNED" \
   --manifest "$ROOT/AndroidManifest.xml" \
   -I "$ANDROID_JAR" \
-  -A "$ROOT/assets" \
   --min-sdk-version 31 --target-sdk-version 36 \
-  --version-code "$VERSION_CODE" --version-name "$VERSION_NAME"
+  --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
+  "${LINK_INPUTS[@]}"
 
-echo "==> add classes.dex"
-# 用 JDK 自带的 jar 写入 dex：git-bash / 精简容器里通常没有 zip 命令
+echo "==> add classes.dex + META-INF"
+# 用 JDK 自带的 jar 写入 dex / 模块清单：git-bash / 精简容器里通常没有 zip 命令。
+# libxposed 现代 API 的入口（java_init.list）、作用域（scope.list）、module.prop
+# 必须位于 APK 根的 META-INF/xposed 下，否则框架认不出模块。
 cp "$DEX_DIR/classes.dex" "$OUT_DIR/classes.dex"
-( cd "$OUT_DIR" && "$JAR" uf "$UNSIGNED" classes.dex )
+rm -rf "$OUT_DIR/META-INF"
+cp -r "$ROOT/META-INF" "$OUT_DIR/META-INF"
+( cd "$OUT_DIR" && "$JAR" uf "$UNSIGNED" classes.dex META-INF )
 
 echo "==> zipalign"
 ALIGNED="$OUT_DIR/aligned.apk"
@@ -115,12 +127,12 @@ ALIGNED="$OUT_DIR/aligned.apk"
 echo "==> keystore"
 SIGNING_DIR="$ROOT/signing"
 mkdir -p "$SIGNING_DIR"
-KS="$SIGNING_DIR/onehand.keystore"
+KS="$SIGNING_DIR/hyperhand.keystore"
 if [ ! -f "$KS" ]; then
   echo "    未发现 keystore，自动生成一个新的"
-  "$KEYTOOL" -genkeypair -keystore "$KS" -alias onehand -keyalg RSA -keysize 2048 \
+  "$KEYTOOL" -genkeypair -keystore "$KS" -alias hyperhand -keyalg RSA -keysize 2048 \
     -validity 10000 -storepass "$KEYSTORE_PASS" -keypass "$KEYSTORE_PASS" \
-    -dname 'CN=OneHandTuner, OU=dev, O=dev, L=CN, S=CN, C=CN'
+    -dname 'CN=HyperHand, OU=dev, O=dev, L=CN, S=CN, C=CN'
 fi
 
 echo "==> apksigner"

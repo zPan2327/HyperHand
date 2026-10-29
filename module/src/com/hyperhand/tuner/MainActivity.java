@@ -1,4 +1,4 @@
-package com.onehandtuner;
+package com.hyperhand.tuner;
 
 import android.app.ActionBar;
 import android.app.Activity;
@@ -92,9 +92,9 @@ public class MainActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
         header.setPadding(dp(4), dp(10), dp(4), dp(4));
-        TextView title = Ui.text(this, "单手模式增强", 30, pal.title, true);
+        TextView title = Ui.text(this, "HyperHand", 30, pal.title, true);
         header.addView(title);
-        TextView sub = Ui.text(this, "小米 14 · HyperOS 3 · 旁路触发通道", 14, pal.section, false);
+        TextView sub = Ui.text(this, "单手模式增强 · 小米 14 / HyperOS 3", 14, pal.section, false);
         sub.setPadding(0, dp(4), 0, 0);
         header.addView(sub);
         root.addView(header, new LinearLayout.LayoutParams(
@@ -154,7 +154,7 @@ public class MainActivity extends Activity {
         root.addView(Ui.sectionTitle(this, pal, "调试"));
         LinearLayout cardDebug = Ui.card(this, pal);
         swDebug = Ui.switchRow(this, cardDebug, pal, "调试日志",
-                "用 logcat -s OneHandTuner 观察判定过程", true);
+                "用 logcat -s HyperHand 观察判定过程", true);
         swShadeGuard.setOnCheckedChange(dirtyOnChange);
         swClaimZone.setOnCheckedChange(dirtyOnChange);
         swDebug.setOnCheckedChange(dirtyOnChange);
@@ -197,18 +197,18 @@ public class MainActivity extends Activity {
         // ---------------------------------------------------------- 说明
         root.addView(Ui.sectionTitle(this, pal, "说明"));
         LinearLayout cardTips = Ui.card(this, pal);
-        TextView tips = Ui.text(this, "• 先在 Vector / LSPosed 里启用模块，作用域勾选「系统界面」；\n"
-                + "  想用「原生胶囊条高度」这一项时，再勾选「小米桌面」。\n"
+        TextView tips = Ui.text(this, "• 在 Vector / LSPosed 里启用 HyperHand 即可：作用域已经静态声明，\n"
+                + "  不用手动勾「系统界面 / 小米桌面」，也没法挂到别的应用上。\n"
                 + "• 保存后立即生效，不需要重启；改动由系统界面进程写入 Settings.Global。\n"
                 + "• 快甩才触发、慢滑不触发：调大「起效速度」；想更灵敏就调到 0 关闭速度判定。\n"
-                + "• 想完全恢复原状：关掉「启用模块」，或在 LSPosed 里停用模块。", 13,
+                + "• 想完全恢复原状：关掉「启用模块」，或在管理器里停用模块。", 13,
                 pal.summary, false);
         tips.setLineSpacing(dp(4), 1f);
         tips.setPadding(dp(16), dp(14), dp(16), dp(16));
         cardTips.addView(tips);
         root.addView(cardTips);
 
-        TextView footer = Ui.text(this, "OneHandTuner " + versionName() + " · MIT", 12, pal.chevron, false);
+        TextView footer = Ui.text(this, "HyperHand " + versionName() + " · MIT", 12, pal.chevron, false);
         footer.setGravity(android.view.Gravity.CENTER);
         footer.setPadding(0, dp(18), 0, 0);
         root.addView(footer);
@@ -346,7 +346,7 @@ public class MainActivity extends Activity {
     }
 
     private void save() {
-        Intent i = new Intent(OneHandTuner.ACTION_SET);
+        Intent i = new Intent(HyperHand.ACTION_SET);
         i.setPackage("com.android.systemui");
         i.putExtra(Cfg.K_ENABLED, swEnabled.isChecked() ? "1" : "0");
         i.putExtra(Cfg.K_MONITOR_ENABLED, swMonitor.isChecked() ? "1" : "0");
@@ -363,7 +363,7 @@ public class MainActivity extends Activity {
         sendBroadcast(i);
 
         status.setText("已提交到系统界面进程，立即生效。可下滑底部区域测试，"
-                + "用 logcat -s OneHandTuner 观察。");
+                + "用 logcat -s HyperHand 观察。");
         Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
     }
 

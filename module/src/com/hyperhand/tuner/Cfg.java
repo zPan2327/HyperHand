@@ -1,4 +1,4 @@
-package com.onehandtuner;
+package com.hyperhand.tuner;
 
 import android.content.ContentResolver;
 import android.content.Context;
@@ -94,7 +94,7 @@ final class Cfg {
             c.shadeGuard = intOf(cr, K_SHADE_GUARD, 1) != 0;
             c.claimZone = intOf(cr, K_CLAIM_ZONE, 1) != 0;
         } catch (Throwable t) {
-            Log.w(OneHandTuner.TAG, "load config failed, use defaults", t);
+            Log.w(HyperHand.TAG, "load config failed, use defaults", t);
         }
         return c;
     }

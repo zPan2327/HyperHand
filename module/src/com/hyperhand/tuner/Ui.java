@@ -1,4 +1,4 @@
-package com.onehandtuner;
+package com.hyperhand.tuner;
 
 import android.app.Activity;
 import android.app.Dialog;

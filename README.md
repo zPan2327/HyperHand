@@ -1,14 +1,14 @@
 <div align="center">
 
-# 单手模式增强 · OneHandTuner
+# HyperHand · 单手模式增强
 
 **给小米 14 / HyperOS 3（Android 16）的原生单手模式，加上一颗"iPhone 式"的下拉触发**
 
 只改触发层 —— 缩小动画、缩小布局、触摸映射、退出方式 100% 沿用系统原生实现。
 
 [![Android](https://img.shields.io/badge/Android-16%20·%20HyperOS%203-3DDC84?logo=android&logoColor=white)](#验证环境)
-[![Xposed API](https://img.shields.io/badge/Xposed%20API-82-orange)](#原理)
-[![Requires](https://img.shields.io/badge/需要-KernelSU%20%2B%20Zygisk%20%2B%20Vector%2FLSPosed-8A2BE2)](#安装)
+[![libxposed API](https://img.shields.io/badge/libxposed%20API-102-orange)](#模块声明与-api-102)
+[![Requires](https://img.shields.io/badge/需要-Vector%20%2F%20LSPosed%EF%BC%88API%20102%EF%BC%89-8A2BE2)](#安装)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 </div>
@@ -57,7 +57,7 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 | 导航 | 手势导航（`navigation_mode=2`），1200×2670 @480dpi |
 | Root | KernelSU + Zygisk（NeoZygisk） |
 | 注入 | Vector 2.2.1（LSPosed fork，包名 `org.lsposed.manager`） |
-| 模块 | 旧版 Xposed API（`xposedminversion=82`） |
+| 模块 | libxposed 现代 API 102（`module.prop` 里 `minApiVersion=102`） |
 
 > 仅在本机实测验证。其他机型/版本可尝试，但类名或方法名变化会导致钩子静默失效（不会崩溃），详见[已知限制](#已知限制)。
 
@@ -84,14 +84,37 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 
 完整的调用链、反编译证据、参数含义与实测日志见 **[docs/单手模式增强.md](docs/单手模式增强.md)**。
 
+## 模块声明与 API 102
+
+模块用的是 **libxposed 现代 API（API 102）**，不再是 `assets/xposed_init` + `xposedminversion=82` 那套 legacy 形态。
+现代 API 把"模块是什么"从 manifest 的 meta-data 挪到了 APK 里的三个文件，好处是作用域可以静态声明：
+
+| 文件 | 作用 | 内容 |
+|---|---|---|
+| `META-INF/xposed/java_init.list` | 入口类 | `com.hyperhand.tuner.HyperHand` |
+| `META-INF/xposed/scope.list` | **静态作用域** | `com.android.systemui` / `com.miui.home` |
+| `META-INF/xposed/module.prop` | 版本与行为 | `minApiVersion=102`、`targetApiVersion=102`、`staticScope=true` |
+
+- **静态作用域**：`staticScope=true` 时管理器不允许用户加挂其它应用，装到别的机型上也不会因为
+  "勾错作用域"去 hook 无关进程。
+- **模块名与简介**：直接取 `res/values/strings.xml` 里的 `app_name` / `app_description`
+  （即 `android:label` / `android:description`）。
+- **钩子写法**：现代 API 是拦截器链（`Hooker#intercept(chain)`），`Hooks.java` 把
+  `findClass` / `hookMethods` / `hookConstructors` / `call` 这些 legacy 习惯封装回来了，
+  `HyperHand.java` 的判定逻辑一行没改。
+- **框架要求**：需要实现 API 102 的框架 —— Vector 2.x 或新版 LSPosed。
+  LSPosed 1.9.x 只到 API 101，会把本模块当成"需要更新框架"而跳过。
+
 ## 安装
 
 ### 方式一：直接装 release APK
 
-1. 从 [Releases](../../releases) 下载 `OneHandTuner.apk` 并安装。
-2. 在 **Vector / LSPosed** 里启用模块，作用域勾选：
-   - ✅ **系统界面**（`com.android.systemui`）—— 必选
-   - ✅ **小米桌面**（`com.miui.home`）—— 推荐（区域归属闸门①）
+> **从 1.x 升级需先卸载旧包**：包名已从 `com.onehandtuner` 改为 `com.hyperhand.tuner`，
+> 两者是彼此独立的应用。`adb uninstall com.onehandtuner`（或手动卸载「单手模式增强」）后再装。
+
+1. 从 [Releases](../../releases) 下载 `HyperHand.apk` 并安装。
+2. 在 **Vector / LSPosed** 里启用 **HyperHand** 即可。作用域已在 APK 里**静态声明**
+   （`com.android.systemui` + `com.miui.home`），不需要手动勾选，也无法挂到别的应用上。
 3. 重启两个进程让模块加载：
 
 ```bash
@@ -103,7 +126,7 @@ adb shell am crash com.android.systemui
 4. 验证钩子已注入：
 
 ```bash
-adb logcat -d -s OneHandTuner
+adb logcat -d -s HyperHand
 # SystemUI: attached to SystemUI / OneHandedTouchHandler hooked / OneHandedController captured
 #           LauncherProxyService$1 hooked / NotificationPanelViewController hooked / ControlCenterEventHandlerImpl hooked
 # 桌面:     attached to Launcher / StatusBarSwipeController hooked (zone ownership)
@@ -119,14 +142,14 @@ adb logcat -d -s OneHandTuner
 - **慢拖不触发**：慢慢往下拖不会进单手模式（方便在底部区域滚动）。
 - **通知/控制中心**：从触发区**上方**下拉，或从顶部状态栏下拉。
 - **退出**：点一下缩小区域上方 / 在胶囊条上上滑 / 等待超时 —— 全部是原生行为。
-- **调参**：打开「单手模式增强」App 改数值 → 保存 → 立即生效（无需重启、无需 root）。
+- **调参**：打开「HyperHand」App 改数值 → 保存 → 立即生效（无需重启、无需 root）。
 
 ## 可配置参数
 
 全部存于 `Settings.Global`，前缀 `oh_tuner_`，App 界面可改，也可用 `adb`：
 
 ```bash
-adb shell am broadcast -a com.onehandtuner.action.SET --es oh_tuner_min_velocity_px_s 800
+adb shell am broadcast -a com.hyperhand.tuner.action.SET --es oh_tuner_min_velocity_px_s 800
 ```
 
 | 键 | 含义 | 默认 |
@@ -169,13 +192,13 @@ pwsh -File module/build.ps1
 ```
 
 脚本通过环境变量定位 SDK：`ANDROID_HOME` / `ANDROID_SDK_ROOT`，JDK 用 `JAVA_HOME`。
-签名密钥固定放在 `module/signing/onehand.keystore`（已 gitignore，首次构建自动生成）—— 保留它才能持续用 `adb install -r` 覆盖升级。
-产物：`module/out/OneHandTuner.apk`。
+签名密钥固定放在 `module/signing/hyperhand.keystore`（已 gitignore，首次构建自动生成）—— 保留它才能持续用 `adb install -r` 覆盖升级。
+产物：`module/out/HyperHand.apk`（先 `aapt2 compile` 编译 `module/res/`，再 `aapt2 link` 并附带 `.flat` 资源）。
 
 CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI 产物和本地构建同签名，在仓库 **Settings → Secrets and variables → Actions** 里加一个 `ANDROID_KEYSTORE_B64`，值为本地 keystore 的 base64：
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("module\signing\onehand.keystore")) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("module\signing\hyperhand.keystore")) | Set-Clipboard
 ```
 
 ## 目录结构
@@ -191,25 +214,56 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 │   └── screenshots/         # 界面的浅色 / 深色 / 对话框截图
 ├── module/
 │   ├── AndroidManifest.xml
-│   ├── assets/xposed_init
-│   ├── src/com/onehandtuner/
-│   │   ├── OneHandTuner.java   # 钩子主体（SystemUI 触发判定 + 桌面侧闸门）
+│   ├── META-INF/xposed/        # libxposed 现代 API 的模块声明
+│   │   ├── java_init.list      #   入口类：com.hyperhand.tuner.HyperHand
+│   │   ├── scope.list          #   静态作用域：systemui + miui.home
+│   │   └── module.prop         #   minApiVersion / targetApiVersion / staticScope
+│   ├── res/values/strings.xml  # 模块名与简介（android:label / android:description）
+│   ├── src/com/hyperhand/tuner/
+│   │   ├── HyperHand.java      # 钩子主体（SystemUI 触发判定 + 桌面侧闸门）
+│   │   ├── Hooks.java          # libxposed API 102 的兼容层（findClass / hookAll / call）
 │   │   ├── Cfg.java            # 参数读写
 │   │   ├── MainActivity.java   # 参数调节界面（页面组装 + 保存）
 │   │   └── Ui.java             # Miuix 风格组件：卡片 / 行 / 开关 / 按钮 / 数值对话框
-│   ├── lib/api-82.jar          # 编译期 Xposed API stub
+│   ├── lib/api-102.jar         # 编译期 libxposed API stub（compileOnly）
 │   ├── build.ps1 / build.sh
 │   └── out/                    # 构建产物（gitignore）
-└── .github/workflows/build.yml # CI：构建 + 上传 artifact
+└── .github/workflows/build.yml # CI：构建 + 上传 artifact + 同步官方模块仓库
 ```
+
+## 提交到官方模块仓库
+
+LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://github.com/Xposed-Modules-Repo)，
+每个模块一个仓库。收录要求（[官方说明](https://github.com/Xposed-Modules-Repo/.github)）：
+
+1. 仓库名 **必须等于模块包名** → `com.hyperhand.tuner`
+2. 仓库 description 非空，作为模块显示名 → `HyperHand`
+3. 至少有一个 release，且 release 的 tag 必须是 `VersionCode-VersionName` 格式 → `20000-2.0.0`
+4. release 里至少有一个 `.apk` 资源
+
+流程：
+
+1. 打开 <https://modules.lsposed.org/submission>，用 GitHub 登录并提交 `com.hyperhand.tuner`；
+   机器人会建好仓库并把维护权限给你。
+2. 在本仓库的 Secrets 里配置 `MODULE_REPO_TOKEN`：一个对 `Xposed-Modules-Repo/com.hyperhand.tuner`
+   有写权限的 PAT（classic token，勾 `repo`）。
+3. 之后每次打 `v*` tag，CI 除了在本仓库发 Release，还会把同一个 APK 以
+   `版本号-版本名` 的 tag 同步到模块仓库（`.github/workflows/build.yml` 里的
+   `Publish to Xposed-Modules-Repo` 步骤；没配 token 时自动跳过）。
+
+> 详细步骤与排错见 [docs/发布到模块仓库.md](docs/发布到模块仓库.md)。
 
 ## 常见问题
 
 **Q：模块装了但完全没反应？**
-按顺序排查：① Vector 里模块是否启用、作用域是否勾了「系统界面」；② 是否 `am crash` 重启过 SystemUI；③ `adb logcat -s OneHandTuner` 是否能看到 `attached to SystemUI`；④ `one_handed_mode_enabled` 是否为 1。
+按顺序排查：① 框架是否支持 **libxposed API 102**（Vector 2.x / 新版 LSPosed 才有，旧 LSPosed 1.9.x 只到 101，会直接忽略本模块）；② Vector 里模块是否启用；③ 是否 `am crash` 重启过 SystemUI；④ `adb logcat -s HyperHand` 是否能看到 `attached to SystemUI`；⑤ `one_handed_mode_enabled` 是否为 1。
+
+**Q：作用域在哪里选？**
+不用选。`scope.list` + `module.prop` 的 `staticScope=true` 已经把作用域静态声明成「系统界面 + 小米桌面」，
+管理器里会显示为不可编辑；装到别的机型上也不会被误挂到其它应用。
 
 **Q：想触发单手，却开了通知中心？**
-说明闸门①没生效（多半是没勾「小米桌面」作用域，或没重启桌面进程）。勾选并 `am crash com.miui.home` 即可。
+说明闸门①没生效（多半是没重启桌面进程）。`adb shell am crash com.miui.home` 即可。
 
 **Q：慢滑也触发了？**
 把 `oh_tuner_min_velocity_px_s` 调大（800~1200），或把 `oh_tuner_min_dy_dp` 调大。
@@ -230,15 +284,15 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 
 ## 回滚 / 停用
 
-1. App 里关掉「启用模块」，或 `adb shell am broadcast -a com.onehandtuner.action.SET --es oh_tuner_enabled 0`；
-2. Vector 里停用模块（或取消作用域）→ `adb shell am crash com.android.systemui`；
-3. `adb uninstall com.onehandtuner`（残留的 `oh_tuner_*` 设置项可忽略，模块不再读取）。
+1. App 里关掉「启用模块」，或 `adb shell am broadcast -a com.hyperhand.tuner.action.SET --es oh_tuner_enabled 0`；
+2. Vector 里停用模块（作用域是静态声明的，无法单独取消）→ `adb shell am crash com.android.systemui`；
+3. `adb uninstall com.hyperhand.tuner`（残留的 `oh_tuner_*` 设置项可忽略，模块不再读取）。
 
 全程未修改任何系统分区文件，无需备份原文件，OTA 不受影响。
 
 ## 第三方组件
 
-- `module/lib/api-82.jar`：Xposed API（Apache-2.0），仅作编译期 stub 使用，不打包进 APK。
+- `module/lib/api-102.jar`：[libxposed API](https://github.com/libxposed/api) 102（Apache-2.0），仅作编译期 stub，不打包进 APK。
 
 ## License
 

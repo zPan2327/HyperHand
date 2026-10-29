@@ -1,5 +1,5 @@
 # =============================================================================
-# OneHandTuner 构建脚本（Windows / PowerShell 7+）
+# HyperHand 构建脚本（Windows / PowerShell 7+）
 #
 # 用法：
 #   pwsh -File module/build.ps1
@@ -30,7 +30,7 @@ $sdk = Find-Sdk
 $btVersion = if ($env:BUILD_TOOLS_VERSION) { $env:BUILD_TOOLS_VERSION } else { '36.0.0' }
 $platformVersion = if ($env:PLATFORM_VERSION) { $env:PLATFORM_VERSION } else { '35' }
 $keystorePass = if ($env:KEYSTORE_PASS) { $env:KEYSTORE_PASS } else { 'onehand123' }
-$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '1.0.2' }
+$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '2.0.0' }
 # 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
 $versionCode = $env:VERSION_CODE
 if (-not $versionCode) {
@@ -61,13 +61,13 @@ if ($jdkHome) {
     $env:PATH = (Join-Path $jdkHome 'bin') + ';' + $env:PATH
 }
 
-$xposedApi = Join-Path $root 'lib\api-82.jar'
+$xposedApi = Join-Path $root 'lib\api-102.jar'
 if (-not (Test-Path $xposedApi)) { throw "缺少 Xposed API: $xposedApi" }
 
 $outDir = Join-Path $root 'build'
 $classesDir = Join-Path $outDir 'classes'
 $dexDir = Join-Path $outDir 'dex'
-$outApk = Join-Path $root 'out\OneHandTuner.apk'
+$outApk = Join-Path $root 'out\HyperHand.apk'
 
 foreach ($d in @($outDir, $classesDir, $dexDir, (Split-Path -Parent $outApk))) {
     if (Test-Path $d) { Remove-Item $d -Recurse -Force }
@@ -85,14 +85,26 @@ $classFiles = Get-ChildItem -Path $classesDir -Recurse -Filter *.class | ForEach
 if ($LASTEXITCODE -ne 0) { throw 'd8 failed' }
 if (-not (Test-Path (Join-Path $dexDir 'classes.dex'))) { throw 'classes.dex not produced' }
 
+Write-Host '==> aapt2 compile (res)'
+$resDir = Join-Path $root 'res'
+$resZip = Join-Path $outDir 'res.zip'
+$linkInputs = @()
+if (Test-Path $resDir) {
+    & (Join-Path $buildTools 'aapt2.exe') 'compile' '--dir' $resDir '-o' $resZip
+    if ($LASTEXITCODE -ne 0) { throw 'aapt2 compile failed' }
+    $linkInputs += $resZip
+}
+
 Write-Host '==> aapt2 link'
 $unsigned = Join-Path $outDir 'unsigned.apk'
-& (Join-Path $buildTools 'aapt2.exe') 'link' '-o' $unsigned `
-    '--manifest' (Join-Path $root 'AndroidManifest.xml') `
-    '-I' $androidJar `
-    '-A' (Join-Path $root 'assets') `
-    '--min-sdk-version' '31' '--target-sdk-version' '36' `
-    '--version-code' $versionCode '--version-name' $versionName
+$linkArgs = @(
+    'link', '-o', $unsigned,
+    '--manifest', (Join-Path $root 'AndroidManifest.xml'),
+    '-I', $androidJar,
+    '--min-sdk-version', '31', '--target-sdk-version', '36',
+    '--version-code', "$versionCode", '--version-name', $versionName
+) + $linkInputs
+& (Join-Path $buildTools 'aapt2.exe') @linkArgs
 if ($LASTEXITCODE -ne 0) { throw 'aapt2 link failed' }
 
 Write-Host '==> add classes.dex'
@@ -103,6 +115,16 @@ try {
     [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
         $zip, (Join-Path $dexDir 'classes.dex'), 'classes.dex',
         [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    # libxposed 现代 API 的模块清单（入口 / 作用域 / module.prop）放在 APK 根的 META-INF 下
+    $metaRoot = Join-Path $root 'META-INF'
+    if (Test-Path $metaRoot) {
+        Get-ChildItem -Path $metaRoot -Recurse -File | ForEach-Object {
+            $rel = $_.FullName.Substring($root.Length + 1).Replace('\', '/')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $zip, $_.FullName, $rel,
+                [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+        }
+    }
 } finally {
     $zip.Dispose()
 }
@@ -117,12 +139,12 @@ Write-Host '==> keystore'
 # 否则签名变化会导 adb install -r 失败 / 与已安装版本不兼容。
 $signingDir = Join-Path $root 'signing'
 if (-not (Test-Path $signingDir)) { New-Item -ItemType Directory -Force $signingDir | Out-Null }
-$ks = Join-Path $signingDir 'onehand.keystore'
+$ks = Join-Path $signingDir 'hyperhand.keystore'
 if (-not (Test-Path $ks)) {
     Write-Host '    未发现 keystore，自动生成一个新的'
-    & $keytool '-genkeypair' '-keystore' $ks '-alias' 'onehand' '-keyalg' 'RSA' '-keysize' '2048' `
+    & $keytool '-genkeypair' '-keystore' $ks '-alias' 'hyperhand' '-keyalg' 'RSA' '-keysize' '2048' `
         '-validity' '10000' '-storepass' $keystorePass '-keypass' $keystorePass `
-        '-dname' 'CN=OneHandTuner, OU=dev, O=dev, L=CN, S=CN, C=CN'
+        '-dname' 'CN=HyperHand, OU=dev, O=dev, L=CN, S=CN, C=CN'
     if ($LASTEXITCODE -ne 0) { throw 'keytool failed' }
 }
 

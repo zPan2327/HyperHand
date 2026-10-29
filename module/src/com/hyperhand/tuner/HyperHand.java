@@ -1,6 +1,5 @@
-package com.onehandtuner;
+package com.hyperhand.tuner;
 
-import android.app.AndroidAppHelper;
 import android.app.KeyguardManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
@@ -15,15 +14,13 @@ import android.view.MotionEvent;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 
-import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
+import io.github.libxposed.api.XposedInterface;
+import io.github.libxposed.api.XposedModule;
 
 /**
- * 小米 14 / HyperOS 3 (Android 16) 单手模式触发增强。
+ * HyperHand · 小米 14 / HyperOS 3 (Android 16) 单手模式触发增强。
  *
  * 原理（全部复用原生单手模式，不重写动画/布局/触摸映射/退出逻辑）：
  *
@@ -34,7 +31,6 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  *    我们在这条通道上做一次"底部下滑"判定，命中后调用
  *    OneHandedController.startOneHanded() —— 也就是原生小白条下滑所调用的同一个方法，
  *    后续的缩小动画、缩小布局、触摸映射、退出（点击上方/上滑/超时）全部沿用系统实现。
- *
  *    因为它只是"旁路监听"，所以把触发区从原生 25dp 的胶囊条扩大到底部 56dp（可配）
  *    不会改变任何窗口的触摸分配，不会造成点击延迟、长按丢失之类的问题。
  *
@@ -51,10 +47,14 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  *    直接把原生 GameStubHome 窗口（type=2024）的高度改大。
  *    缺点是窗口变大后其内部的点击透传逻辑只对"快速点击"注入事件，超过 300ms 的长按会被吞掉，
  *    故仅作为可选项。
+ *
+ * 4) 模块形态：libxposed 现代 API（API 102）。入口类由 META-INF/xposed/java_init.list 声明，
+ *    作用域由 META-INF/xposed/scope.list + module.prop 的 staticScope 静态声明，
+ *    用户既不用手动勾作用域，也无法把模块挂到别的应用上。
  */
-public class OneHandTuner implements IXposedHookLoadPackage {
+public class HyperHand extends XposedModule {
 
-    static final String TAG = "OneHandTuner";
+    static final String TAG = "HyperHand";
 
     static final String PKG_SYSUI = "com.android.systemui";
     static final String PKG_LAUNCHER = "com.miui.home";
@@ -73,10 +73,20 @@ public class OneHandTuner implements IXposedHookLoadPackage {
     static final String CLS_CC_HANDLER =
             "com.miui.systemui.controlcenter.container.ControlCenterEventHandlerImpl";
 
-    static final String ACTION_SET = "com.onehandtuner.action.SET";
+    static final String ACTION_SET = "com.hyperhand.tuner.action.SET";
 
     /** transaction code: ISystemUiProxy.onStatusBarMotionEvent(MotionEvent)。 */
     static final int TX_ON_STATUS_BAR_MOTION_EVENT = 10;
+
+    /** 静态判定路径（startOneHanded）也要用 getInvoker，留一个进程内引用。 */
+    private static volatile Hooks sHooks;
+
+    private final Hooks hooks;
+
+    public HyperHand() {
+        hooks = new Hooks(this);
+        sHooks = hooks;
+    }
 
     /** OneHandedController 实例（构造时抓取，供 startOneHanded() 调用）。 */
     private static volatile Object sController;
@@ -90,44 +100,49 @@ public class OneHandTuner implements IXposedHookLoadPackage {
     private static boolean sTriggered;
     private static float sDownX;
     private static float sDownY;
-    private static long sDownTime;
-    private static long sLastTriggerAt;
     private static float sPrevY;
+    private static long sDownTime;
     private static long sPrevT;
-    /** 本次手势的向下峰值速度（px/s）。 */
     private static float sPeakVy;
+    private static long sLastTriggerAt;
 
     private static volatile boolean sDebug = true;
     private static volatile boolean sReceiverRegistered;
 
+    // ------------------------------------------------------------------ lifecycle
+
     @Override
-    public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) throws Throwable {
-        final String pkg = lp == null ? null : lp.packageName;
-        if (pkg == null) return;
+    public void onModuleLoaded(ModuleLoadedParam param) {
+        Log.i(TAG, "module loaded: " + getFrameworkName() + " " + getFrameworkVersion()
+                + " (api " + getApiVersion() + "), process=" + param.getProcessName());
+    }
+
+    @Override
+    public void onPackageLoaded(PackageLoadedParam param) {
+        final String pkg = param.getPackageName();
         if (PKG_SYSUI.equals(pkg)) {
-            hookSystemUi(lp);
+            hookSystemUi(param.getDefaultClassLoader());
         } else if (PKG_LAUNCHER.equals(pkg)) {
-            hookLauncher(lp);
+            hookLauncher(param.getDefaultClassLoader());
         }
     }
 
     // ------------------------------------------------------------------ SystemUI
 
-    private void hookSystemUi(XC_LoadPackage.LoadPackageParam lp) {
-        final ClassLoader cl = lp.classLoader;
+    private void hookSystemUi(final ClassLoader cl) {
         log("attached to SystemUI");
 
         // 1) 抓取 OneHandedController 实例
         try {
-            Class<?> ctrlCls = XposedHelpers.findClassIfExists(CLS_CTRL, cl);
+            Class<?> ctrlCls = hooks.findClass(CLS_CTRL, cl);
             if (ctrlCls != null) {
-                XposedBridge.hookAllConstructors(ctrlCls, new XC_MethodHook() {
+                hooks.hookConstructors(ctrlCls, Hooks.after(new Hooks.After() {
                     @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        sController = param.thisObject;
+                    public void run(XposedInterface.Chain chain, Object result) {
+                        sController = chain.getThisObject();
                         log("OneHandedController captured");
                     }
-                });
+                }));
             } else {
                 log("OneHandedController class not found");
             }
@@ -137,22 +152,23 @@ public class OneHandTuner implements IXposedHookLoadPackage {
 
         // 2) 在原生手势监视器上做扩展触发判定
         try {
-            Class<?> touchCls = XposedHelpers.findClassIfExists(CLS_TOUCH, cl);
+            Class<?> touchCls = hooks.findClass(CLS_TOUCH, cl);
             if (touchCls != null) {
-                XposedBridge.hookAllMethods(touchCls, "onInputEvent", new XC_MethodHook() {
+                int n = hooks.hookMethods(touchCls, "onInputEvent", Hooks.before(new Hooks.Before() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
+                    public Object run(XposedInterface.Chain chain) {
                         try {
-                            if (param.args != null && param.args.length == 1
-                                    && param.args[0] instanceof MotionEvent) {
-                                onMonitorEvent(param.thisObject, (MotionEvent) param.args[0]);
+                            List<Object> args = chain.getArgs();
+                            if (args.size() == 1 && args.get(0) instanceof MotionEvent) {
+                                onMonitorEvent(chain.getThisObject(), (MotionEvent) args.get(0));
                             }
                         } catch (Throwable t) {
                             log("monitor handler error: " + t);
                         }
+                        return Hooks.PROCEED;
                     }
-                });
-                log("OneHandedTouchHandler hooked");
+                }));
+                log("OneHandedTouchHandler hooked (" + n + ")");
             } else {
                 log("OneHandedTouchHandler class not found");
             }
@@ -172,23 +188,24 @@ public class OneHandTuner implements IXposedHookLoadPackage {
      */
     private void hookShadeSignals(ClassLoader cl) {
         try {
-            Class<?> proxy = XposedHelpers.findClassIfExists(CLS_LAUNCHER_PROXY, cl);
+            Class<?> proxy = hooks.findClass(CLS_LAUNCHER_PROXY, cl);
             if (proxy != null) {
-                XposedBridge.hookAllMethods(proxy, "onTransact", new XC_MethodHook() {
+                int n = hooks.hookMethods(proxy, "onTransact", Hooks.before(new Hooks.Before() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
+                    public Object run(XposedInterface.Chain chain) {
                         try {
-                            if (param.args != null && param.args.length == 4
-                                    && param.args[0] instanceof Integer
-                                    && ((Integer) param.args[0]) == TX_ON_STATUS_BAR_MOTION_EVENT) {
+                            List<Object> args = chain.getArgs();
+                            if (args.size() == 4 && args.get(0) instanceof Integer
+                                    && ((Integer) args.get(0)) == TX_ON_STATUS_BAR_MOTION_EVENT) {
                                 markShadeIntent("launcher_forward");
                             }
                         } catch (Throwable t) {
                             // ignore
                         }
+                        return Hooks.PROCEED;
                     }
-                });
-                log("LauncherProxyService$1 hooked (shade guard)");
+                }));
+                log("LauncherProxyService$1 hooked (shade guard, " + n + ")");
             } else {
                 log("LauncherProxyService$1 class not found");
             }
@@ -197,17 +214,18 @@ public class OneHandTuner implements IXposedHookLoadPackage {
         }
 
         try {
-            Class<?> pvc = XposedHelpers.findClassIfExists(CLS_PANEL_VC, cl);
+            Class<?> pvc = hooks.findClass(CLS_PANEL_VC, cl);
             if (pvc != null) {
                 int n = 0;
                 for (Method m : pvc.getDeclaredMethods()) {
                     if (m.getName().startsWith("startInputFocusTransfer")) {
-                        XposedBridge.hookMethod(m, new XC_MethodHook() {
+                        hooks.hook(m, Hooks.before(new Hooks.Before() {
                             @Override
-                            protected void beforeHookedMethod(MethodHookParam param) {
+                            public Object run(XposedInterface.Chain chain) {
                                 markShadeIntent("shade_transfer");
+                                return Hooks.PROCEED;
                             }
-                        });
+                        }));
                         n++;
                     }
                 }
@@ -220,15 +238,16 @@ public class OneHandTuner implements IXposedHookLoadPackage {
         }
 
         try {
-            Class<?> cc = XposedHelpers.findClassIfExists(CLS_CC_HANDLER, cl);
+            Class<?> cc = hooks.findClass(CLS_CC_HANDLER, cl);
             if (cc != null) {
-                XposedBridge.hookAllMethods(cc, "handleExpandEvent", new XC_MethodHook() {
+                int n = hooks.hookMethods(cc, "handleExpandEvent", Hooks.before(new Hooks.Before() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
+                    public Object run(XposedInterface.Chain chain) {
                         markShadeIntent("control_center");
+                        return Hooks.PROCEED;
                     }
-                });
-                log("ControlCenterEventHandlerImpl hooked (shade guard)");
+                }));
+                log("ControlCenterEventHandlerImpl hooked (shade guard, " + n + ")");
             } else {
                 log("ControlCenterEventHandlerImpl class not found");
             }
@@ -247,7 +266,7 @@ public class OneHandTuner implements IXposedHookLoadPackage {
 
     /** 手势监视器回调：只观察，不改变原生事件流。 */
     private static void onMonitorEvent(Object handler, MotionEvent ev) {
-        final Context ctx = AndroidAppHelper.currentApplication();
+        final Context ctx = Hooks.currentApplication();
         if (ctx == null) return;
         ensureConfigReceiver(ctx);
 
@@ -377,10 +396,11 @@ public class OneHandTuner implements IXposedHookLoadPackage {
         startOneHanded(handler, ctx);
     }
 
-    private static void startOneHanded(Object handler, Context ctx) {        Object ctrl = controller(handler);
+    private static void startOneHanded(Object handler, Context ctx) {
+        Object ctrl = controller(handler);
         if (ctrl != null) {
             try {
-                XposedHelpers.callMethod(ctrl, "startOneHanded");
+                sHooks.call(ctrl, "startOneHanded");
                 log("startOneHanded() called on OneHandedController");
                 return;
             } catch (Throwable t) {
@@ -457,7 +477,7 @@ public class OneHandTuner implements IXposedHookLoadPackage {
      */
     private static void ensureConfigReceiver(final Context ctx) {
         if (sReceiverRegistered) return;
-        synchronized (OneHandTuner.class) {
+        synchronized (HyperHand.class) {
             if (sReceiverRegistered) return;
             try {
                 final BroadcastReceiver receiver = new BroadcastReceiver() {
@@ -495,34 +515,35 @@ public class OneHandTuner implements IXposedHookLoadPackage {
 
     // ------------------------------------------------------------------ Launcher
 
-    private void hookLauncher(XC_LoadPackage.LoadPackageParam lp) {
+    private void hookLauncher(final ClassLoader cl) {
         log("attached to Launcher");
         try {
-            Class<?> navCls = XposedHelpers.findClassIfExists(CLS_NAV, lp.classLoader);
+            Class<?> navCls = hooks.findClass(CLS_NAV, cl);
             if (navCls == null) {
                 log("NavStubView class not found");
                 return;
             }
-            XposedBridge.hookAllMethods(navCls, "getHotSpaceHeight", new XC_MethodHook() {
+            int n = hooks.hookMethods(navCls, "getHotSpaceHeight", Hooks.before(new Hooks.Before() {
                 @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
+                public Object run(XposedInterface.Chain chain) {
                     try {
-                        Context ctx = AndroidAppHelper.currentApplication();
-                        if (ctx == null) return;
+                        Context ctx = Hooks.currentApplication();
+                        if (ctx == null) return Hooks.PROCEED;
                         Cfg c = Cfg.get(ctx);
-                        if (!c.enabled || c.launcherHotDp <= 0f) return;
+                        if (!c.enabled || c.launcherHotDp <= 0f) return Hooks.PROCEED;
                         Cfg.Screen sc = Cfg.Screen.get(ctx);
                         int px = Math.round(c.launcherHotDp * sc.density);
-                        param.setResult(px);
                         if (c.debug) {
                             log("getHotSpaceHeight -> " + px + "px (" + c.launcherHotDp + "dp)");
                         }
+                        return px;
                     } catch (Throwable t) {
                         // 出错就沿用原生返回值
+                        return Hooks.PROCEED;
                     }
                 }
-            });
-            log("NavStubView#getHotSpaceHeight hooked");
+            }));
+            log("NavStubView#getHotSpaceHeight hooked (" + n + ")");
         } catch (Throwable t) {
             log("hook NavStubView failed: " + t);
         }
@@ -531,35 +552,38 @@ public class OneHandTuner implements IXposedHookLoadPackage {
         // 它会在 dy > 2*touchSlop（约 16dp）时就把整段事件转发给状态栏，
         // 一旦转发成功，通知中心就会盖过单手模式，用户看到的就是"想进单手却开了通知中心"。
         try {
-            Class<?> sbc = XposedHelpers.findClassIfExists(CLS_STATUS_BAR_SWIPE, lp.classLoader);
+            Class<?> sbc = hooks.findClass(CLS_STATUS_BAR_SWIPE, cl);
             if (sbc != null) {
-                XposedBridge.hookAllMethods(sbc, "canInterceptTouch", new XC_MethodHook() {
+                int n = hooks.hookMethods(sbc, "canInterceptTouch", Hooks.before(new Hooks.Before() {
                     @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
+                    public Object run(XposedInterface.Chain chain) {
                         try {
-                            Context ctx = AndroidAppHelper.currentApplication();
-                            if (ctx == null) return;
+                            Context ctx = Hooks.currentApplication();
+                            if (ctx == null) return Hooks.PROCEED;
                             Cfg c = Cfg.get(ctx);
-                            if (!c.enabled || !c.claimZone) return;
-                            if (param.args == null || param.args.length != 1
-                                    || !(param.args[0] instanceof MotionEvent)) return;
-                            MotionEvent ev = (MotionEvent) param.args[0];
-                            if (ev.getActionMasked() != MotionEvent.ACTION_DOWN) return;
+                            if (!c.enabled || !c.claimZone) return Hooks.PROCEED;
+                            List<Object> args = chain.getArgs();
+                            if (args.size() != 1 || !(args.get(0) instanceof MotionEvent)) {
+                                return Hooks.PROCEED;
+                            }
+                            MotionEvent ev = (MotionEvent) args.get(0);
+                            if (ev.getActionMasked() != MotionEvent.ACTION_DOWN) return Hooks.PROCEED;
                             Cfg.Screen sc = Cfg.Screen.get(ctx);
                             float zoneTop = sc.height - c.zoneDp * sc.density;
                             if (ev.getY() >= zoneTop) {
-                                param.setResult(Boolean.FALSE);
                                 if (c.debug) {
                                     log(String.format("launcher shade swipe declined: y=%.0f zoneTop=%.0f",
                                             ev.getY(), zoneTop));
                                 }
+                                return Boolean.FALSE;
                             }
                         } catch (Throwable t) {
                             // ignore
                         }
+                        return Hooks.PROCEED;
                     }
-                });
-                log("StatusBarSwipeController hooked (zone ownership)");
+                }));
+                log("StatusBarSwipeController hooked (zone ownership, " + n + ")");
             } else {
                 log("StatusBarSwipeController class not found");
             }

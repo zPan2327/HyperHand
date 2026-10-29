@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+env:
+  # 用于把构建产物同步到 Xposed-Modules-Repo/com.hyperhand.tuner。
+  # 没配置这个 secret 时，发布步骤会自动跳过，不影响主流程。
+  MODULE_REPO_TOKEN: ${{ secrets.MODULE_REPO_TOKEN }}
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -39,7 +44,7 @@ jobs:
           ls "$SDK/build-tools"
           ls "$SDK/platforms"
 
-      # 可选：仓库 Secrets 里配置 ANDROID_KEYSTORE_B64（onehand.keystore 的 base64）
+      # 可选：仓库 Secrets 里配置 ANDROID_KEYSTORE_B64（hyperhand.keystore 的 base64）
       # 后，CI 产出的 APK 与本地构建同签名，可以直接覆盖安装。
       - name: Restore signing key (optional)
         env:
@@ -47,13 +52,14 @@ jobs:
         run: |
           mkdir -p module/signing
           if [ -n "${KEYSTORE_B64:-}" ]; then
-            printf '%s' "$KEYSTORE_B64" | base64 -d > module/signing/onehand.keystore
+            printf '%s' "$KEYSTORE_B64" | base64 -d > module/signing/hyperhand.keystore
             echo "使用仓库 secret 中的签名密钥"
           else
             echo "未配置 ANDROID_KEYSTORE_B64，本次使用临时签名密钥"
           fi
 
       - name: Build APK
+        id: apk
         run: |
           set -euo pipefail
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -76,24 +82,57 @@ jobs:
             VERSION_NAME="${GITHUB_REF_NAME#v}"
           fi
 
-          echo "sdk=$SDK build-tools=$BT platform=$PLATFORM version=${VERSION_NAME:-1.0}"
+          echo "sdk=$SDK build-tools=$BT platform=$PLATFORM version=${VERSION_NAME:-2.0.0}"
 
           chmod +x module/build.sh
           BUILD_TOOLS_VERSION="$BT" \
           PLATFORM_VERSION="$PLATFORM" \
-          VERSION_NAME="${VERSION_NAME:-1.0}" \
+          VERSION_NAME="${VERSION_NAME:-2.0.0}" \
           ./module/build.sh
+
+          APK=module/out/HyperHand.apk
+          BADGING="$("$SDK/build-tools/$BT/aapt2" dump badging "$APK")"
+          VC="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)"
+          VN="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)"
+          echo "built $APK versionCode=$VC versionName=$VN"
+          echo "version_code=$VC" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VN" >> "$GITHUB_OUTPUT"
+
+          # 结构性自检：libxposed 现代 API 必须有这三个文件，否则框架不会认这个模块
+          for f in META-INF/xposed/java_init.list META-INF/xposed/scope.list META-INF/xposed/module.prop; do
+            unzip -l "$APK" "$f" | grep -q "$f" || { echo "APK 缺少 $f" >&2; exit 1; }
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OneHandTuner-apk
-          path: module/out/OneHandTuner.apk
+          name: HyperHand-apk
+          path: module/out/HyperHand.apk
           if-no-files-found: error
 
       - name: Attach APK to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: module/out/OneHandTuner.apk
+          files: module/out/HyperHand.apk
           generate_release_notes: true
+
+      # 同步到官方模块仓库：repo 名必须等于包名，release tag 必须是 VersionCode-VersionName。
+      # 需要先在仓库 Secrets 里配置 MODULE_REPO_TOKEN（对 Xposed-Modules-Repo/com.hyperhand.tuner
+      # 有写权限的 PAT），否则这一步跳过。
+      - name: Publish to Xposed-Modules-Repo
+        if: startsWith(github.ref, 'refs/tags/v') && env.MODULE_REPO_TOKEN != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: Xposed-Modules-Repo/com.hyperhand.tuner
+          token: ${{ env.MODULE_REPO_TOKEN }}
+          tag_name: ${{ steps.apk.outputs.version_code }}-${{ steps.apk.outputs.version_name }}
+          name: ${{ steps.apk.outputs.version_name }}
+          body: |
+            HyperHand ${{ steps.apk.outputs.version_name }}（versionCode ${{ steps.apk.outputs.version_code }}）
+
+            单手模式增强：扩大底部触发区、按速度判定下滑、与下拉通知/控制中心互斥，
+            缩小动画 / 布局 / 触摸映射 / 退出方式全部沿用 HyperOS 原生实现。
+
+            需要支持 libxposed API 102 的框架（Vector / 新版 LSPosed）。
+          files: module/out/HyperHand.apk

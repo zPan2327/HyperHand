@@ -121,7 +121,8 @@ jobs:
       # 需要先在仓库 Secrets 里配置 MODULE_REPO_TOKEN（对 Xposed-Modules-Repo/com.hyperhand.tuner
       # 有写权限的 PAT），否则这一步跳过。
       - name: Publish to Xposed-Modules-Repo
-        if: startsWith(github.ref, 'refs/tags/v') && env.MODULE_REPO_TOKEN != ''
+        # 打 tag 时自动同步；也允许手动 Run workflow 补发（创建模块仓库后用它把 2.0.0 补进去）
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.MODULE_REPO_TOKEN != ''
         uses: softprops/action-gh-release@v2
         with:
           repository: Xposed-Modules-Repo/com.hyperhand.tuner

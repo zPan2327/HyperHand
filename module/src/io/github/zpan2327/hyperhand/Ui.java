@@ -232,6 +232,156 @@ final class Ui {
         return String.format(Locale.US, "%." + decimals + "f", v);
     }
 
+    // ---------------------------------------------------------------- 选择行
+
+    interface OnChoice {
+        void onChoice(int index);
+    }
+
+    /** 单选行：右侧显示当前选项文字，点击弹出 Miuix 风格的单选对话框。 */
+    static final class ChoiceRow {
+        final LinearLayout row;
+        final TextView label;
+        int value;
+
+        ChoiceRow(LinearLayout row, TextView label) {
+            this.row = row;
+            this.label = label;
+        }
+    }
+
+    static ChoiceRow choiceRow(Context c, LinearLayout card, Pal pal, String title, String summary,
+                               String[] options, int selected, final OnChoice open) {
+        LinearLayout row = rowShell(c);
+        ripple(row, isNight(c) ? 0x14FFFFFF : 0x0D000000);
+        row.addView(twoLine(c, pal, title, summary),
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        int idx = Math.max(0, Math.min(options.length - 1, selected));
+        final TextView label = valueLabel(c, pal, options[idx]);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        llp.leftMargin = dp(c, 12);
+        row.addView(label, llp);
+
+        final ChoiceRow cr = new ChoiceRow(row, label);
+        cr.value = idx;
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                open.onChoice(cr.value);
+            }
+        });
+        addRow(c, card, pal, row);
+        return cr;
+    }
+
+    /** 单选对话框：标题 + 选项列表（选中项高亮 + ✓）。 */
+    static void singleChoiceDialog(final Activity a, final Pal pal, String title, String summary,
+                                   final String[] options, int selected, final OnChoice cb) {
+        final Dialog d = new Dialog(a);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        FrameLayout root = new FrameLayout(a);
+        int pad = dp(a, 28);
+        root.setPadding(pad, pad, pad, pad);
+
+        LinearLayout box = new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(round(pal.card, dp(a, 20)));
+        box.setClipToOutline(true);
+        int screenW = a.getResources().getDisplayMetrics().widthPixels;
+        FrameLayout.LayoutParams boxLp = new FrameLayout.LayoutParams(
+                Math.min(screenW - 2 * pad, dp(a, 336)),
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        boxLp.gravity = Gravity.CENTER;
+        root.addView(box, boxLp);
+
+        TextView t = text(a, title, 17, pal.title, true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(a, 16), dp(a, 20), dp(a, 16), dp(a, 4));
+        box.addView(t);
+
+        if (summary != null && summary.length() > 0) {
+            TextView s = text(a, summary, 13, pal.summary, false);
+            s.setGravity(Gravity.CENTER);
+            s.setPadding(dp(a, 16), 0, dp(a, 16), dp(a, 8));
+            box.addView(s);
+        }
+
+        final int[] current = new int[] {selected};
+        for (int i = 0; i < options.length; i++) {
+            final int idx = i;
+            LinearLayout row = rowShell(a);
+            ripple(row, isNight(a) ? 0x1FFFFFFF : 0x0D000000);
+            TextView label = text(a, options[i], 17,
+                    i == selected ? pal.primary : pal.title, i == selected);
+            row.addView(label, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            if (i == selected) {
+                TextView check = text(a, "✓", 17, pal.primary, true);
+                check.setGravity(Gravity.END);
+                row.addView(check);
+            }
+            row.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    current[0] = idx;
+                    cb.onChoice(idx);
+                    d.dismiss();
+                }
+            });
+            if (i > 0) {
+                View div = new View(a);
+                div.setBackgroundColor(pal.divider);
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(a, 0.75f)));
+                dlp.leftMargin = dp(a, 16);
+                box.addView(div, dlp);
+            }
+            box.addView(row, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        View div = new View(a);
+        div.setBackgroundColor(pal.divider);
+        box.addView(div, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
+
+        LinearLayout btns = new LinearLayout(a);
+        TextView cancel = text(a, "取消", 17, pal.summary, false);
+        cancel.setGravity(Gravity.CENTER);
+        ripple(cancel, isNight(a) ? 0x1FFFFFFF : 0x0D000000);
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                d.dismiss();
+            }
+        });
+        btns.addView(cancel, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        box.addView(btns, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(a, 52)));
+
+        d.setContentView(root);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screen = a.getResources().getDisplayMetrics().widthPixels;
+            int maxW = dp(a, 340) + 2 * pad;
+            w.setLayout(Math.min(screen, maxW), ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setDimAmount(0.32f);
+        }
+        d.show();
+    }
+
+    /** 多行说明/日志文本块（等宽感，用于展示最近手势）。 */
+    static TextView block(Context c, Pal pal, String s) {
+        TextView t = text(c, s, 13, pal.summary, false);
+        t.setLineSpacing(dp(c, 4), 1f);
+        t.setPadding(dp(c, 16), dp(c, 14), dp(c, 16), dp(c, 16));
+        return t;
+    }
+
     /** 主按钮：primary 底 + onPrimary 文字，圆角 16dp、高 48dp。 */
     static TextView primaryButton(Context c, Pal pal, String s) {
         TextView b = text(c, s, 17, pal.onPrimary, true);

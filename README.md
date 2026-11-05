@@ -22,13 +22,21 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 1. **落指区域只有 25dp（本机 76px）**。手指稍微高一点，事件根本进不了 `NavStubView`，直接被 App 拿走 → 手感极差、成功率低。
 2. **无法调节**。触发区高度是 `NavStubView.getHotSpaceHeight()` 里的硬编码常量 `25.0f`，不是资源，`settings` 里也没有开关，RRO 也改不了。
 
-本模块把触发区扩大到 56dp（可配），并加入**速度判定**与**意图判别**，让"底部快甩 = 单手模式、慢拖 = 正常滑动、上方下拉 = 通知/控制中心"三者互不打架。
+本模块把触发区扩大到 56dp（可配），并用**双路径识别**（快甩 / 慢拉）与**意图判别**替代原来的"峰值速度一刀切"，
+让"底部自然下滑 = 单手模式、慢拖不误触、上方下拉 = 通知/控制中心"三者互不打架。
 
 ## 特性
 
-- **扩大触发区**：底部 56dp（默认）/ 可配到任意高度，居中宽度可裁切。
-- **速度门限**：按向下**峰值速度**判定（默认 ≥500 px/s）—— 慢拖永不触发、快甩必定触发，可调 0 关闭。
+- **扩大触发区**：底部 56dp（默认）/ 可配到任意高度，居中宽度可裁切 + 左右偏置（照顾单手落指习惯）。
+- **双路径识别**（2.2 新增）：
+  - *快甩路径*：短距离 + 峰值速度达标即触发，快甩不漏判；
+  - *慢拉路径*：长距离 + 平均速度达标 + 轨迹稳定也触发，**不需要刻意甩**。
+  两条路径各算置信度取较大值，分项用连续函数而非硬阈值，没有"差 1px 就不响应"的悬崖。
+- **三种模式**：自然（iPhone 式）/ 灵敏 / 防误触，一键换一组推荐阈值。
+- **稳健的速度估计**（2.2 新增）：用 `MotionEvent` 的**历史采样** + 60ms 滑动窗口算速度，
+  不再拿相邻两帧的瞬时速度当峰值 —— 120Hz 屏单帧只有 6~8ms，逐帧求导会被量化噪声炸出假峰值。
 - **意图判别（三道闸门）**：与桌面"下拉打开通知/控制中心"手势互斥，不会出现"想进单手却开了通知中心"。
+- **手势调试**：开启调试后，最近的判定结果、分项指标与未触发原因可直接在设置页查看。
 - **与原生完全一致**：调用的是系统自己的 `OneHandedController.startOneHanded()`；点击上方退出、胶囊条上滑退出、超时退出、无障碍播报全部保留。
 - **零窗口侵入**：只在已有的输入监视通道上观察，不消费事件 —— 上滑回桌面、上滑悬停进最近任务、左右边缘返回、点击延迟、长按全都不受影响。
 - **无需 root 改系统**：不修改 `/system`、不替换任何 APK，OTA 不受影响；停用模块即恢复原状。
@@ -46,7 +54,7 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 <img src="docs/screenshots/dialog.png" width="250" alt="数值对话框">
 </p>
 
-设计稿来源与逐条 token 对照见 [docs/设计稿对照.md](docs/设计稿对照.md)。没有引入 Compose / AndroidX，全部是原生 View 代码绘制，APK 仍然只有 33 KB。
+设计稿来源与逐条 token 对照见 [docs/设计稿对照.md](docs/设计稿对照.md)。没有引入 Compose / AndroidX，全部是原生 View 代码绘制，2.2 的 APK 约 45 KB。
 
 ## 验证环境
 
@@ -79,10 +87,59 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 | 闸门 | 位置 | 做法 |
 |---|---|---|
 | ① 区域归属 | 桌面进程 | 钩 `StatusBarSwipeController.canInterceptTouch()`，DOWN 落在触发区内 → 让桌面下拉手势让位 |
-| ② 抬手 + 速度判定 | SystemUI | 触发推迟到 `ACTION_UP`，要求向下峰值速度 ≥ 阈值 |
+| ② 抬手 + 综合评分 | SystemUI | 触发推迟到 `ACTION_UP`，按"双路径置信度"判定（见下节） |
 | ③ 下拉信号互斥 | SystemUI | 监听 `LauncherProxyService$1.onTransact(case 10)` / `ShadeViewController.startInputFocusTransfer()` / `ControlCenterEventHandlerImpl.handleExpandEvent()`，手势期间出现即放弃单人模式 |
 
 完整的调用链、反编译证据、参数含义与实测日志见 **[docs/单手模式增强.md](docs/单手模式增强.md)**。
+
+## 识别算法（2.2）
+
+### 采样：连历史帧一起收
+
+`MotionEvent` 一个事件可能带多个历史采样（`getHistorySize()`），120Hz 屏一帧只有 6~8ms，
+单帧位移常常不到 10px。2.1 用"相邻两帧位移 / 时间差"求速度，量化噪声能到 ±1000 px/s；
+2.2 把历史采样全部入队（抽稀后最多 192 点），以 `ACTION_DOWN` 为零点存相对时间戳（float 存绝对
+`uptimeMillis` 会丢精度）。
+
+### 速度：滑动窗口取两端
+
+```
+v(t) = (y(t) - y(t-W)) / (t - (t-W)) * 1000 / density     [dp/s]，W = oh_tuner_velocity_window_ms
+```
+
+窗口 60ms 相当于 7 帧左右，噪声被压掉一个数量级。由它得到三个量：
+
+| 量 | 含义 | 用途 |
+|---|---|---|
+| `vpeak` | 窗口速度最大值（只取向下分量） | 快甩路径 |
+| `vavg` | 整段位移 / 整段时长 | 慢拉路径 |
+| `v_end` | 抬手前最后一个窗口的速度 | 识别"拉下去又推回来" |
+
+超过 `oh_tuner_max_velocity`（默认 4000 dp/s）的估计值按上限截断，不让单帧抖动造出假峰值。
+
+### 判定：两条路径，各自算置信度
+
+| | 快甩路径 A | 慢拉路径 B |
+|---|---|---|
+| 距离 | ≥ `min_dy_dp`（12dp） | ≥ `slow_dy_dp`（28dp） |
+| 速度 | `vpeak` ≥ `min_velocity_dp_s`（60dp/s） | `vavg` ≥ `min_avg_velocity`（35dp/s） |
+
+两条路径的距离/速度分项各自过 `score()`（门限处满分，跌到门限 45% 时为 0），
+再和方向分、稳定分取 `min()` 得到置信度，最后 `conf = max(confA, confB)`，`conf ≥ min_confidence` 即触发。
+因为是连续函数，不存在"差 1px 完全不响应"的悬崖；因为取了 max，短距离快甩和长距离慢拉都能命中。
+
+硬性闸门仍然保留（命中即放弃，不参与评分）：方向必须向下、`|dx|/dy ≤ max_slope`、
+净位移/路程 ≥ `min_monotonic`、抬手前没有明显反向、时长与冷却、以及三道互斥闸门。
+
+### 自适应
+
+`oh_tuner_enable_adaptive_threshold=1` 时：300ms 内完成的手势最多 +0.06 置信度，
+700ms 以上最多 -0.06；"拉下去按住不动再抬手"额外 ×0.75。
+
+### 同一次触摸只触发一次
+
+`ACTION_UP` 判定通过后置 `sTriggered`，同一段触摸后续的 MOVE/UP 不再判定；
+`ACTION_CANCEL` / 第二根手指按下都会立刻放弃本次轨迹，不会出现"两次缩小动画"。
 
 ## 模块声明与 API 102
 
@@ -100,8 +157,8 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 - **模块名与简介**：直接取 `res/values/strings.xml` 里的 `app_name` / `app_description`
   （即 `android:label` / `android:description`）。
 - **钩子写法**：现代 API 是拦截器链（`Hooker#intercept(chain)`），`Hooks.java` 把
-  `findClass` / `hookMethods` / `hookConstructors` / `call` 这些 legacy 习惯封装回来了，
-  `HyperHand.java` 的判定逻辑一行没改。
+  `findClass` / `hookMethods` / `hookConstructors` / `call` 这些 legacy 习惯封装回来了；
+  2.2 起判定算法独立到 `Recognizer.java`，`HyperHand.java` 只负责钩子、前置闸门与触发。
 - **框架要求**：需要实现 API 102 的框架 —— Vector 2.x 或新版 LSPosed。
   LSPosed 1.9.x 只到 API 101，会把本模块当成"需要更新框架"而跳过。
 
@@ -138,41 +195,63 @@ adb logcat -d -s HyperHand
 
 ## 使用
 
-- **进单手模式**：在底部 56dp（默认）范围内**快速往下甩**一下。
-- **慢拖不触发**：慢慢往下拖不会进单手模式（方便在底部区域滚动）。
+- **进单手模式**：在底部 56dp（默认）范围内**往下滑**即可 —— 自然速度、不用刻意甩；
+  想更省力可以短距离快甩，两条路径都认。
+- **慢拖不触发**：慢慢往下拖且距离很短不会进单手模式（方便在底部区域滚动）；
+  只有"拉得足够长 + 轨迹干净"的慢滑才走慢拉路径。
 - **通知/控制中心**：从触发区**上方**下拉，或从顶部状态栏下拉。
 - **退出**：点一下缩小区域上方 / 在胶囊条上上滑 / 等待超时 —— 全部是原生行为。
 - **调参**：打开「HyperHand」App 改数值 → 保存 → 立即生效（无需重启、无需 root）。
+- **看判定过程**：「调试」卡片点「最近手势」，可直接看到上一次的位移/速度/置信度与未触发原因。
 
 ## 可配置参数
 
 全部存于 `Settings.Global`，前缀 `oh_tuner_`，App 界面可改，也可用 `adb`：
 
 ```bash
-adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_min_velocity_px_s 800
+adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_min_velocity_dp_s 120
 ```
+
+**单位约定**：距离用 `dp`，速度用 `dp/s`（与屏幕密度无关）。旧版的 `oh_tuner_min_velocity_px_s` 仍然可读，
+首次加载时会按 density 折算写入 `oh_tuner_min_velocity_dp_s`，之后以新键为准。
 
 | 键 | 含义 | 默认 |
 |---|---|---|
 | `oh_tuner_enabled` | 总开关 | `1` |
 | `oh_tuner_monitor_enabled` | 启用扩展触发（旁路监视器） | `1` |
+| `oh_tuner_recognition_mode` | 识别模式：`0` 自然 / `1` 灵敏 / `2` 防误触 | `0` |
 | `oh_tuner_zone_dp` | 底部触发区高度（dp） | `56` |
-| `oh_tuner_min_dy_dp` | 最小下滑距离（dp） | `4` |
-| `oh_tuner_min_velocity_px_s` | 向下峰值速度门限（px/s），`0` = 关闭速度判定 | `500` |
+| `oh_tuner_width_ratio` | 有效宽度占比，`0.2`~`1.0` | `1.0` |
+| `oh_tuner_zone_bias` | 有效区域中心左右偏移，`-0.4`~`0.4`（正数右移） | `0` |
+| `oh_tuner_min_dy_dp` | **快甩路径**最小下滑距离（dp） | 随模式：`12` / `8` / `18` |
+| `oh_tuner_min_velocity_dp_s` | **快甩路径**峰值速度门限（dp/s），`0` = 关掉速度只看距离 | 随模式：`60` / `40` / `120` |
+| `oh_tuner_min_velocity_px_s` | 旧键（px/s），仅作兼容读取 | — |
+| `oh_tuner_slow_enabled` | 启用**慢拉路径** | `1` |
+| `oh_tuner_slow_dy_dp` | 慢拉路径所需距离（dp） | 随模式：`28` / `20` / `44` |
+| `oh_tuner_min_avg_velocity` | 慢拉路径平均速度门限（dp/s） | 随模式：`35` / `25` / `70` |
+| `oh_tuner_min_confidence` | 置信度门限 `0.05`~`1.0`，越低越灵敏 | 随模式：`0.50` / `0.42` / `0.60` |
+| `oh_tuner_enable_adaptive_threshold` | 自适应阈值：干脆的快手势略放宽，拖沓的长手势略收紧 | `1` |
+| `oh_tuner_velocity_window_ms` | 速度估计的滑动窗口（ms） | `60` |
+| `oh_tuner_max_velocity` | 速度上限（dp/s），超出按噪声截断 | `4000` |
+| `oh_tuner_min_monotonic` | 轨迹稳定度下限（净位移/路程） | `0.78` |
 | `oh_tuner_max_slope` | 最大横向偏移比 `abs(dx)/dy` | `1.2` |
-| `oh_tuner_width_ratio` | 有效宽度占比（居中），`0.2`~`1.0` | `1.0` |
 | `oh_tuner_cooldown_ms` | 触发冷却（毫秒） | `500` |
 | `oh_tuner_max_duration_ms` | 最长手势时长，`0` = 不限 | `0` |
 | `oh_tuner_shade_guard` | 与下拉通知/控制中心互斥（闸门③） | `1` |
 | `oh_tuner_claim_zone` | 底部区域归单手模式，桌面下拉让位（闸门①） | `1` |
 | `oh_tuner_launcher_hot_dp` | 覆盖原生胶囊条窗口高度，`0` = 不改（会吞底部内容的长按，默认关） | `0` |
-| `oh_tuner_debug` | 输出调试日志 | `1` |
+| `oh_tuner_debug` | 输出调试日志 + 记录最近手势 | `1` |
+
+> "随模式"的三组值：自然 `0` / 灵敏 `1` / 防误触 `2`。设置页里点某一项改了值，这一项就变成显式配置，
+> 不再跟随模式；点「恢复默认参数」会回到自然模式的推荐值。
 
 **调参建议**
 
-- 不够灵敏：`min_velocity` 500 → 300~400，或设 `0` 完全关闭速度判定。
-- 误触偏多：`min_velocity` 提到 800~1200。
-- 触发区还想更大：加大 `zone_dp`（当前实机用 70dp 也验证过）。
+- 还是觉得要甩：模式选「灵敏」，或把 `min_velocity_dp_s` 降到 40~60、`min_confidence` 降到 0.40。
+- 误触偏多：模式选「防误触」，或把 `min_confidence` 提到 0.62~0.70、`min_dy_dp` 提到 16~22。
+- 慢滑不灵：确认 `slow_enabled=1`，把 `slow_dy_dp` 降到 24、`min_avg_velocity` 降到 30。
+- 局部抖动误判（个别 app 里报点很噪）：把 `velocity_window_ms` 提到 80~100。
+- 触发区还想更大：加大 `zone_dp`（实机用 70dp 也验证过）。
 - 想在底部下拉开通知中心：把 `claim_zone` 设为 `0`（此时退回"通知中心优先"）。
 
 ## 构建
@@ -219,12 +298,13 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 │   │   ├── scope.list          #   静态作用域：systemui + miui.home
 │   │   └── module.prop         #   minApiVersion / targetApiVersion / staticScope
 │   ├── res/values/strings.xml  # 模块名与简介（android:label / android:description）
-│   ├── src/com/hyperhand/tuner/
-│   │   ├── HyperHand.java      # 钩子主体（SystemUI 触发判定 + 桌面侧闸门）
+│   ├── src/io/github/zpan2327/hyperhand/
+│   │   ├── HyperHand.java      # 钩子主体（SystemUI 前置闸门 + 触发 + 结果发布 / 桌面侧闸门）
+│   │   ├── Recognizer.java     # 手势识别核心：历史采样 / 分窗速度 / 双路径评分
 │   │   ├── Hooks.java          # libxposed API 102 的兼容层（findClass / hookAll / call）
-│   │   ├── Cfg.java            # 参数读写
-│   │   ├── MainActivity.java   # 参数调节界面（页面组装 + 保存）
-│   │   └── Ui.java             # Miuix 风格组件：卡片 / 行 / 开关 / 按钮 / 数值对话框
+│   │   ├── Cfg.java            # 参数读写 + 模式预设 + 旧配置迁移
+│   │   ├── MainActivity.java   # 参数调节界面（分组 / 高级折叠 / 手势调试）
+│   │   └── Ui.java             # Miuix 风格组件：卡片 / 行 / 开关 / 按钮 / 数值与单选对话框
 │   ├── lib/api-102.jar         # 编译期 libxposed API stub（compileOnly）
 │   ├── build.ps1 / build.sh
 │   └── out/                    # 构建产物（gitignore）
@@ -265,11 +345,21 @@ LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://gith
 **Q：想触发单手，却开了通知中心？**
 说明闸门①没生效（多半是没重启桌面进程）。`adb shell am crash com.miui.home` 即可。
 
-**Q：慢滑也触发了？**
-把 `oh_tuner_min_velocity_px_s` 调大（800~1200），或把 `oh_tuner_min_dy_dp` 调大。
+**Q：慢滑也触发了 / 想要更难触发？**
+换「防误触」模式，或把 `oh_tuner_min_confidence` 调到 0.62~0.70、`oh_tuner_min_dy_dp` 调到 16~22；
+只想禁掉慢拉路径，把 `oh_tuner_slow_enabled` 设为 `0`。
 
 **Q：快甩偶尔不触发？**
-看日志里的 `vpeak` 实际值，把 `min_velocity` 调到略低于它。低刷新率/卡顿时事件间隔变大，估计值会偏低。
+先看「调试 → 最近手势」里那次判定的 `vpeak` 与 `conf`。若 `vpeak` 明显低于 `min_velocity_dp_s`，
+把它调到略低于实测值；若是 `SKIP(too_short)`，说明位移不够，把 `min_dy_dp` 调小。
+
+**Q：从 2.1 升级，参数会丢吗？**
+不会。所有旧键名与语义都保留；`oh_tuner_min_velocity_px_s`（px/s）会在首次加载时按 density
+折算写入 `oh_tuner_min_velocity_dp_s`（dp/s），之后以新键为准。旧键若显式设过，升级后的灵敏度与原来一致。
+
+**Q：为什么模式切了但手感没变？**
+模式只提供"推荐值"。如果某一项之前被显式保存过，它就是显式配置，不再跟随模式；
+点「恢复默认参数」会整体回到自然模式的推荐值。
 
 **Q：会不会影响上滑回桌面、最近任务、返回手势？**
 不会。监视通道只观察不消费，且模块不修改任何窗口的 touchable region。

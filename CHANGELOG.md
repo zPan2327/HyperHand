@@ -2,6 +2,57 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.2.0] - 2026-11-05
+
+触发算法重做：从"单点峰值速度一刀切"改为"历史采样 + 分窗速度 + 双路径置信度"，
+目标是让自然下滑就能触发，接近 iPhone Reachability 的手感。**只改触发层**，
+缩小动画/布局/触摸映射/退出方式、三道互斥闸门、钩子点位全部保持不变。
+
+### Added
+
+- **双路径识别**（`Recognizer.java`，新增文件）：
+  - 快甩路径：短距离 + 峰值速度达标；
+  - 慢拉路径：长距离 + 平均速度达标 + 轨迹稳定（`oh_tuner_slow_enabled`）。
+  两条路径各算置信度取 `max`，分项为 `smoothstep` 连续函数，不再是硬阈值。
+- **三种识别模式** `oh_tuner_recognition_mode`：`0` 自然（默认）/ `1` 灵敏 / `2` 防误触，
+  各自带一组推荐阈值（见 README 参数表）。
+- **历史采样入队**：`MotionEvent.getHistorySize()` 的采样全部参与计算，缓冲 192 点（满时抽稀）。
+- **分窗速度估计** `oh_tuner_velocity_window_ms`：默认 60ms 窗口取两端位移/时间，
+  替代相邻两帧求导；新增 `oh_tuner_max_velocity`（dp/s）对异常峰值截断。
+- **轨迹稳定性判定** `oh_tuner_min_monotonic`：净位移/路程，识别"来回蹭"。
+- **自适应阈值** `oh_tuner_enable_adaptive_threshold`：快而干脆的手势略放宽、拖沓的长手势略收紧。
+- **手势调试**：调试开启时把最近 3 次判定（位移/速度/单调性/置信度/未触发原因）写入
+  `oh_tuner_last_gesture`，设置页「调试 → 最近手势」直接可读；关闭调试则完全不写。
+- **触发区左右偏置** `oh_tuner_zone_bias`：有效区域中心可左右移动，配合左右手落指习惯。
+- 设置页新增"识别模式"选择器与可折叠的"高级参数"区，参数按功能分组。
+
+### Changed
+
+- **速度单位统一为 dp/s**（内部计算全部走 dp，与屏幕密度解耦）。旧的
+  `oh_tuner_min_velocity_px_s`（px/s）保留读取，首次加载时按 density 折算写入
+  `oh_tuner_min_velocity_dp_s`，之后以新键为准。
+- `oh_tuner_min_dy_dp` 默认值不再固定 4dp，改为跟随模式（12 / 8 / 18）；
+  显式保存过的值继续生效。
+- 触发判定前新增"抬手前是否已停住"的惩罚项，"下拉→按住→抬手"不再算一次下滑。
+- 横屏直接跳过判定（原生 `startOneHanded()` 本来就会拒绝）。
+- **闸门① 的几何与触发判定对齐**：`StatusBarSwipeController.canInterceptTouch()` 现在使用与
+  SystemUI 侧完全相同的区域（高度 + 宽度占比 + 左右偏置）。此前宽度收窄后，底部角落会出现
+  "桌面已让位、监视器又不认"的死区。
+- 日志格式改为单行可 grep：
+  `GESTURE mode=0 dy=45.2dp dx=6.1dp dur=205ms vavg=214 vpeak=386 mono=0.94 conf=0.68 n=26 -> TRIGGER(A)`。
+
+### Fixed
+
+- `ACTION_CANCEL` / 第二根手指按下时会打印原因（此前静默丢弃，排查时看不出发生过）。
+- 配置读取增加 NaN / 无穷值 / 越界回退，旧键缺失时不会把阈值读成 0。
+- 屏幕尺寸缓存增加横竖屏判断，旋转后不再用旧的 height 计算触发区。
+
+### Compatibility
+
+- `applicationId`、libxposed API 102、静态作用域（systemui + miui.home）、
+  `Settings.Global` 的 `oh_tuner_*` 键名与语义、构建脚本、签名流程全部不变。
+- 旧版本（1.x / 2.0 / 2.1）参数升级后继续生效，不需要重置。
+
 ## [2.1.0] - 2026-10-29
 
 包名再改一次：`com.hyperhand.tuner` → `io.github.zpan2327.hyperhand`。

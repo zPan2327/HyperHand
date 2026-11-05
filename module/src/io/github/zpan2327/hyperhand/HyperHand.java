@@ -14,7 +14,10 @@ import android.view.MotionEvent;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
@@ -51,6 +54,9 @@ import io.github.libxposed.api.XposedModule;
  * 4) 模块形态：libxposed 现代 API（API 102）。入口类由 META-INF/xposed/java_init.list 声明，
  *    作用域由 META-INF/xposed/scope.list + module.prop 的 staticScope 静态声明，
  *    用户既不用手动勾作用域，也无法把模块挂到别的应用上。
+ *
+ * 2.2 起：判定算法移到 {@link Recognizer}（历史采样 + 分窗速度 + 双路径评分），
+ * 本类只负责"钩子 + 前置闸门（区域/锁屏/多指/互斥/冷却）+ 触发 + 结果发布"。
  */
 public class HyperHand extends XposedModule {
 
@@ -95,19 +101,16 @@ public class HyperHand extends XposedModule {
     private static volatile long sShadeIntentAt;
     private static volatile long sLastShadeLogAt;
 
-    /** 手势判定状态。 */
+    /** 手势判定状态。轨迹本身由 Recognizer 维护。 */
+    private static final Recognizer sRec = new Recognizer();
     private static boolean sTracking;
     private static boolean sTriggered;
-    private static float sDownX;
-    private static float sDownY;
-    private static float sPrevY;
     private static long sDownTime;
-    private static long sPrevT;
-    private static float sPeakVy;
     private static long sLastTriggerAt;
 
     private static volatile boolean sDebug = true;
     private static volatile boolean sReceiverRegistered;
+    private static volatile long sLastPublishAt;
 
     // ------------------------------------------------------------------ lifecycle
 
@@ -264,7 +267,14 @@ public class HyperHand extends XposedModule {
         }
     }
 
-    /** 手势监视器回调：只观察，不改变原生事件流。 */
+    /**
+     * 手势监视器回调：只观察，不改变原生事件流。
+     *
+     * 前置闸门（不满足直接放弃，不进算法）：
+     *   区域 / 横屏 / 多指 / 锁屏 / 单手模式未启用或已激活。
+     * 收尾时的额外闸门：
+     *   通知-控制中心互斥、冷却。
+     */
     private static void onMonitorEvent(Object handler, MotionEvent ev) {
         final Context ctx = Hooks.currentApplication();
         if (ctx == null) return;
@@ -281,29 +291,24 @@ public class HyperHand extends XposedModule {
         if (action == MotionEvent.ACTION_DOWN) {
             sTracking = false;
             sTriggered = false;
-            sPeakVy = 0f;
             if (ev.getPointerCount() > 1) return;
+            if (sc.isLandscape()) return;
 
             final float x = ev.getX();
             final float y = ev.getY();
-            final float zonePx = c.zoneDp * sc.density;
-            if (y < sc.height - zonePx) return;
-
-            final float halfWidth = sc.width * c.widthRatio / 2f;
-            if (Math.abs(x - sc.width / 2f) > halfWidth) return;
-
-            if (isKeyguardLocked(ctx)) return;
-            if (isOneHandedActive(ctx)) return;
-
-            sTracking = true;
-            sDownX = x;
-            sDownY = y;
-            sDownTime = now;
-            sPrevY = y;
-            sPrevT = now;
-            if (c.debug) {
-                log(String.format("DOWN zone x=%.0f y=%.0f h=%d zonePx=%.0f",
-                        x, y, sc.height, zonePx));
+            if (sc.inTriggerZone(c, x, y)) {
+                if (isOneHandedActive(ctx)) return;
+                if (isKeyguardLocked(ctx)) return;
+                sTracking = true;
+                sDownTime = now;
+                sRec.begin(now, x, y);
+                if (c.debug) {
+                    log(String.format(Locale.US, "DOWN zone x=%.0f y=%.0f h=%d zonePx=%.0f mode=%d",
+                            x, y, sc.height, c.zoneDp * sc.density, c.mode));
+                }
+            } else if (c.debug) {
+                log(String.format(Locale.US, "DOWN outside zone x=%.0f y=%.0f zoneTop=%.0f",
+                        x, y, sc.zoneTop(c)));
             }
             return;
         }
@@ -312,28 +317,22 @@ public class HyperHand extends XposedModule {
             if (!sTracking || sTriggered) return;
             if (ev.getPointerCount() > 1) {
                 sTracking = false;
+                if (c.debug) log("SKIP(multi_touch)");
                 return;
             }
-            // 峰值速度：只看向下分量，用相邻两帧的增量算瞬时速度再取最大。
-            // 这样"先慢后快"的甩动也能被识别，而匀速慢滑会被正确拒绝。
-            final long dt = now - sPrevT;
-            if (dt > 0 && dt <= 120) {
-                final float v = (ev.getY() - sPrevY) * 1000f / dt;
-                if (v > sPeakVy) sPeakVy = v;
+            // 历史采样一起收：120/144Hz 屏靠它才能算出稳定的窗口速度
+            final int hist = ev.getHistorySize();
+            for (int i = 0; i < hist; i++) {
+                sRec.add(ev.getHistoricalEventTime(i), ev.getHistoricalX(i), ev.getHistoricalY(i));
             }
-            sPrevY = ev.getY();
-            sPrevT = now;
+            sRec.add(now, ev.getX(), ev.getY());
             return;
         }
 
         if (action == MotionEvent.ACTION_UP) {
             if (sTracking && !sTriggered) {
-                final long dt = now - sPrevT;
-                if (dt > 0 && dt <= 120) {
-                    final float v = (ev.getY() - sPrevY) * 1000f / dt;
-                    if (v > sPeakVy) sPeakVy = v;
-                }
-                decideOnUp(handler, ctx, c, sc, ev, now);
+                sRec.add(now, ev.getX(), ev.getY());
+                decideOnUp(handler, ctx, c, sc, now);
             }
             sTracking = false;
             sTriggered = false;
@@ -341,59 +340,41 @@ public class HyperHand extends XposedModule {
         }
 
         if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
+            if (sTracking && c.debug) {
+                log("SKIP(cancel)");
+                publish(ctx, c, null, "cancel");
+            }
             sTracking = false;
             sTriggered = false;
         }
     }
 
-    /**
-     * 抬手时统一判定，避免"某次 MOVE 恰好没满足条件"导致时灵时不灵。
-     *
-     * 规则（从上到下，命中即返回）：
-     *   1. 位移方向必须向下（dy > 0），横向偏移不能超过 maxSlope * dy；
-     *   2. 位移至少 minDyDp（默认 4dp），避免把轻点当成手势；
-     *   3. 速度模式（minVelocity > 0，默认开）：峰值速度必须 >= minVelocity，
-     *      于是"慢慢滑"永不触发、"快甩"必定触发；
-     *      速度模式关闭（minVelocity = 0）时退化为纯位移触发；
-     *   4. 手势期间若出现通知中心/控制中心下拉信号，则让位给原生（shadeGuard）；
-     *   5. 冷却期内不重复触发。
-     */
-    private static void decideOnUp(Object handler, Context ctx, Cfg c, Cfg.Screen sc,
-                                   MotionEvent ev, long now) {
-        final float dy = ev.getY() - sDownY;
-        final float dx = ev.getX() - sDownX;
-        final long dur = now - sDownTime;
-        final float minDyPx = c.minDyDp * sc.density;
+    /** 抬手时统一判定，避免"某次 MOVE 恰好没满足条件"导致时灵时不灵。 */
+    private static void decideOnUp(Object handler, Context ctx, Cfg c, Cfg.Screen sc, long now) {
+        final Recognizer.Result r = sRec.finish(now, c, sc);
+
+        // 互斥：本次手势期间出现过通知中心/控制中心下拉信号 → 让位给原生
+        if (r.trigger && c.shadeGuard && sShadeIntentAt >= (sDownTime - 60)) {
+            r.trigger = false;
+            r.reason = "shade";
+        }
+        // 冷却
+        if (r.trigger && SystemClock.uptimeMillis() - sLastTriggerAt < c.cooldownMs) {
+            r.trigger = false;
+            r.reason = "cooldown";
+        }
 
         if (c.debug) {
-            log(String.format("UP dy=%.0f dx=%.0f dur=%dms vpeak=%.0f",
-                    dy, dx, dur, sPeakVy));
+            log("GESTURE mode=" + c.mode + " " + r.oneLine() + " -> "
+                    + (r.trigger ? "TRIGGER(" + r.path + ")" : "SKIP(" + r.reason + ")"));
         }
-        if (dy <= 0f) return;
-        if (Math.abs(dx) > dy * c.maxSlope) return;
-        if (dy < minDyPx) return;
+        publish(ctx, c, r, r.reason);
 
-        if (c.minVelocity > 0 && sPeakVy < c.minVelocity) {
-            log(String.format("SKIP: too slow (vpeak=%.0f < %d px/s)", sPeakVy, c.minVelocity));
-            return;
+        if (r.trigger) {
+            sTriggered = true;
+            sLastTriggerAt = SystemClock.uptimeMillis();
+            startOneHanded(handler, ctx);
         }
-        if (c.maxDurationMs > 0 && dur > c.maxDurationMs) {
-            log("SKIP: too long (" + dur + "ms)");
-            return;
-        }
-        if (c.shadeGuard && sShadeIntentAt >= (sDownTime - 60)) {
-            log("SKIP: shade/control-center pull detected, keep native behaviour");
-            return;
-        }
-        if (SystemClock.uptimeMillis() - sLastTriggerAt < c.cooldownMs) {
-            log("SKIP: cooldown");
-            return;
-        }
-
-        sTriggered = true;
-        sLastTriggerAt = SystemClock.uptimeMillis();
-        log(String.format("TRIGGER dy=%.0f dx=%.0f dur=%dms vpeak=%.0f", dy, dx, dur, sPeakVy));
-        startOneHanded(handler, ctx);
     }
 
     private static void startOneHanded(Object handler, Context ctx) {
@@ -472,6 +453,43 @@ public class HyperHand extends XposedModule {
     }
 
     /**
+     * 把最近一次手势结果写进 Settings.Global，供设置页「手势调试」直接读取。
+     * 只在调试模式下发写，且 200ms 节流；最多保留最近 3 条。
+     */
+    private static void publish(Context ctx, Cfg c, Recognizer.Result r, String reason) {
+        if (!c.debug) return;
+        long now = SystemClock.uptimeMillis();
+        if (now - sLastPublishAt < 200) return;
+        sLastPublishAt = now;
+        try {
+            String time = new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date());
+            StringBuilder sb = new StringBuilder();
+            sb.append(time).append("  ");
+            if (r != null) {
+                sb.append(r.oneLine()).append('\n');
+                sb.append("          → ").append(Recognizer.text(reason));
+                if (r.trigger) sb.append("（路径 ").append(r.path).append('）');
+            } else {
+                sb.append("→ ").append(Recognizer.text(reason));
+            }
+
+            ContentResolver cr = ctx.getContentResolver();
+            String old = Settings.Global.getString(cr, Cfg.K_LAST_GESTURE);
+            StringBuilder all = new StringBuilder(sb);
+            if (old != null && old.length() > 0) {
+                String[] lines = old.split("\n(?=\\d{2}:\\d{2}:\\d{2})");
+                int keep = Math.min(2, lines.length);
+                for (int i = 0; i < keep; i++) {
+                    all.append('\n').append(lines[i]);
+                }
+            }
+            Settings.Global.putString(cr, Cfg.K_LAST_GESTURE, all.toString());
+        } catch (Throwable t) {
+            // 调试信息写失败不影响触发
+        }
+    }
+
+    /**
      * 配置接收器：本模块界面（或 adb am broadcast）把参数发过来，
      * 由 SystemUI 进程写进 Settings.Global，两个被 hook 的进程都能读到。
      */
@@ -507,6 +525,7 @@ public class HyperHand extends XposedModule {
                 }
                 sReceiverRegistered = true;
                 log("config receiver registered");
+                Cfg.migrateIfNeeded(ctx);
             } catch (Throwable t) {
                 log("register config receiver failed: " + t);
             }
@@ -551,6 +570,8 @@ public class HyperHand extends XposedModule {
         // 底部区域归属：让桌面自身的"下拉打开通知/控制中心"手势在触发区内让位。
         // 它会在 dy > 2*touchSlop（约 16dp）时就把整段事件转发给状态栏，
         // 一旦转发成功，通知中心就会盖过单手模式，用户看到的就是"想进单手却开了通知中心"。
+        // 2.2 起改用与 SystemUI 判定完全相同的几何（含宽度占比与左右偏置），
+        // 避免"宽度收窄后桌面让位了、监视器又不认"的死区。
         try {
             Class<?> sbc = hooks.findClass(CLS_STATUS_BAR_SWIPE, cl);
             if (sbc != null) {
@@ -569,11 +590,11 @@ public class HyperHand extends XposedModule {
                             MotionEvent ev = (MotionEvent) args.get(0);
                             if (ev.getActionMasked() != MotionEvent.ACTION_DOWN) return Hooks.PROCEED;
                             Cfg.Screen sc = Cfg.Screen.get(ctx);
-                            float zoneTop = sc.height - c.zoneDp * sc.density;
-                            if (ev.getY() >= zoneTop) {
+                            if (sc.inTriggerZone(c, ev.getX(), ev.getY())) {
                                 if (c.debug) {
-                                    log(String.format("launcher shade swipe declined: y=%.0f zoneTop=%.0f",
-                                            ev.getY(), zoneTop));
+                                    log(String.format(Locale.US,
+                                            "launcher shade swipe declined: y=%.0f zoneTop=%.0f",
+                                            ev.getY(), sc.zoneTop(c)));
                                 }
                                 return Boolean.FALSE;
                             }

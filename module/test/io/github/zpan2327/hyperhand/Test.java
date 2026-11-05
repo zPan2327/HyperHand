@@ -32,6 +32,10 @@ public class Test {
         c.velWindowMs = 60;
         c.cooldownMs = 500;
         c.maxDurationMs = 0;
+        // 默认关掉落点判定，让下面这些用例继续验证"评分模型"本身；
+        // 落点判定单独在末尾一节验证。
+        c.endBoost = false;
+        c.endZoneDp = Cfg.DEF_END_ZONE_DP;
         return c;
     }
 
@@ -74,8 +78,8 @@ public class Test {
     }
 
     static void line(Cfg c, String name, Recognizer.Result r) {
-        System.out.printf("%-28s mode=%d  dy=%6.1f dp  dur=%4d ms  vavg=%6.1f  vpeak=%6.1f  mono=%.2f  conf=%.2f  -> %s%n",
-                name, c.mode, r.dyDp, r.durMs, r.vAvgDp, r.vPeakDp, r.monotonic, r.conf,
+        System.out.printf("%-28s mode=%d  dy=%6.1f dp  end=%5.1f dp  dur=%4d ms  vavg=%6.1f  vpeak=%6.1f  mono=%.2f  conf=%.2f  -> %s%n",
+                name, c.mode, r.dyDp, r.endGapDp, r.durMs, r.vAvgDp, r.vPeakDp, r.monotonic, r.conf,
                 r.trigger ? "TRIGGER(" + r.path + ")" : "SKIP(" + r.reason + ")");
     }
 
@@ -125,5 +129,28 @@ public class Test {
         Cfg c3 = cfg(Cfg.MODE_NATURAL);
         line(c3, "N 快甩 12dp/64ms@16ms", go(c3, yIn, linear(12, 4), null, 16));
         line(c3, "O 自然下拉 40dp/480ms@16ms", go(c3, yIn, linear(40, 30), null, 16));
+
+        System.out.println();
+        System.out.println("=== 落点判定（2.8，贴底才算单手模式）===");
+        Cfg ce = cfg(Cfg.MODE_NATURAL);
+        ce.endBoost = true;
+        ce.endZoneDp = Cfg.DEF_END_ZONE_DP;
+
+        float zoneIn = H - 40f;          // 距底 13dp，在触发区内
+        float nearBottom = H - 20f;      // 距底 6.6dp
+        float midScreen = H - 160f;      // 距底 52dp，仍在触发区内但离底边远
+
+        // 一路拖到底：手指滑出屏幕后坐标被裁到底边，endGap≈0
+        line(ce, "T1 拖到底 20dp/200ms", go(ce, zoneIn, linear(20, 20), null, 10));
+        // 拖到底但几乎没动（点击底部按钮）：位移不够
+        line(ce, "T2 贴底但只动 3dp", go(ce, nearBottom, linear(3, 6), null, 10));
+        // 从底部起手、往下拖了一点就抬手，没到底 → 应放行给页面滚动
+        line(ce, "T3 底部起手 10dp 未到底", go(ce, midScreen, linear(10, 10), null, 10));
+        // 从底部起手但整段都是向上滑（页面继续滚动）
+        line(ce, "T4 底部起手上滑", go(ce, midScreen, linear(-30, 15), null, 10));
+        // 慢速拖到底：贴底路径不看速度，应该照样触发
+        line(ce, "T5 慢速拖到底 15dp/900ms", go(ce, zoneIn, linear(15, 90), null, 10));
+        // 到底后停一下再抬手：仍然是明确意图
+        line(ce, "T6 到底后停 300ms", go(ce, zoneIn, hold(linear(20, 20), 30), null, 10));
     }
 }

@@ -42,6 +42,7 @@ public class MainActivity extends Activity {
     private Ui.SwitchView swAdaptive;
     private Ui.SwitchView swAdvanced;
     private Ui.SwitchView swBlur;
+    private Ui.SwitchView swEndBoost;
 
     private Ui.ChoiceRow cMode;
 
@@ -64,6 +65,7 @@ public class MainActivity extends Activity {
 
     private Ui.ChoiceRow cAnimCurve;
     private Ui.ValueRow rAnimScale;
+    private Ui.ValueRow rEndZone;
     private TextView animInfo;
 
     private LinearLayout advancedBox;
@@ -176,6 +178,13 @@ public class MainActivity extends Activity {
 
         rMinDy = valueRow(cardJudge, "最小下滑距离", "短促快甩所需的最小位移", "dp",
                 cur.minDyDp, 0, 1, 60, 1);
+        swEndBoost = Ui.switchRow(this, cardJudge, pal, "贴底才算单手模式",
+                "抬手点必须拖到屏幕最底边；没到底就当成页面滑动，不再抢手势。"
+                        + "打开后速度/置信度不再参与，触底就触发（更灵敏也更不容易误触）",
+                cur.endBoost);
+        swEndBoost.setOnCheckedChange(dirtyOnChange);
+        rEndZone = valueRow(cardJudge, "贴底判定距离", "抬手点距屏幕底边小于这个值就算\"到底了\"", "dp",
+                cur.endZoneDp, 0, 8, 80, 1);
         rVelocity = valueRow(cardJudge, "起效速度", "快甩路径的峰值速度门限，0 表示只看距离", "dp/s",
                 cur.minVelDp, 0, 0, 800, 10);
         swSlow = Ui.switchRow(this, cardJudge, pal, "慢滑识别",
@@ -493,6 +502,7 @@ public class MainActivity extends Activity {
         rBlurRadius.label.setText(Ui.fmt(rBlurRadius.value, 0));
         rBlurDim.label.setText(Ui.fmt(rBlurDim.value, 0));
         rAnimScale.label.setText(Ui.fmt(rAnimScale.value, 2));
+        rEndZone.label.setText(Ui.fmt(rEndZone.value, 0));
     }
 
     /**
@@ -578,6 +588,8 @@ public class MainActivity extends Activity {
         cAnimCurve.value = Cfg.DEF_ANIM_CURVE;
         cAnimCurve.label.setText(Cfg.ANIM_CURVE_SHORT[Cfg.DEF_ANIM_CURVE]);
         rAnimScale.value = Cfg.DEF_ANIM_SCALE;
+        switchWithoutMark(swEndBoost, true);
+        rEndZone.value = Cfg.DEF_END_ZONE_DP;
         relabel();
     }
 
@@ -626,6 +638,8 @@ public class MainActivity extends Activity {
         i.putExtra(Cfg.K_BLUR_DIM, Ui.fmt(rBlurDim.value, 0));
         i.putExtra(Cfg.K_ANIM_SCALE, Ui.fmt(rAnimScale.value, 2));
         i.putExtra(Cfg.K_ANIM_CURVE, String.valueOf(cAnimCurve.value));
+        i.putExtra(Cfg.K_END_BOOST, swEndBoost.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_END_ZONE_DP, Ui.fmt(rEndZone.value, 0));
         sendBroadcast(i);
 
         status.setText("已提交到系统界面进程，立即生效。可下滑底部区域测试，"

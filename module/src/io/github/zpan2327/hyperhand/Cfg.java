@@ -51,6 +51,12 @@ final class Cfg {
     static final String K_ZONE_BIAS         = "oh_tuner_zone_bias";          // 触发区水平窗口中心偏移 -0.5~0.5
     static final String K_LAST_GESTURE      = "oh_tuner_last_gesture";       // 调试：最近手势记录（SystemUI 写）
 
+    // ---------------------------------------------------------------- 新键（2.8 落点判定）
+    /** 贴底直达：抬手点必须落在屏幕最底部这条带子里才算单手模式。 */
+    static final String K_END_BOOST         = "oh_tuner_end_boost";
+    /** 贴底判定的带宽（dp）：抬手点距屏幕底边不超过这个距离就算"到底了"。 */
+    static final String K_END_ZONE_DP       = "oh_tuner_end_zone_dp";
+
     // ---------------------------------------------------------------- 新键（2.3 外观）
     static final String K_BLUR_BG           = "oh_tuner_blur_bg";            // 遮罩用模糊壁纸
     static final String K_BLUR_RADIUS       = "oh_tuner_blur_radius";        // 模糊半径(dp)
@@ -74,7 +80,8 @@ final class Cfg {
             K_MODE, K_MIN_VEL_DP, K_SLOW_ENABLED, K_SLOW_DY_DP, K_MIN_AVG_VEL, K_MAX_VELOCITY,
             K_VEL_WINDOW_MS, K_MIN_MONOTONIC, K_MIN_CONFIDENCE, K_ADAPTIVE, K_ZONE_BIAS,
             K_BLUR_BG, K_BLUR_RADIUS, K_BLUR_DIM,
-            K_ANIM_SCALE, K_ANIM_CURVE
+            K_ANIM_SCALE, K_ANIM_CURVE,
+            K_END_BOOST, K_END_ZONE_DP
     };
 
     /** 设置页提交时一并带上的键（不含只读的 K_LAST_GESTURE）。 */
@@ -133,6 +140,22 @@ final class Cfg {
     /** 默认：标准的 ease-out quart + 稍长一点的时长，既有减速感又不至于冲。 */
     static final float DEF_ANIM_SCALE = 1.10f;
     static final int DEF_ANIM_CURVE = ANIM_CURVE_STANDARD;
+
+    // ---------------------------------------------------------------- 2.8 落点判定
+    /**
+     * 贴底直达的默认带宽。手指滑出屏幕时坐标会被裁到屏幕底边，
+     * 所以"真的拖到底"时这个值接近 0；24dp 只是给手感留的余量。
+     */
+    static final float DEF_END_ZONE_DP = 24f;
+
+    /**
+     * 贴底路径要求的最小向下位移。
+     * 起点已经在底部 56dp 内，只需要一点点位移就能到底，所以这里比常规路径低得多；
+     * 6dp 是为了挡住"点一下底部按钮"这种零位移的点击。
+     */
+    static final float END_MIN_DY_DP = 6f;
+    /** 贴底路径要求的最短时长，同样是挡点击。 */
+    static final int END_MIN_DUR_MS = 50;
 
     static final int MODE_NATURAL = 0;
     static final int MODE_SENSITIVE = 1;
@@ -205,6 +228,8 @@ final class Cfg {
     float blurDim = DEF_BLUR_DIM;
     float animScale = DEF_ANIM_SCALE;
     int animCurve = DEF_ANIM_CURVE;
+    boolean endBoost = true;
+    float endZoneDp = DEF_END_ZONE_DP;
 
     private static Cfg sCached;
     private static long sCachedAt;
@@ -277,6 +302,10 @@ final class Cfg {
             c.animScale = clamp(floatOf(cr, K_ANIM_SCALE, DEF_ANIM_SCALE), 0.6f, 2.0f);
             c.animCurve = (int) clamp(intOf(cr, K_ANIM_CURVE, DEF_ANIM_CURVE),
                     ANIM_CURVE_NATIVE, ANIM_CURVE_SNAPPY);
+
+            // 落点判定：默认开（抬手必须贴底），带宽 8~80dp
+            c.endBoost = boolOf(cr, K_END_BOOST, true);
+            c.endZoneDp = clamp(floatOf(cr, K_END_ZONE_DP, DEF_END_ZONE_DP), 8f, 80f);
         } catch (Throwable t) {
             Log.w(HyperHand.TAG, "load config failed, use defaults", t);
         }
@@ -363,7 +392,8 @@ final class Cfg {
                 + ", launcherHotDp=" + launcherHotDp + ", shadeGuard=" + shadeGuard
                 + ", claimZone=" + claimZone + ", debug=" + debug
                 + ", blurBg=" + blurBg + "/" + blurRadiusDp + "dp/" + blurDim + "%}"
-                + ", anim=" + animScale + "x/curve" + animCurve;
+                + ", anim=" + animScale + "x/curve" + animCurve
+                + ", endBoost=" + endBoost + "/" + endZoneDp + "dp}";
     }
 
     /** 屏幕尺寸/密度缓存（每 3 秒刷新一次，兼容折叠屏/旋转/分屏变化）。 */

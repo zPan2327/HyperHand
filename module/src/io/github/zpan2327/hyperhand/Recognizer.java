@@ -45,6 +45,7 @@ final class Recognizer {
     static final String R_TOO_SLOW     = "too_slow";
     static final String R_TOO_LONG     = "too_long";
     static final String R_LOW_CONF     = "low_confidence";
+    static final String R_NOT_AT_BOTTOM = "not_at_bottom";
 
     /** 原因 → 中文说明（设置页直接展示）。 */
     static String text(String reason) {
@@ -58,6 +59,7 @@ final class Recognizer {
         if (R_TOO_SLOW.equals(reason)) return "速度不足";
         if (R_TOO_LONG.equals(reason)) return "手势时间过长";
         if (R_LOW_CONF.equals(reason)) return "综合置信度不足";
+        if (R_NOT_AT_BOTTOM.equals(reason)) return "抬手点没拖到屏幕底边，按页面滑动处理";
         if ("shade".equals(reason)) return "检测到通知/控制中心下拉，让位原生";
         if ("cooldown".equals(reason)) return "冷却期内";
         if ("not_in_zone".equals(reason)) return "起手点不在触发区";
@@ -81,14 +83,16 @@ final class Recognizer {
         float vAvgDp, vPeakDp;
         float monotonic;
         float conf;
+        /** 抬手点距屏幕底边的距离（dp）。手指滑出屏幕时坐标被裁到底边，所以"拖到底"接近 0。 */
+        float endGapDp;
         int durMs;
         int samples;
         boolean stillAtEnd;
 
         String oneLine() {
             return String.format(java.util.Locale.US,
-                    "dy=%.1fdp dx=%.1fdp dur=%dms vavg=%.0f vpeak=%.0f mono=%.2f conf=%.2f n=%d%s",
-                    dyDp, dxDp, durMs, vAvgDp, vPeakDp, monotonic, conf, samples,
+                    "dy=%.1fdp dx=%.1fdp end=%.1fdp dur=%dms vavg=%.0f vpeak=%.0f mono=%.2f conf=%.2f n=%d%s",
+                    dyDp, dxDp, endGapDp, durMs, vAvgDp, vPeakDp, monotonic, conf, samples,
                     stillAtEnd ? " still" : "");
         }
     }
@@ -195,6 +199,9 @@ final class Recognizer {
         r.dyDp = dyPx / density;
         r.dxDp = dxPx / density;
         r.durMs = dur;
+        // 抬手点离屏幕底边还有多远。手指滑出屏幕时系统会把坐标裁到底边，
+        // 所以"一直拖到底"这个值接近 0，而页面滚动的抬手点通常在屏幕中段。
+        r.endGapDp = clamp((sc.height - ys[last]) / density, 0f, 999f);
 
         if (n < 3) {
             r.reason = R_TOO_FEW;
@@ -265,6 +272,33 @@ final class Recognizer {
             r.reason = R_TOO_LONG;
             return r;
         }
+
+        // ---- 落点判定（2.8）：抬手点是不是拖到了屏幕最底部
+        //
+        // 只看"起点在底部触发区内"还不够 —— 桌面抽屉、可滚动的列表里，
+        // 手指恰好从底部 56dp 内起手往下拖 20dp，同样满足距离+速度，
+        // 但它想的是滚动页面。真正的单手模式手势一定是一路拖到屏幕底边
+        // （拖出去以后坐标被裁到底边），两者在终点位置上有明显差别。
+        //
+        // 反过来，贴底本身就是很强的意图信号，所以这条路径不再要求速度、
+        // 置信度和单调性，门槛只留"确实向下移动了一点点"，灵敏度反而更高。
+        final boolean atBottom = r.endGapDp <= c.endZoneDp;
+        if (c.endBoost) {
+            if (!atBottom) {
+                r.reason = R_NOT_AT_BOTTOM;
+                return r;
+            }
+            if (r.dyDp < Cfg.END_MIN_DY_DP || dur < Cfg.END_MIN_DUR_MS) {
+                r.reason = R_TOO_SHORT;
+                return r;
+            }
+            r.conf = 1f;
+            r.path = 'E';
+            r.trigger = true;
+            r.reason = R_OK;
+            return r;
+        }
+
         final float shortest = Math.min(c.minDyDp, c.slowEnabled ? c.slowDyDp : c.minDyDp);
         if (r.dyDp < shortest * 0.6f) {
             r.reason = R_TOO_SHORT;

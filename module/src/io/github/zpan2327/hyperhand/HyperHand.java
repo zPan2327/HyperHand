@@ -7,6 +7,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
@@ -67,6 +69,8 @@ public class HyperHand extends XposedModule {
 
     static final String CLS_TOUCH = "com.android.wm.shell.onehanded.OneHandedTouchHandler";
     static final String CLS_CTRL = "com.android.wm.shell.onehanded.OneHandedController";
+    /** 单手模式上方那块纯色遮罩（SurfaceControlViewHost + 普通 View）。 */
+    static final String CLS_BG_WINDOW = "com.android.wm.shell.onehanded.BackgroundWindowManager";
     static final String CLS_NAV = "com.miui.home.recents.NavStubView";
     /** 桌面的"下拉打开通知/控制中心"手势控制器。 */
     static final String CLS_STATUS_BAR_SWIPE = "com.miui.home.launcher.uioverrides.StatusBarSwipeController";
@@ -181,6 +185,70 @@ public class HyperHand extends XposedModule {
 
         // 3) 记录"通知中心/控制中心下拉"信号，用于互斥
         hookShadeSignals(cl);
+
+        // 4) 遮罩外观：把米白色换成模糊壁纸
+        hookBackground(cl);
+
+        // 5) 提前注册配置接收器：否则要等第一次触摸才会注册，
+        //    设置页的「保存」「预览遮罩」在冷启动后第一次点会没有反应。
+        registerReceiverLater();
+    }
+
+    private static void registerReceiverLater() {
+        final Handler h = new Handler(Looper.getMainLooper());
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Context ctx = Hooks.currentApplication();
+                    if (ctx == null) {
+                        h.postDelayed(this, 800);
+                        return;
+                    }
+                    ensureConfigReceiver(ctx);
+                } catch (Throwable t) {
+                    log("register config receiver (early) failed: " + t);
+                }
+            }
+        }, 600);
+    }
+
+    /**
+     * 单手模式上方那块纯色遮罩的处理。
+     *
+     * HyperOS 把它放在 {@code BackgroundWindowManager}：一个 View（mBackgroundView）
+     * 挂在 SurfaceControlViewHost 上，颜色取自 getThemeColor()。它是普通 View，
+     * 所以直接换 background drawable 即可 —— 只改"遮罩画什么"，不碰缩小动画、
+     * 不碰触摸映射、不碰退出逻辑。
+     *
+     * 三个回调都补一刀：initView（首次创建）、showBackgroundLayer（每次进入单手模式）、
+     * updateThemeOnly（深浅色/换主题时系统会重设颜色，要重新盖回去）。
+     */
+    private void hookBackground(ClassLoader cl) {
+        try {
+            Class<?> bg = hooks.findClass(CLS_BG_WINDOW, cl);
+            if (bg == null) {
+                log("BackgroundWindowManager class not found");
+                return;
+            }
+            Hooks.After after = new Hooks.After() {
+                @Override
+                public void run(XposedInterface.Chain chain, Object result) {
+                    try {
+                        BlurBg.apply(chain.getThisObject());
+                    } catch (Throwable t) {
+                        log("blur bg hook error: " + t);
+                    }
+                }
+            };
+            XposedInterface.Hooker hooker = Hooks.after(after);
+            int n = hooks.hookMethods(bg, "showBackgroundLayer", hooker);
+            n += hooks.hookMethods(bg, "initView", hooker);
+            n += hooks.hookMethods(bg, "updateThemeOnly", hooker);
+            log("BackgroundWindowManager hooked (" + n + ")");
+        } catch (Throwable t) {
+            log("hook BackgroundWindowManager failed: " + t);
+        }
     }
 
     /**
@@ -380,21 +448,65 @@ public class HyperHand extends XposedModule {
     private static void startOneHanded(Object handler, Context ctx) {
         Object ctrl = controller(handler);
         if (ctrl != null) {
-            try {
-                sHooks.call(ctrl, "startOneHanded");
-                log("startOneHanded() called on OneHandedController");
-                return;
-            } catch (Throwable t) {
-                log("startOneHanded() failed: " + t);
+            // HyperOS 把启动逻辑放在 OneHandedController 的内部实现里
+            // （OneHandedImpl / IOneHandedImpl，实现 OneHanded 接口），
+            // 控制器本身并没有 startOneHanded()，所以要先取到实现对象。
+            Object impl = oneHandedImpl(ctrl);
+            if (impl != null) {
+                try {
+                    sHooks.call(impl, "startOneHanded");
+                    log("startOneHanded() via " + impl.getClass().getSimpleName());
+                    return;
+                } catch (Throwable t) {
+                    log("startOneHanded() on " + impl.getClass().getSimpleName() + " failed: " + t);
+                }
+            } else {
+                log("OneHandedImpl not resolved, falling back to activation flag");
             }
         }
-        // 兜底：写原生状态位，等价于快捷方式开关。
+        // 兜底：写原生状态位，等价于无障碍快捷方式激活。
         try {
             Settings.Secure.putInt(ctx.getContentResolver(), "one_handed_mode_activated", 1);
             log("startOneHanded() fallback: wrote one_handed_mode_activated=1");
         } catch (Throwable t) {
             log("fallback failed: " + t);
         }
+    }
+
+    /** 取 OneHandedController 里的 OneHanded 实现（有 startOneHanded() 的那个）。 */
+    private static Object oneHandedImpl(Object ctrl) {
+        try {
+            Object o = sHooks.call(ctrl, "asOneHanded");
+            if (o != null && hasNoArg(o, "startOneHanded")) {
+                return o;
+            }
+        } catch (Throwable ignored) {
+            // 没有 asOneHanded() 的话继续走字段扫描
+        }
+        for (Class<?> c = ctrl.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (!f.getType().getName().contains("OneHandedImpl")) continue;
+                try {
+                    f.setAccessible(true);
+                    Object o = f.get(ctrl);
+                    if (o != null && hasNoArg(o, "startOneHanded")) {
+                        return o;
+                    }
+                } catch (Throwable ignored) {
+                    // 下一个
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasNoArg(Object o, String name) {
+        for (Class<?> c = o.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Method m : c.getDeclaredMethods()) {
+                if (m.getName().equals(name) && m.getParameterCount() == 0) return true;
+            }
+        }
+        return false;
     }
 
     /** 优先用构造时抓到的实例；否则从 mTouchEventCallback 的外层引用反推。 */
@@ -503,6 +615,18 @@ public class HyperHand extends XposedModule {
                     public void onReceive(Context context, Intent intent) {
                         try {
                             ContentResolver cr = context.getContentResolver();
+                            // 调试动作：手动进入/退出一次单手模式（设置页的「预览遮罩」用它）
+                            String act = intent.getStringExtra(Cfg.K_ACTION);
+                            if ("trigger".equals(act)) {
+                                log("debug action: trigger");
+                                startOneHanded(null, context);
+                                return;
+                            }
+                            if ("stop".equals(act)) {
+                                log("debug action: stop");
+                                Settings.Secure.putInt(cr, "one_handed_mode_activated", 0);
+                                return;
+                            }
                             int n = 0;
                             for (String k : Cfg.ALL_KEYS) {
                                 if (intent.hasExtra(k)) {

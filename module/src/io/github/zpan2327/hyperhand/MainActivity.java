@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     private Ui.SwitchView swSlow;
     private Ui.SwitchView swAdaptive;
     private Ui.SwitchView swAdvanced;
+    private Ui.SwitchView swBlur;
 
     private Ui.ChoiceRow cMode;
 
@@ -58,10 +59,13 @@ public class MainActivity extends Activity {
     private Ui.ValueRow rMono;
     private Ui.ValueRow rCooldown;
     private Ui.ValueRow rHotDp;
+    private Ui.ValueRow rBlurRadius;
+    private Ui.ValueRow rBlurDim;
 
     private LinearLayout advancedBox;
     private TextView gestureLog;
     private TextView status;
+    private TextView restartBtn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -196,6 +200,18 @@ public class MainActivity extends Activity {
                 cur.zoneBias, 2, -0.4f, 0.4f, 0.05f);
         root.addView(cardZone);
 
+        // ---------------------------------------------------------- 外观
+        root.addView(Ui.sectionTitle(this, pal, "外观"));
+        LinearLayout cardLook = Ui.card(this, pal);
+        swBlur = Ui.switchRow(this, cardLook, pal, "模糊壁纸背景",
+                "单手模式上方的米白遮罩换成高斯模糊的当前壁纸", cur.blurBg);
+        swBlur.setOnCheckedChange(dirtyOnChange);
+        rBlurRadius = valueRow(cardLook, "模糊半径", "越大越糊；0 近似纯壁纸原图", "dp",
+                cur.blurRadiusDp, 0, 0, 60, 1);
+        rBlurDim = valueRow(cardLook, "压暗程度", "在模糊壁纸上叠一层黑，拉开与缩小窗口的层次", "%",
+                cur.blurDim, 0, 0, 60, 1);
+        root.addView(cardLook);
+
         // ---------------------------------------------------------- 互斥
         root.addView(Ui.sectionTitle(this, pal, "互斥"));
         LinearLayout cardGuard = Ui.card(this, pal);
@@ -265,6 +281,22 @@ public class MainActivity extends Activity {
                     }
                 });
         rRefresh.label.setTextColor(pal.primary);
+        Ui.choiceRow(this, cardDebug, pal, "预览遮罩",
+                "立刻进入一次单手模式，直接看背景效果", new String[] {"进入"}, 0,
+                new Ui.OnChoice() {
+                    @Override
+                    public void onChoice(int index) {
+                        sendAction("trigger");
+                    }
+                });
+        Ui.choiceRow(this, cardDebug, pal, "退出单手模式",
+                "立刻退出，恢复正常窗口", new String[] {"退出"}, 0,
+                new Ui.OnChoice() {
+                    @Override
+                    public void onChoice(int index) {
+                        sendAction("stop");
+                    }
+                });
         gestureLog = Ui.block(this, pal, "还没有记录。开启调试日志后，在屏幕底部下滑一次再看这里。");
         cardDebug.addView(gestureLog);
         root.addView(cardDebug);
@@ -296,6 +328,25 @@ public class MainActivity extends Activity {
             }
         });
         actions.addView(reset, rlp);
+
+        restartBtn = Ui.secondaryButton(this, pal, "重启两个作用域");
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        slp.topMargin = dp(10);
+        restartBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                confirmRestart();
+            }
+        });
+        actions.addView(restartBtn, slp);
+
+        TextView restartHint = Ui.text(this,
+                "重启系统界面与桌面进程，让新装/新改的钩子重新注入。需要 root 授权（首次会弹授权框）。",
+                13, pal.summary, false);
+        restartHint.setPadding(dp(4), dp(8), dp(4), 0);
+        restartHint.setLineSpacing(dp(3), 1f);
+        actions.addView(restartHint);
         root.addView(actions);
 
         status = Ui.text(this, "当前值来自系统设置，修改后点下方按钮提交。", 13, pal.summary, false);
@@ -392,6 +443,8 @@ public class MainActivity extends Activity {
         rMono.label.setText(Ui.fmt(rMono.value, 2));
         rCooldown.label.setText(Ui.fmt(rCooldown.value, 0));
         rHotDp.label.setText(Ui.fmt(rHotDp.value, 0));
+        rBlurRadius.label.setText(Ui.fmt(rBlurRadius.value, 0));
+        rBlurDim.label.setText(Ui.fmt(rBlurDim.value, 0));
     }
 
     private void markDirty() {
@@ -414,6 +467,7 @@ public class MainActivity extends Activity {
         switchWithoutMark(swClaimZone, true);
         switchWithoutMark(swSlow, true);
         switchWithoutMark(swAdaptive, true);
+        switchWithoutMark(swBlur, true);
 
         cMode.value = Cfg.MODE_NATURAL;
         cMode.label.setText(Cfg.MODE_SHORT[Cfg.MODE_NATURAL]);
@@ -432,6 +486,8 @@ public class MainActivity extends Activity {
         rMono.value = Cfg.DEF_MIN_MONOTONIC;
         rCooldown.value = Cfg.DEF_COOLDOWN_MS;
         rHotDp.value = Cfg.DEF_LAUNCHER_HOT_DP;
+        rBlurRadius.value = Cfg.DEF_BLUR_RADIUS;
+        rBlurDim.value = Cfg.DEF_BLUR_DIM;
         relabel();
     }
 
@@ -475,6 +531,9 @@ public class MainActivity extends Activity {
         i.putExtra(Cfg.K_MIN_MONOTONIC, Ui.fmt(rMono.value, 2));
         i.putExtra(Cfg.K_COOLDOWN_MS, Ui.fmt(rCooldown.value, 0));
         i.putExtra(Cfg.K_LAUNCHER_HOT_DP, Ui.fmt(rHotDp.value, 0));
+        i.putExtra(Cfg.K_BLUR_BG, swBlur.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_BLUR_RADIUS, Ui.fmt(rBlurRadius.value, 0));
+        i.putExtra(Cfg.K_BLUR_DIM, Ui.fmt(rBlurDim.value, 0));
         sendBroadcast(i);
 
         status.setText("已提交到系统界面进程，立即生效。可下滑底部区域测试，"
@@ -482,11 +541,129 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
     }
 
+    // ---------------------------------------------------------------- 重启作用域
+
+    /** 发一条调试动作（trigger / stop），由 SystemUI 进程里的模块执行。 */
+    private void sendAction(String action) {
+        Intent i = new Intent(HyperHand.ACTION_SET);
+        i.setPackage("com.android.systemui");
+        i.putExtra(Cfg.K_ACTION, action);
+        sendBroadcast(i);
+        Toast.makeText(this, "trigger".equals(action) ? "已请求进入单手模式" : "已请求退出",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void confirmRestart() {
+        Ui.confirmDialog(this, pal, "重启两个作用域",
+                "会结束「系统界面」与「小米桌面」两个进程，屏幕闪一下、短暂黑屏后自动恢复。\n"
+                        + "未保存的参数修改会丢失。",
+                "重启", new Ui.OnConfirm() {
+                    @Override
+                    public void onConfirm() {
+                        doRestart();
+                    }
+                });
+    }
+
+    private void doRestart() {
+        if (restartBtn != null) {
+            restartBtn.setText("重启中…");
+            restartBtn.setEnabled(false);
+        }
+        if (status != null) {
+            status.setText("正在重启系统界面与桌面……若弹出 root 授权请允许。");
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                // killall 只是结束进程：系统会立刻把 SystemUI 拉起来，
+                // 桌面在收到 HOME 后重新启动，两边都会重新加载模块。
+                final String err = su("killall com.android.systemui; killall com.miui.home; "
+                        + "sleep 1; input keyevent 3", 25000L);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (restartBtn != null) {
+                            restartBtn.setText("重启两个作用域");
+                            restartBtn.setEnabled(true);
+                        }
+                        if (err == null) {
+                            if (status != null) {
+                                status.setText("已结束两个进程，钩子会在它们重启后重新注入。"
+                                        + "现在可以下滑底部区域试试。");
+                            }
+                            Toast.makeText(MainActivity.this, "已重启", Toast.LENGTH_SHORT).show();
+                        } else {
+                            if (status != null) {
+                                status.setText("重启失败：" + err
+                                        + "\n可在电脑上执行：adb shell am force-stop com.android.systemui");
+                            }
+                            Toast.makeText(MainActivity.this, "重启失败，需要 root", Toast.LENGTH_LONG).show();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * 跑一条 root 命令：成功返回 null，失败返回原因。
+     *
+     * KernelSU / Magisk 的 su 路径不统一（有的只在授权后的命名空间里可见），
+     * 所以按常见位置依次尝试；第一个能起来的就用它。
+     */
+    private String su(String cmd, long timeoutMs) {
+        final String[] bins = new String[] {"su", "/system/bin/su", "/debug_ramdisk/su", "/sbin/su"};
+        String last = "未知错误";
+        for (String bin : bins) {
+            Process p;
+            try {
+                p = Runtime.getRuntime().exec(new String[] {bin, "-c", cmd});
+            } catch (Throwable t) {
+                last = t.getMessage() == null ? String.valueOf(t) : t.getMessage();
+                continue;
+            }
+            try {
+                if (!p.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    p.destroy();
+                    return "等待授权超时，请在 KernelSU / Magisk 里允许 HyperHand";
+                }
+                int code = p.exitValue();
+                String err = readStream(p.getErrorStream());
+                if (code == 0) return null;
+                return "退出码 " + code + (err.length() > 0 ? "：" + err.trim() : "");
+            } catch (Throwable t) {
+                return String.valueOf(t);
+            } finally {
+                try {
+                    p.destroy();
+                } catch (Throwable ignored) {
+                    // ignore
+                }
+            }
+        }
+        return "没找到可用的 su（" + last + "）。请确认已 root，并允许 HyperHand 的超级用户请求";
+    }
+
+    private static String readStream(java.io.InputStream in) {
+        try {
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[512];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                bos.write(buf, 0, n);
+            }
+            return new String(bos.toByteArray(), "UTF-8");
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     private String versionName() {
         try {
             return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Throwable t) {
-            return "2.2";
+            return "2.3";
         }
     }
 

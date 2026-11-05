@@ -2,6 +2,35 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.3.0] - 2026-11-05
+
+外观与维护性更新。触发算法、三道互斥闸门、钩子点位、缩小动画与退出逻辑**均未改动**。
+
+### Added
+
+- **模糊壁纸遮罩**：单手模式上方默认是主题米白（`BackgroundWindowManager#getThemeColor()`），
+  现在替换成当前壁纸的高斯模糊版本：
+  - 新增 `oh_tuner_blur_bg`（默认 `1`）、`oh_tuner_blur_radius`（默认 24dp）、
+    `oh_tuner_blur_dim`（默认 12%）。
+  - 壁纸按屏幕比例居中铺满 → 降到 1/6 分辨率 → 三遍盒式模糊（≈高斯）→ 按参数压暗；
+    生成在后台线程，缓存 key 含壁纸 id / 屏幕尺寸 / 半径 / 压暗，换壁纸或改参数自动重算。
+  - 动态壁纸 / 读不到壁纸时保持系统原生颜色，不做降级猜测。
+- **一键重启两个作用域**：设置页底部新增按钮，确认后执行
+  `killall com.android.systemui; killall com.miui.home; sleep 1; input keyevent 3`，
+  更新 APK 后不用重启手机。需要 root 授权；失败时会把可手动执行的 adb 命令显示出来。
+- **调试预览**：「调试」卡片新增「预览遮罩 / 退出单手模式」，通过广播
+  `oh_tuner_action=trigger|stop` 直接进/出一次单手模式，方便当场看背景效果。
+
+### Fixed
+
+- `startOneHanded()` 之前调用在 `OneHandedController` 上，但 HyperOS 把启动逻辑放在
+  `OneHandedController$OneHandedImpl`，控制器本身没有这个方法 —— 每次触发都会
+  落到"写 `one_handed_mode_activated`"的兜底路径。现在按
+  `asOneHanded()` → 扫描 `*OneHandedImpl` 字段的顺序取到实现对象再调用，兜底仍保留。
+- 配置接收器原本要等第一次触摸才注册，导致冷启动后第一次「保存」或「预览」没有反应；
+  现在模块挂载后主动注册。
+- 遮罩回调可能不在主线程（ShellExecutor），碰 View 前统一转到主线程。
+
 ## [2.2.0] - 2026-11-05
 
 触发算法重做：从"单点峰值速度一刀切"改为"历史采样 + 分窗速度 + 双路径置信度"，

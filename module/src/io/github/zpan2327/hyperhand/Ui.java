@@ -374,6 +374,93 @@ final class Ui {
         d.show();
     }
 
+    interface OnConfirm {
+        void onConfirm();
+    }
+
+    /** 确认对话框：标题 + 说明 + 「取消 / 确定」（用于重启作用域这类破坏性操作）。 */
+    static void confirmDialog(final Activity a, final Pal pal, String title, String summary,
+                              String okText, final OnConfirm cb) {
+        final Dialog d = new Dialog(a);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        FrameLayout root = new FrameLayout(a);
+        int pad = dp(a, 28);
+        root.setPadding(pad, pad, pad, pad);
+
+        LinearLayout box = new LinearLayout(a);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(round(pal.card, dp(a, 20)));
+        box.setClipToOutline(true);
+        int screenW = a.getResources().getDisplayMetrics().widthPixels;
+        FrameLayout.LayoutParams boxLp = new FrameLayout.LayoutParams(
+                Math.min(screenW - 2 * pad, dp(a, 336)),
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        boxLp.gravity = Gravity.CENTER;
+        root.addView(box, boxLp);
+
+        TextView t = text(a, title, 17, pal.title, true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(a, 20), dp(a, 20), dp(a, 20), dp(a, 6));
+        box.addView(t);
+
+        TextView s = text(a, summary, 14, pal.summary, false);
+        s.setGravity(Gravity.CENTER);
+        s.setLineSpacing(dp(a, 3), 1f);
+        s.setPadding(dp(a, 20), 0, dp(a, 20), dp(a, 18));
+        box.addView(s);
+
+        View div = new View(a);
+        div.setBackgroundColor(pal.divider);
+        box.addView(div, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
+
+        LinearLayout btns = new LinearLayout(a);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+
+        TextView cancel = text(a, "取消", 17, pal.summary, false);
+        cancel.setGravity(Gravity.CENTER);
+        ripple(cancel, isNight(a) ? 0x1FFFFFFF : 0x0D000000);
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                d.dismiss();
+            }
+        });
+        btns.addView(cancel, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+
+        View vdiv = new View(a);
+        vdiv.setBackgroundColor(pal.divider);
+        btns.addView(vdiv, new LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        TextView ok = text(a, okText, 17, pal.primary, true);
+        ok.setGravity(Gravity.CENTER);
+        ripple(ok, isNight(a) ? 0x1FFFFFFF : 0x0D000000);
+        ok.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                d.dismiss();
+                cb.onConfirm();
+            }
+        });
+        btns.addView(ok, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+
+        box.addView(btns, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(a, 52)));
+
+        d.setContentView(root);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screen = a.getResources().getDisplayMetrics().widthPixels;
+            int maxW = dp(a, 340) + 2 * pad;
+            w.setLayout(Math.min(screen, maxW), ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setDimAmount(0.32f);
+        }
+        d.show();
+    }
+
     /** 多行说明/日志文本块（等宽感，用于展示最近手势）。 */
     static TextView block(Context c, Pal pal, String s) {
         TextView t = text(c, s, 13, pal.summary, false);

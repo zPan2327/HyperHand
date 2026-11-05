@@ -543,14 +543,25 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- 重启作用域
 
-    /** 发一条调试动作（trigger / stop），由 SystemUI 进程里的模块执行。 */
+    /** 发一条调试动作（trigger / stop / reload），由 SystemUI 进程里的模块执行。 */
     private void sendAction(String action) {
+        broadcastAction(action);
+        String t;
+        if ("trigger".equals(action)) {
+            t = "已请求进入单手模式";
+        } else if ("stop".equals(action)) {
+            t = "已请求退出";
+        } else {
+            t = "已请求重启系统界面";
+        }
+        Toast.makeText(this, t, Toast.LENGTH_SHORT).show();
+    }
+
+    private void broadcastAction(String action) {
         Intent i = new Intent(HyperHand.ACTION_SET);
         i.setPackage("com.android.systemui");
         i.putExtra(Cfg.K_ACTION, action);
         sendBroadcast(i);
-        Toast.makeText(this, "trigger".equals(action) ? "已请求进入单手模式" : "已请求退出",
-                Toast.LENGTH_SHORT).show();
     }
 
     private void confirmRestart() {
@@ -594,11 +605,14 @@ public class MainActivity extends Activity {
                             }
                             Toast.makeText(MainActivity.this, "已重启", Toast.LENGTH_SHORT).show();
                         } else {
+                            // 没有 root 就退回"让模块自己退出"：SystemUI 是 persistent 进程，
+                            // 自杀后系统会立刻拉起，钩子同样会重新加载（桌面侧这次动不了）。
+                            broadcastAction("reload");
                             if (status != null) {
-                                status.setText("重启失败：" + err
-                                        + "\n可在电脑上执行：adb shell am force-stop com.android.systemui");
+                                status.setText("没有 root：" + err
+                                        + "\n已改为让系统界面自行重启（桌面侧钩子未刷新，可稍后手动重启）。");
                             }
-                            Toast.makeText(MainActivity.this, "重启失败，需要 root", Toast.LENGTH_LONG).show();
+                            Toast.makeText(MainActivity.this, "已请求系统界面重启", Toast.LENGTH_LONG).show();
                         }
                     }
                 });

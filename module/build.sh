@@ -27,7 +27,7 @@ fi
 BT_VERSION="${BUILD_TOOLS_VERSION:-36.0.0}"
 PLATFORM_VERSION="${PLATFORM_VERSION:-35}"
 KEYSTORE_PASS="${KEYSTORE_PASS:-onehand123}"
-VERSION_NAME="${VERSION_NAME:-2.3.0}"
+VERSION_NAME="${VERSION_NAME:-2.4.4}"
 # 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
 VERSION_CODE="${VERSION_CODE:-}"
 if [ -z "$VERSION_CODE" ]; then
@@ -90,8 +90,9 @@ mapfile -t SRCS < <(find "$ROOT/src" -name '*.java')
     -classpath "libs/*" -d classes "${SRCS[@]}" )
 
 echo "==> d8"
-mapfile -t CLASSES < <(find "$CLASSES_DIR" -name '*.class')
-"$D8" --release --min-api 31 --lib "$ANDROID_JAR" --output "$DEX_DIR" "${CLASSES[@]}"
+# 与 build.ps1 一致：类多时命令行会超长，先打 jar 再交给 d8
+"$JAR" cf "$OUT_DIR/classes.jar" -C "$CLASSES_DIR" .
+"$D8" --release --min-api 31 --lib "$ANDROID_JAR" --output "$DEX_DIR" "$OUT_DIR/classes.jar"
 [ -f "$DEX_DIR/classes.dex" ] || { echo "classes.dex 未生成" >&2; exit 1; }
 
 echo "==> aapt2 compile (res)"

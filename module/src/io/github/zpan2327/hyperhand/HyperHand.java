@@ -13,6 +13,8 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -71,6 +73,8 @@ public class HyperHand extends XposedModule {
     static final String CLS_CTRL = "com.android.wm.shell.onehanded.OneHandedController";
     /** 单手模式上方那块纯色遮罩（SurfaceControlViewHost + 普通 View）。 */
     static final String CLS_BG_WINDOW = "com.android.wm.shell.onehanded.BackgroundWindowManager";
+    /** 教程层：一条独立窗口，铺在上半屏，米白通常由它画出来。 */
+    static final String CLS_TUTORIAL = "com.android.wm.shell.onehanded.OneHandedTutorialHandler";
     static final String CLS_NAV = "com.miui.home.recents.NavStubView";
     /** 桌面的"下拉打开通知/控制中心"手势控制器。 */
     static final String CLS_STATUS_BAR_SWIPE = "com.miui.home.launcher.uioverrides.StatusBarSwipeController";
@@ -248,6 +252,74 @@ public class HyperHand extends XposedModule {
             log("BackgroundWindowManager hooked (" + n + ")");
         } catch (Throwable t) {
             log("hook BackgroundWindowManager failed: " + t);
+        }
+
+        // 教程层窗口：真正盖在上半屏的那条窗口（Window type 2024，
+        // 标题 "one-handed-tutorial-overlay"）。它由 WindowManager 添加，
+        // 直接在 addView 时按标题抓到 View，比反射 WMShell 内部字段可靠得多。
+        try {
+            Class<?> wmg = hooks.findClass("android.view.WindowManagerGlobal", cl);
+            if (wmg == null) {
+                log("WindowManagerGlobal class not found");
+                return;
+            }
+            int m = hooks.hookMethods(wmg, "addView", Hooks.after(new Hooks.After() {
+                @Override
+                public void run(XposedInterface.Chain chain, Object result) {
+                    try {
+                        List<Object> args = chain.getArgs();
+                        if (args.size() < 2) return;
+                        Object v = args.get(0);
+                        Object lp = args.get(1);
+                        if (!(v instanceof View) || !(lp instanceof WindowManager.LayoutParams)) {
+                            return;
+                        }
+                        CharSequence cs =
+                                ((WindowManager.LayoutParams) lp).getTitle();
+                        if (cs == null) return;
+                        String title = cs.toString();
+                        String lower = title.toLowerCase(Locale.US);
+                        if (!lower.contains("one-hand") && !lower.contains("onehand")) {
+                            return;
+                        }
+                        log("blur bg: overlay window added: " + title);
+                        BlurBg.applyToOverlay((View) v, title);
+                    } catch (Throwable t) {
+                        log("window add hook error: " + t);
+                    }
+                }
+            }));
+            log("WindowManagerGlobal#addView hooked (" + m + ")");
+        } catch (Throwable t) {
+            log("hook WindowManagerGlobal failed: " + t);
+        }
+
+        // 教程层"填色"回调：系统把遮罩刷成主题色的同一帧里，我们紧接着换成模糊图，
+        // 这样不会出现"先灰一下再变模糊"的闪烁。
+        try {
+            Class<?> tut = hooks.findClass(CLS_TUTORIAL, cl);
+            if (tut != null) {
+                Hooks.After after = new Hooks.After() {
+                    @Override
+                    public void run(XposedInterface.Chain chain, Object result) {
+                        try {
+                            BlurBg.refreshOverlay();
+                        } catch (Throwable t) {
+                            // 纯外观，失败不影响主流程
+                        }
+                    }
+                };
+                XposedInterface.Hooker hooker = Hooks.after(after);
+                int n = hooks.hookMethods(tut, "fillBackgroundColor", hooker);
+                n += hooks.hookMethods(tut, "updateThemeColor", hooker);
+                n += hooks.hookMethods(tut, "onAnimationUpdate", hooker);
+                n += hooks.hookMethods(tut, "createViewAndAttachToWindow", hooker);
+                log("OneHandedTutorialHandler color hooks (" + n + ")");
+            } else {
+                log("OneHandedTutorialHandler class not found");
+            }
+        } catch (Throwable t) {
+            log("hook OneHandedTutorialHandler failed: " + t);
         }
     }
 
@@ -617,6 +689,28 @@ public class HyperHand extends XposedModule {
                             ContentResolver cr = context.getContentResolver();
                             // 调试动作：手动进入/退出一次单手模式（设置页的「预览遮罩」用它）
                             String act = intent.getStringExtra(Cfg.K_ACTION);
+                            if ("reload".equals(act)) {
+                                // 不需要 root：SystemUI 是 persistent 进程，自己退出后系统会立刻拉起，
+                                // 模块随之重新加载最新代码。
+                                log("debug action: reload (restart SystemUI)");
+                                new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        android.os.Process.killProcess(android.os.Process.myPid());
+                                    }
+                                }, 400);
+                                return;
+                            }
+                            if ("blur".equals(act)) {
+                                log("debug action: blur");
+                                BlurBg.forceApplyOverlay();
+                                return;
+                            }
+                            if ("probe".equals(act)) {
+                                log("debug action: probe");
+                                BlurBg.probe();
+                                return;
+                            }
                             if ("trigger".equals(act)) {
                                 log("debug action: trigger");
                                 startOneHanded(null, context);

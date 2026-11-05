@@ -30,7 +30,7 @@ $sdk = Find-Sdk
 $btVersion = if ($env:BUILD_TOOLS_VERSION) { $env:BUILD_TOOLS_VERSION } else { '36.0.0' }
 $platformVersion = if ($env:PLATFORM_VERSION) { $env:PLATFORM_VERSION } else { '35' }
 $keystorePass = if ($env:KEYSTORE_PASS) { $env:KEYSTORE_PASS } else { 'onehand123' }
-$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '2.3.0' }
+$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '2.4.4' }
 # 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
 $versionCode = $env:VERSION_CODE
 if (-not $versionCode) {
@@ -80,8 +80,13 @@ $srcs = Get-ChildItem -Path (Join-Path $root 'src') -Recurse -Filter *.java | Fo
 if ($LASTEXITCODE -ne 0) { throw 'javac failed' }
 
 Write-Host '==> d8'
-$classFiles = Get-ChildItem -Path $classesDir -Recurse -Filter *.class | ForEach-Object { $_.FullName }
-& (Join-Path $buildTools 'd8.bat') '--release' '--min-api' '31' '--lib' $androidJar '--output' $dexDir @classFiles
+# 类文件数量一多，直接把所有路径拼进命令行会撞上 Windows 8191 字符上限
+# （"输入行太长"），所以先打成一个 jar 再交给 d8。
+$jarTool = if ($jdkHome) { Join-Path $jdkHome 'bin\jar.exe' } else { 'jar' }
+$classJar = Join-Path $outDir 'classes.jar'
+& $jarTool 'cf' $classJar '-C' $classesDir '.'
+if ($LASTEXITCODE -ne 0) { throw 'jar failed' }
+& (Join-Path $buildTools 'd8.bat') '--release' '--min-api' '31' '--lib' $androidJar '--output' $dexDir $classJar
 if ($LASTEXITCODE -ne 0) { throw 'd8 failed' }
 if (-not (Test-Path (Join-Path $dexDir 'classes.dex'))) { throw 'classes.dex not produced' }
 

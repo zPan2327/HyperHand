@@ -425,6 +425,23 @@ public class HyperHand extends XposedModule {
                             List<Object> args = chain.getArgs();
                             if (args.size() == 4 && args.get(0) instanceof Integer
                                     && ((Integer) args.get(0)) == TX_ON_STATUS_BAR_MOTION_EVENT) {
+                                // 桌面把下拉手势转发过来时，如果这次手势的起点就在我们认领的
+                                // 底部区域里（sTracking 只在这种手势期间为真），说明它是
+                                // "从底部往下拖" —— 这块地归单手模式，通知/控制中心直接让位。
+                                //
+                                // 只在桌面侧让位（canInterceptTouch）不够：桌面仍可能把事件
+                                // 转发过来，SystemUI 一收就展开通知中心，盖在单手模式上面；
+                                // 而且这条转发还会点亮 shadeGuard，把已经判定的单手模式误杀。
+                                // 在 binder 入口直接吞掉最干净：不展开、不点亮闸门、不影响
+                                // 我们自己的监视通道（它是独立通道，早就收到同一串事件了）。
+                                Context ctx = Hooks.currentApplication();
+                                Cfg c = ctx == null ? null : Cfg.get(ctx);
+                                if (c != null && c.enabled && c.claimZone
+                                        && sTracking && !sTriggered
+                                        && SystemClock.uptimeMillis() - sDownTime < 1500) {
+                                    if (c.debug) log("swallowed launcher shade forward (zone owned)");
+                                    return Boolean.TRUE;
+                                }
                                 markShadeIntent("launcher_forward");
                             }
                         } catch (Throwable t) {

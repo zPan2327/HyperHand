@@ -88,7 +88,7 @@ final class Cfg {
     static final String[] EDITABLE_KEYS = ALL_KEYS;
 
     // ---------------------------------------------------------------- 默认值（旧键保持 2.1 原值）
-    static final float DEF_ZONE_DP = 56f;
+    static final float DEF_ZONE_DP = 58f;
     static final float DEF_MIN_DY_DP = 12f;      // 2.2：随模式变化，此处只是兜底
     static final float DEF_MAX_SLOPE = 1.2f;
     static final int DEF_COOLDOWN_MS = 500;
@@ -152,12 +152,12 @@ final class Cfg {
 
     /**
      * 贴底路径要求的最小向下位移。
-     * 起点已经在底部 56dp 内，只需要一点点位移就能到底，所以这里比常规路径低得多；
-     * 6dp 是为了挡住"点一下底部按钮"这种零位移的点击。
+     * 起点已经在底部区域里，只需要一点点位移就能到底，所以这里比常规路径低得多；
+     * 4dp 是"手指真的动了"的下限，用来挡住零位移的点击。
      */
-    static final float END_MIN_DY_DP = 6f;
+    static final float END_MIN_DY_DP = 4f;
     /** 贴底路径要求的最短时长，同样是挡点击。 */
-    static final int END_MIN_DUR_MS = 50;
+    static final int END_MIN_DUR_MS = 40;
 
     static final int MODE_NATURAL = 0;
     static final int MODE_SENSITIVE = 1;

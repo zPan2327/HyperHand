@@ -2,6 +2,25 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.8.2] - 2026-11-05
+
+按"桌面底部 58dp 内不打开通知/控制中心，并在这个范围里更灵敏"调整。
+
+### Fixed
+
+- **通知中心盖住单手模式**：只让桌面侧不拦截（`canInterceptTouch` → false）不够，
+  桌面仍会把事件转发到 `ISystemUiProxy.onStatusBarMotionEvent`，SystemUI 一收就展开通知中心，
+  还会点亮 `shadeGuard` 把刚判定的单手模式误杀。
+  → 现在在 `LauncherProxyService$1#onTransact` 入口判断：若当前手势起点在触发区内
+  （`sTracking` 为真），直接 `return true` 吞掉，不转发、不展开、不点亮闸门。
+  从屏幕上部下拉打开通知中心不受影响。
+
+### Changed
+
+- 触发区高度默认 56dp → **58dp**。
+- 贴底路径门槛：最小位移 6dp → **4dp**，最短时长 50ms → **40ms**。
+  58dp 内已经不会被通知中心抢，门槛可以压到"手指真的动了"。
+
 ## [2.8.1] - 2026-11-05
 
 根据实机日志修掉"难触发 / 还冲突"的两个直接原因。

@@ -226,7 +226,7 @@ adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_
 | `oh_tuner_enabled` | 总开关 | `1` |
 | `oh_tuner_monitor_enabled` | 启用扩展触发（旁路监视器） | `1` |
 | `oh_tuner_recognition_mode` | 识别模式：`0` 自然 / `1` 灵敏 / `2` 防误触 | `0` |
-| `oh_tuner_zone_dp` | 底部触发区高度（dp） | `56` |
+| `oh_tuner_zone_dp` | 底部触发区高度（dp） | `58` |
 | `oh_tuner_width_ratio` | 有效宽度占比，`0.2`~`1.0` | `1.0` |
 | `oh_tuner_zone_bias` | 有效区域中心左右偏移，`-0.4`~`0.4`（正数右移） | `0` |
 | `oh_tuner_min_dy_dp` | **快甩路径**最小下滑距离（dp） | 随模式：`12` / `8` / `18` |
@@ -244,7 +244,7 @@ adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_
 | `oh_tuner_cooldown_ms` | 触发冷却（毫秒） | `500` |
 | `oh_tuner_max_duration_ms` | 最长手势时长，`0` = 不限 | `0` |
 | `oh_tuner_shade_guard` | 与下拉通知/控制中心互斥（闸门③） | `1` |
-| `oh_tuner_claim_zone` | 底部区域归单手模式，桌面下拉让位（闸门①） | `1` |
+| `oh_tuner_claim_zone` | 底部区域归单手模式：桌面下拉在区内**直接不展开通知/控制中心**（闸门①） | `1` |
 | `oh_tuner_launcher_hot_dp` | 覆盖原生胶囊条窗口高度，`0` = 不改（会吞底部内容的长按，默认关） | `0` |
 | `oh_tuner_debug` | 输出调试日志 + 记录最近手势 | `1` |
 | `oh_tuner_blur_bg` | 单手模式上方的遮罩用**模糊壁纸**（`0` = 系统原生米白） | `1` |
@@ -267,7 +267,8 @@ adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_
 - 局部抖动误判（个别 app 里报点很噪）：把 `velocity_window_ms` 提到 80~100。
 - 模糊背景没生效：确认 `blur_bg=1`；**动态壁纸**取不到位图，会保持系统米白。改完参数后要看效果，用「调试 → 预览遮罩」最快。
 - 触发区还想更大：加大 `zone_dp`（实机用 70dp 也验证过）。
-- 想在底部下拉开通知中心：把 `claim_zone` 设为 `0`（此时退回"通知中心优先"）。
+- 想在底部下拉开通知中心：把 `claim_zone` 设为 `0`。开着时底部区域**完全不展开**通知/控制中心
+  （桌面转发的事件在 SystemUI 的 binder 入口就被吞掉），想拉通知栏请从屏幕上部下拉。
 
 ## 构建
 

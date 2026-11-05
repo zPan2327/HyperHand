@@ -56,6 +56,10 @@ final class Cfg {
     static final String K_END_BOOST         = "oh_tuner_end_boost";
     /** 贴底判定的带宽（dp）：抬手点距屏幕底边不超过这个距离就算"到底了"。 */
     static final String K_END_ZONE_DP       = "oh_tuner_end_zone_dp";
+    /** 触发区改按屏幕高度比例算（覆盖到 dock 栏上方），1 = 开。 */
+    static final String K_ZONE_RATIO_MODE   = "oh_tuner_zone_ratio_mode";
+    /** 比例模式的屏幕占比，0.15 约等于 dock 栏上沿。 */
+    static final String K_ZONE_RATIO        = "oh_tuner_zone_ratio";
 
     // ---------------------------------------------------------------- 新键（2.3 外观）
     static final String K_BLUR_BG           = "oh_tuner_blur_bg";            // 遮罩用模糊壁纸
@@ -70,6 +74,9 @@ final class Cfg {
     /** 只读：SystemUI 把"系统原始时长 + 当前生效值"写这里，供设置页显示。 */
     static final String K_ANIM_INFO         = "oh_tuner_anim_info";
 
+    /** 只读：最近一次屏幕底部附近的起手高度，供设置页校准触发区高度。 */
+    static final String K_LAST_DOWN         = "oh_tuner_last_down";
+
     /** 调试动作（不落盘，只当广播参数）：trigger / stop。 */
     static final String K_ACTION            = "oh_tuner_action";
 
@@ -81,14 +88,29 @@ final class Cfg {
             K_VEL_WINDOW_MS, K_MIN_MONOTONIC, K_MIN_CONFIDENCE, K_ADAPTIVE, K_ZONE_BIAS,
             K_BLUR_BG, K_BLUR_RADIUS, K_BLUR_DIM,
             K_ANIM_SCALE, K_ANIM_CURVE,
-            K_END_BOOST, K_END_ZONE_DP
+            K_END_BOOST, K_END_ZONE_DP, K_ZONE_RATIO_MODE, K_ZONE_RATIO
     };
 
     /** 设置页提交时一并带上的键（不含只读的 K_LAST_GESTURE）。 */
     static final String[] EDITABLE_KEYS = ALL_KEYS;
 
     // ---------------------------------------------------------------- 默认值（旧键保持 2.1 原值）
-    static final float DEF_ZONE_DP = 58f;
+    /**
+     * 底部触发区高度。
+     *
+     * 这个值同时决定两件事：单手模式从哪里起手算数，以及桌面在这段区域里
+     * 下拉**不会**打开通知/控制中心。所以它必须覆盖用户实际的落点，
+     * 否则就会出现"我明明从底部拖的，却弹了通知中心"——实机日志里
+     * 这类落点集中在距底 59~78dp，58dp 的边界恰好切在中间，差 1dp 就整段失效。
+     * 72dp 能覆盖这段分布，同时仍远低于屏幕中部的手势。
+     */
+    static final float DEF_ZONE_DP = 72f;
+
+    /**
+     * 比例模式下的屏幕占比。dock 栏上沿大约在屏幕底部 15% 处，
+     * 用比例而不是固定 dp，换机型（尤其是 21:9 / 折叠屏）时边界不会跑偏。
+     */
+    static final float DEF_ZONE_RATIO = 0.15f;
     static final float DEF_MIN_DY_DP = 12f;      // 2.2：随模式变化，此处只是兜底
     static final float DEF_MAX_SLOPE = 1.2f;
     static final int DEF_COOLDOWN_MS = 500;
@@ -232,6 +254,8 @@ final class Cfg {
     int animCurve = DEF_ANIM_CURVE;
     boolean endBoost = true;
     float endZoneDp = DEF_END_ZONE_DP;
+    boolean zoneRatioMode = true;
+    float zoneRatio = DEF_ZONE_RATIO;
 
     private static Cfg sCached;
     private static long sCachedAt;
@@ -267,7 +291,17 @@ final class Cfg {
             c.mode = (int) clamp(intOf(cr, K_MODE, MODE_NATURAL), MODE_NATURAL, MODE_STABLE);
             Preset p = preset(c.mode);
 
-            c.zoneDp = clamp(floatOf(cr, K_ZONE_DP, DEF_ZONE_DP), 20f, 200f);
+            // 触发区：比例模式优先。按屏幕高度算，dock 栏上沿约 15%，
+            // 换机型时边界跟着屏幕走，不会像固定 dp 那样在小屏上吃掉半个屏幕。
+            c.zoneRatioMode = boolOf(cr, K_ZONE_RATIO_MODE, true);
+            c.zoneRatio = clamp(floatOf(cr, K_ZONE_RATIO, DEF_ZONE_RATIO), 0.05f, 0.30f);
+            if (c.zoneRatioMode) {
+                Screen zs = Screen.get(ctx);
+                float d = zs.density <= 0f ? 3f : zs.density;
+                c.zoneDp = clamp(zs.height * c.zoneRatio / d, 20f, 320f);
+            } else {
+                c.zoneDp = clamp(floatOf(cr, K_ZONE_DP, DEF_ZONE_DP), 20f, 200f);
+            }
             c.zoneBias = clamp(floatOf(cr, K_ZONE_BIAS, DEF_ZONE_BIAS), -0.5f, 0.5f);
             c.widthRatio = clamp(floatOf(cr, K_WIDTH_RATIO, DEF_WIDTH_RATIO), 0.2f, 1f);
             c.maxSlope = clamp(floatOf(cr, K_MAX_SLOPE, DEF_MAX_SLOPE), 0.2f, 5f);
@@ -395,7 +429,8 @@ final class Cfg {
                 + ", claimZone=" + claimZone + ", debug=" + debug
                 + ", blurBg=" + blurBg + "/" + blurRadiusDp + "dp/" + blurDim + "%}"
                 + ", anim=" + animScale + "x/curve" + animCurve
-                + ", endBoost=" + endBoost + "/" + endZoneDp + "dp}";
+                + ", endBoost=" + endBoost + "/" + endZoneDp + "dp"
+                + ", zoneRatio=" + (zoneRatioMode ? zoneRatio + "(" + zoneDp + "dp)" : "off") + "}";
     }
 
     /** 屏幕尺寸/密度缓存（每 3 秒刷新一次，兼容折叠屏/旋转/分屏变化）。 */

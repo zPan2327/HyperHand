@@ -551,7 +551,13 @@ public class HyperHand extends XposedModule {
 
             final float x = ev.getX();
             final float y = ev.getY();
-            if (sc.inTriggerZone(c, x, y)) {
+            final boolean inZone = sc.inTriggerZone(c, x, y);
+
+            // 校准用：把"这一次起手有多高"写出去，设置页能直接看到自己
+            // 平时的落点离触发区边界差多少，不用去翻 logcat。
+            publishDownGap(ctx, c, sc, x, y, inZone);
+
+            if (inZone) {
                 if (isOneHandedActive(ctx)) return;
                 if (isKeyguardLocked(ctx)) return;
                 sTracking = true;
@@ -608,6 +614,41 @@ public class HyperHand extends XposedModule {
             }
             sTracking = false;
             sTriggered = false;
+        }
+    }
+
+    /**
+     * 记录最近一次"底部附近"的起手高度。
+     * 只在距底 150dp 以内记，且 300ms 节流 —— 目的是让设置页能显示
+     * "你刚才那一下离触发区还差几 dp"，避免只有翻 logcat 才能校准。
+     */
+    private static volatile long sLastDownPubAt;
+
+    private static void publishDownGap(Context ctx, Cfg c, Cfg.Screen sc,
+                                       float x, float y, boolean inZone) {
+        if (!c.debug) return;
+        final float gapDp = (sc.height - y) / Math.max(sc.density, 0.1f);
+        if (gapDp < 0f || gapDp > 150f) return;
+        long now = SystemClock.uptimeMillis();
+        if (now - sLastDownPubAt < 300) return;
+        sLastDownPubAt = now;
+        try {
+            float delta = gapDp - c.zoneDp;
+            String tip;
+            if (inZone) {
+                // delta 恒为负：越接近 0 越贴边
+                tip = delta > -10f ? "贴着边界" : String.format(Locale.US, "深入区内 %.0f dp", -delta);
+            } else if (delta > 0f) {
+                tip = String.format(Locale.US, "超出区线 %.0f dp，把高度调大约这个数", delta);
+            } else {
+                // y 明明在区线内却判成区外，只可能是水平方向出了范围
+                tip = "高度够，问题在水平范围（宽度占比/左右偏置）";
+            }
+            Settings.Global.putString(ctx.getContentResolver(), Cfg.K_LAST_DOWN,
+                    String.format(Locale.US, "最近一次起手：距底 %.0f dp · %s\n区线 %.0f dp · %s",
+                            gapDp, inZone ? "区内" : "区外", c.zoneDp, tip));
+        } catch (Throwable ignored) {
+            // 纯调试显示
         }
     }
 

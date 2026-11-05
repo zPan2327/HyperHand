@@ -226,7 +226,9 @@ adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_
 | `oh_tuner_enabled` | 总开关 | `1` |
 | `oh_tuner_monitor_enabled` | 启用扩展触发（旁路监视器） | `1` |
 | `oh_tuner_recognition_mode` | 识别模式：`0` 自然 / `1` 灵敏 / `2` 防误触 | `0` |
-| `oh_tuner_zone_dp` | 底部触发区高度（dp） | `58` |
+| `oh_tuner_zone_dp` | 底部触发区高度（dp，比例模式关闭时生效） | `72` |
+| `oh_tuner_zone_ratio_mode` | 触发区按屏幕高度比例算，覆盖到 dock 栏上方 | `1` |
+| `oh_tuner_zone_ratio` | 比例模式的屏幕占比（0.15 ≈ dock 上沿） | `0.15` |
 | `oh_tuner_width_ratio` | 有效宽度占比，`0.2`~`1.0` | `1.0` |
 | `oh_tuner_zone_bias` | 有效区域中心左右偏移，`-0.4`~`0.4`（正数右移） | `0` |
 | `oh_tuner_min_dy_dp` | **快甩路径**最小下滑距离（dp） | 随模式：`12` / `8` / `18` |

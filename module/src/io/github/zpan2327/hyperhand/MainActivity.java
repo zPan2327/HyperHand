@@ -43,6 +43,7 @@ public class MainActivity extends Activity {
     private Ui.SwitchView swAdvanced;
     private Ui.SwitchView swBlur;
     private Ui.SwitchView swEndBoost;
+    private Ui.SwitchView swZoneRatio;
 
     private Ui.ChoiceRow cMode;
 
@@ -66,10 +67,12 @@ public class MainActivity extends Activity {
     private Ui.ChoiceRow cAnimCurve;
     private Ui.ValueRow rAnimScale;
     private Ui.ValueRow rEndZone;
+    private Ui.ValueRow rZoneRatio;
     private TextView animInfo;
 
     private LinearLayout advancedBox;
     private TextView gestureLog;
+    private TextView downGap;
     private TextView status;
     private TextView restartBtn;
 
@@ -103,6 +106,14 @@ public class MainActivity extends Activity {
         }
 
         setContentView(buildUi());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 用户通常的操作是"回桌面按一下 → 切回设置页看数值"，回到前台时刷新一次
+        if (downGap != null) downGap.setText(downGapText());
+        refreshGestureLog();
     }
 
     private View buildUi() {
@@ -205,12 +216,20 @@ public class MainActivity extends Activity {
         // ---------------------------------------------------------- 触发区
         root.addView(Ui.sectionTitle(this, pal, "触发区"));
         LinearLayout cardZone = Ui.card(this, pal);
-        rZone = valueRow(cardZone, "触发区高度", "从屏幕最底部往上算的高度", "dp",
-                cur.zoneDp, 0, 20, 140, 1);
+        swZoneRatio = Ui.switchRow(this, cardZone, pal, "延伸到 dock 栏上方",
+                "按屏幕高度比例算触发区，覆盖整个 dock；这块区域里的下拉不会打开通知/控制中心",
+                cur.zoneRatioMode);
+        swZoneRatio.setOnCheckedChange(dirtyOnChange);
+        rZoneRatio = valueRow(cardZone, "屏幕占比", "默认 15%，大约就是 dock 栏上沿的高度", "%",
+                cur.zoneRatio * 100f, 0, 5, 30, 1);
+        rZone = valueRow(cardZone, "触发区高度", "固定高度模式（上面的开关关闭时生效）", "dp",
+                cur.zoneDp, 0, 20, 200, 1);
         rWidth = valueRow(cardZone, "有效宽度占比", "触发区在屏幕水平方向上的占比，居中", "",
                 cur.widthRatio, 2, 0.2f, 1.0f, 0.05f);
         rBias = valueRow(cardZone, "左右偏置", "把有效区域中心左右移动，配合左右手落指习惯", "",
                 cur.zoneBias, 2, -0.4f, 0.4f, 0.05f);
+        downGap = Ui.block(this, pal, downGapText());
+        cardZone.addView(downGap);
         root.addView(cardZone);
 
         // ---------------------------------------------------------- 外观
@@ -491,6 +510,7 @@ public class MainActivity extends Activity {
         rSlowVel.label.setText(Ui.fmt(rSlowVel.value, 0));
         rConf.label.setText(Ui.fmt(rConf.value, 2));
         rZone.label.setText(Ui.fmt(rZone.value, 0));
+        rZoneRatio.label.setText(Ui.fmt(rZoneRatio.value, 0));
         rWidth.label.setText(Ui.fmt(rWidth.value, 2));
         rBias.label.setText(Ui.fmt(rBias.value, 2));
         rSlope.label.setText(Ui.fmt(rSlope.value, 1));
@@ -575,6 +595,8 @@ public class MainActivity extends Activity {
         rSlowVel.value = p.slowLowDp;
         rConf.value = p.confidence;
         rZone.value = Cfg.DEF_ZONE_DP;
+        switchWithoutMark(swZoneRatio, true);
+        rZoneRatio.value = Cfg.DEF_ZONE_RATIO * 100f;
         rWidth.value = Cfg.DEF_WIDTH_RATIO;
         rBias.value = Cfg.DEF_ZONE_BIAS;
         rSlope.value = Cfg.DEF_MAX_SLOPE;
@@ -591,6 +613,21 @@ public class MainActivity extends Activity {
         switchWithoutMark(swEndBoost, true);
         rEndZone.value = Cfg.DEF_END_ZONE_DP;
         relabel();
+    }
+
+    /**
+     * 触发区卡片底部的校准提示：显示最近一次底部附近起手离底边多少 dp。
+     * 用户在"该触发却没触发"或"区外误弹通知中心"时，一眼就能看出边界该调大还是调小。
+     */
+    private String downGapText() {
+        try {
+            String s = Settings.Global.getString(getContentResolver(), Cfg.K_LAST_DOWN);
+            if (s != null && s.trim().length() > 0) return s;
+        } catch (Throwable ignored) {
+            // 走下面的默认提示
+        }
+        return "在屏幕底部附近按一下，这里会显示那次起手离底边多少 dp，"
+                + "用来判断上面的触发区高度该调大还是调小。";
     }
 
     /** 读取 SystemUI 进程写下的最近手势记录。 */
@@ -625,6 +662,8 @@ public class MainActivity extends Activity {
         i.putExtra(Cfg.K_MIN_AVG_VEL, Ui.fmt(rSlowVel.value, 0));
         i.putExtra(Cfg.K_MIN_CONFIDENCE, Ui.fmt(rConf.value, 2));
         i.putExtra(Cfg.K_ZONE_DP, Ui.fmt(rZone.value, 0));
+        i.putExtra(Cfg.K_ZONE_RATIO_MODE, swZoneRatio.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_ZONE_RATIO, Ui.fmt(rZoneRatio.value / 100f, 3));
         i.putExtra(Cfg.K_WIDTH_RATIO, Ui.fmt(rWidth.value, 2));
         i.putExtra(Cfg.K_ZONE_BIAS, Ui.fmt(rBias.value, 2));
         i.putExtra(Cfg.K_MAX_SLOPE, Ui.fmt(rSlope.value, 1));

@@ -88,6 +88,10 @@ public class HyperHand extends XposedModule {
     static final String CLS_CC_HANDLER =
             "com.miui.systemui.controlcenter.container.ControlCenterEventHandlerImpl";
 
+    /** 桌面下拉手势真正发出事件的入口（桌面进程）。 */
+    static final String CLS_SYSUI_PROXY_WRAPPER = "com.miui.home.recents.SystemUiProxyWrapper";
+    static final String CLS_SYSUI_PROXY_WRAPPER_MIUI = "com.miui.home.recents.MiuiSystemUiProxyWrapper";
+
     static final String ACTION_SET = "io.github.zpan2327.hyperhand.action.SET";
 
     /** transaction code: ISystemUiProxy.onStatusBarMotionEvent(MotionEvent)。 */
@@ -109,6 +113,15 @@ public class HyperHand extends XposedModule {
     /** 最近一次"通知中心/控制中心下拉"信号的时间戳（uptimeMillis）。 */
     private static volatile long sShadeIntentAt;
     private static volatile long sLastShadeLogAt;
+
+    /**
+     * 桌面进程：本次手势是否从底部触发区里起手。
+     * 桌面有两处会碰下拉：StatusBarSwipeController 决定要不要接管，
+     * 接管之后由 DispatchTouchHandler → SystemUiProxyWrapper 真正把事件发出去。
+     * 只有同时卡住这两处，58dp 以内才真的不会冒出通知/控制中心。
+     */
+    private static volatile boolean sLauncherZoneDown;
+    private static volatile long sLauncherZoneDownAt;
 
     /** 手势判定状态。轨迹本身由 Recognizer 维护。 */
     private static final Recognizer sRec = new Recognizer();
@@ -931,7 +944,12 @@ public class HyperHand extends XposedModule {
                             MotionEvent ev = (MotionEvent) args.get(0);
                             if (ev.getActionMasked() != MotionEvent.ACTION_DOWN) return Hooks.PROCEED;
                             Cfg.Screen sc = Cfg.Screen.get(ctx);
-                            if (sc.inTriggerZone(c, ev.getX(), ev.getY())) {
+                            // 记下"这一次手势是不是从底部触发区里起手的"，
+                            // 后面的转发入口（SystemUiProxyWrapper）靠它决定要不要放行。
+                            // 每次 DOWN 都覆盖，所以不会跨手势残留，时间窗只是兜底。
+                            sLauncherZoneDown = sc.inTriggerZone(c, ev.getX(), ev.getY());
+                            sLauncherZoneDownAt = SystemClock.uptimeMillis();
+                            if (sLauncherZoneDown) {
                                 if (c.debug) {
                                     log(String.format(Locale.US,
                                             "launcher shade swipe declined: y=%.0f zoneTop=%.0f",
@@ -952,6 +970,64 @@ public class HyperHand extends XposedModule {
         } catch (Throwable t) {
             log("hook StatusBarSwipeController failed: " + t);
         }
+
+        // 真正的转发动作：DispatchTouchHandler 是异步的，会在 canInterceptTouch 之后
+        // 把整段 MotionEvent 直接交给 SystemUiProxyWrapper，不再回头问控制器。
+        // 所以这里再卡一刀 —— 区内起手的手势，事件根本不出桌面进程，
+        // SystemUI 那边自然既不会展开通知中心，也不会点亮 shadeGuard。
+        try {
+            Class<?> wrapper = hooks.findClass(CLS_SYSUI_PROXY_WRAPPER_MIUI, cl);
+            if (wrapper == null) {
+                wrapper = hooks.findClass(CLS_SYSUI_PROXY_WRAPPER, cl);
+            }
+            if (wrapper != null) {
+                int n = hooks.hookMethods(wrapper, "onStatusBarMotionEvent",
+                        Hooks.before(new Hooks.Before() {
+                            @Override
+                            public Object run(XposedInterface.Chain chain) {
+                                try {
+                                    if (!sLauncherZoneDown) return Hooks.PROCEED;
+                                    if (SystemClock.uptimeMillis() - sLauncherZoneDownAt > 2000) {
+                                        return Hooks.PROCEED;
+                                    }
+                                    List<Object> a = chain.getArgs();
+                                    MotionEvent e = a.size() == 1 && a.get(0) instanceof MotionEvent
+                                            ? (MotionEvent) a.get(0) : null;
+                                    // 抬手/取消时收尾，避免标记跨到下一次手势
+                                    if (e != null && (e.getActionMasked() == MotionEvent.ACTION_UP
+                                            || e.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
+                                        sLauncherZoneDown = false;
+                                    }
+                                    Context ctx = Hooks.currentApplication();
+                                    Cfg c = ctx == null ? null : Cfg.get(ctx);
+                                    if (c != null && c.debug && sShadeLogAllowed()) {
+                                        log("swallowed launcher forward (zone owned) "
+                                                + (e == null ? "?" : String.valueOf(e.getActionMasked())));
+                                    }
+                                    // 方法返回 boolean（是否发送成功），false = 不转发
+                                    return Boolean.FALSE;
+                                } catch (Throwable t) {
+                                    return Hooks.PROCEED;
+                                }
+                            }
+                        }));
+                log("SystemUiProxyWrapper#onStatusBarMotionEvent hooked (" + n + ")");
+            } else {
+                log("SystemUiProxyWrapper class not found");
+            }
+        } catch (Throwable t) {
+            log("hook SystemUiProxyWrapper failed: " + t);
+        }
+    }
+
+    /** 吞转发的日志每 800ms 最多一条，避免每个 MOVE 刷爆。 */
+    private static volatile long sLastSwallowLogAt;
+
+    private static boolean sShadeLogAllowed() {
+        long now = SystemClock.uptimeMillis();
+        if (now - sLastSwallowLogAt < 800) return false;
+        sLastSwallowLogAt = now;
+        return true;
     }
 
     // ------------------------------------------------------------------ misc

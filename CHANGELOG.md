@@ -2,6 +2,28 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.8.3] - 2026-11-05
+
+桌面底部 58dp 内的下拉改成"事件不出桌面进程"，区外完全不受影响。
+
+### Fixed
+
+- 2.8.2 只在 `StatusBarSwipeController#canInterceptTouch` 让位，
+  但桌面真正发事件的是 `DispatchTouchHandler.handleMessage` → `SystemUiProxyWrapper`
+  这条**异步**链路，它不会再回头问控制器，所以照样会发出去。
+  → 现在直接 hook `com.miui.home.recents(SystemUiProxyWrapper|MiuiSystemUiProxyWrapper)#onStatusBarMotionEvent`，
+  区内起手的手势返回 false，连 binder 都不走；`canInterceptTouch` 与 SystemUI 侧的
+  `onTransact` 保留为前后两道。
+- 用 `sLauncherZoneDown` 记录"本次手势是否从触发区内起手"（DOWN 时按同一套几何写入，
+  UP/CANCEL 清除，另加 2s 时间窗），不会跨手势残留。
+
+### 行为
+
+| 操作 | 结果 |
+|---|---|
+| 从底部 58dp 内往下拖 | 不展开通知/控制中心；拖到底进单手模式 |
+| 从 58dp 之外下拉 | 照常展开通知/控制中心 |
+
 ## [2.8.2] - 2026-11-05
 
 按"桌面底部 58dp 内不打开通知/控制中心，并在这个范围里更灵敏"调整。

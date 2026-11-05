@@ -2,6 +2,36 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.5.0] - 2026-11-05
+
+修掉"手动触发时闪一下 + 先看到一层灰"。**触发算法、互斥闸门、缩小动画与退出逻辑均未改动。**
+
+### Fixed
+
+- **入场闪灰（1 帧）**：录屏 60fps 逐帧取色实测，2.4.6 入场第 80 帧顶部亮度 223
+  （米白 `#DFDDE5`）、前后都是 67，即 16ms 的灰。三个成因分别处理：
+  1. `addView` 之后原来是 `post` 到 View 的 handler，实测延迟 13~40ms，窗口第一帧已经画完。
+     现在该 View **尚未 attach**（没有 ViewRootImpl）时**同步** `setBackground`，首帧即模糊图。
+  2. 系统会在入场动画里把主题色刷回去（logcat：`bgBefore=Color#FFDFDDE5`）。
+     现在贴好即**上锁**：hook `View#setBackgroundDrawable`，锁定 View 上系统想设非本方 drawable
+     就直接跳过原方法，系统改不动（日志 `blocked system repaint`）。不再靠反复重贴对抗。
+  3. 缩小动画最初一两帧 overlay 还没合成，露出垫底的 `background-panel` 米白。
+     该 View 通过 `BackgroundWindowManager#mViewHost` 精确认领（不靠猜类名），同样贴图+上锁。
+- **关闭开关时恢复不彻底**：原来只清缓存不解锁，可能停在模糊图上。现在解锁并把垫底层
+  还原成 `getThemeColorForBackground()`、overlay 交回系统，下次入场由系统重设。
+- **日志可观测性**：`background-panel` 与 overlay 分开节流，能分别看到是否贴图成功；
+  找不到 `mBackgroundView` 时会打印该类的字段名列表，方便换机型时定位。
+
+### Changed
+
+- `build-artifacts/Bands.java` / `Frames.java`：逐帧取色工具（按区域求平均亮度、
+  标出"浅色帧"和跳变帧），用于客观判断有没有闪，替代肉眼判断。
+
+### 验证（真机 Xiaomi 14 / OS3.0.305.0.WNCCNXM）
+
+进入→退出→进入连续两轮，429 帧逐帧取色：**浅色帧 0 帧**；系统重绘被拦下；
+首帧顶部亮度 67（模糊壁纸）；静止画面无缝无黑边。详见 docs/单手模式增强.md §6。
+
 ## [2.4.4] - 2026-11-05
 
 外观与维护性更新。触发算法、三道互斥闸门、缩小动画与退出逻辑**均未改动**。

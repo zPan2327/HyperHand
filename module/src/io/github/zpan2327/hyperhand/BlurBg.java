@@ -65,8 +65,28 @@ final class BlurBg {
     private static volatile boolean sMissingLogged;
     private static volatile long sLastApplyLogAt;
     private static volatile long sLastOverlayLogAt;
+    private static volatile long sLastPanelLogAt;
     /** 每次入场递增，旧的延迟任务据此自动作废。 */
     private static volatile int sOverlayToken;
+
+    /**
+     * 已被我们接管的 View。接管之后，系统任何 setBackground* 都会被拦掉。
+     *
+     * 这是消除闪烁的关键：实测 logcat 里出现过
+     *   blur bg applied: ... bgBefore=Color#FFDFDDE5
+     * 也就是我们贴完模糊图之后，系统在入场动画里又把主题米白刷了回去，
+     * 只能靠 620ms 后的重试再盖回来 —— 中间那几百毫秒就是肉眼看到的"灰层 + 闪"。
+     * 与其反复重贴（必然和系统重绘打架），不如让系统改不动。
+     */
+    private static volatile View sLockedOverlay;
+    private static volatile View sLockedPanel;
+    private static volatile long sLastBlockLogAt;
+    /** 诊断探针要能强行涂色，临时放行。 */
+    private static volatile boolean sAllowAnyBackground;
+
+    /** BackgroundWindowManager 实例（用来精确认出垫底那个 SurfaceControlViewHost）。 */
+    private static volatile Object sBgManager;
+    private static volatile boolean sPanelViewLogged;
 
     private BlurBg() {
     }
@@ -82,16 +102,16 @@ final class BlurBg {
             if (!sMissingLogged) {
                 sMissingLogged = true;
                 HyperHand.log("blur bg: mBackgroundView not found on "
-                        + windowManager.getClass().getName());
+                        + windowManager.getClass().getName() + " fields=" + fieldNames(windowManager));
             }
             return;
         }
-        onViewThread(view, new Runnable() {
-            @Override
-            public void run() {
-                applyOnViewInternal(view, "background-panel", 0, 0);
-            }
-        });
+        if (!sPanelViewLogged) {
+            sPanelViewLogged = true;
+            HyperHand.log("blur bg: panel view captured: " + view.getClass().getName());
+            HyperHand.log("blur bg: panel tree >>> " + dumpTree(view, 0));
+        }
+        applyNow(view, "background-panel", 0, 0);
     }
 
     /**
@@ -105,15 +125,11 @@ final class BlurBg {
         sLastLpW = lpW;
         sLastLpH = lpH;
         final int token = ++sOverlayToken;
-        // 关键：addView 之后立刻贴（此时 View 还没量测，用 LayoutParams 里的尺寸算裁切）。
-        // 位图已缓存时这一步就完成，窗口的第一帧画出来就是模糊壁纸，不会先闪一层灰。
-        onViewThread(view, new Runnable() {
-            @Override
-            public void run() {
-                applyOnViewInternal(view, tag, lpW, lpH);
-            }
-        });
-        // 之后再稀疏补几次，兜住"系统在入场末尾把颜色刷回去"的情况
+        // 关键：addView 之后立刻同步贴（此时 View 还没 attach，也没有 ViewRootImpl，
+        // 任何线程都能安全 setBackground）。位图已缓存时这一步当场完成，
+        // 窗口第一帧画出来就是模糊壁纸，不会先闪一层灰。
+        applyNow(view, tag, lpW, lpH);
+        // 之后再稀疏补几次，兜住"系统在入场末尾把颜色刷回去"的情况（正常情况下会被锁拦掉）
         scheduleOverlay(view, tag, token, 0, lpW, lpH);
     }
 
@@ -165,6 +181,121 @@ final class BlurBg {
         return b == sBitmap || b == sCropped;
     }
 
+    /**
+     * {@code View#setBackgroundDrawable} 的前置拦截。
+     *
+     * @return true 表示"跳过原方法"，即拦下这次系统上色
+     */
+    static boolean blockBackgroundOverwrite(View v, Drawable d) {
+        if (v == null || sAllowAnyBackground) return false;
+        if (v != sLockedOverlay && v != sLockedPanel) return false;
+        // 我们自己贴的图放行（否则自己的 setBackground 也被拦，永远贴不上）
+        if (d instanceof BitmapDrawable) {
+            Bitmap b = ((BitmapDrawable) d).getBitmap();
+            if (b == sBitmap || b == sCropped) return false;
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now - sLastBlockLogAt > 200) {
+            sLastBlockLogAt = now;
+            HyperHand.log("blur bg: blocked system repaint on "
+                    + (v == sLockedPanel ? "panel" : "overlay") + " -> "
+                    + describeBackground(d));
+        }
+        return true;
+    }
+
+    /** BackgroundWindowManager 构造完成：记下实例，后面据此认出垫底 View。 */
+    static void onPanelManager(Object mgr) {
+        if (mgr == null) return;
+        sBgManager = mgr;
+        sLastWm = mgr;
+        HyperHand.log("blur bg: panel manager captured: " + mgr.getClass().getName());
+        // 垫底层是常驻视图（不像 overlay 每次入场重建），提前贴好，
+        // 这样缩小动画的第一帧就已经是模糊图，不会先露一帧灰。
+        apply(mgr);
+        // 视图/位图可能比管理器晚就绪，补几次（都是幂等操作，贴过就不再贴）
+        final Object m = mgr;
+        android.os.Handler h = new android.os.Handler(Looper.getMainLooper());
+        for (final int delay : new int[] {600, 1500, 3000}) {
+            h.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    apply(m);
+                }
+            }, delay);
+        }
+    }
+
+    /**
+     * {@code SurfaceControlViewHost#setView} 之后调用。
+     * 只处理 BackgroundWindowManager 自己那个 host —— 用 mViewHost 字段比对，
+     * 不做"猜哪块 View 是遮罩"这种容易误伤别的界面的事。
+     */
+    static void onHostSetView(Object host, final View v, final int w, final int h) {
+        final Object mgr = sBgManager;
+        if (mgr == null || v == null || host == null) return;
+        // 两个条件满足任意一个就认：这个 View 是 mBackgroundView，或者它就是 mViewHost 的宿主。
+        // 不同版本里字段赋值时机不同，两条都留着更耐操。
+        Object bgView = readField(mgr, "mBackgroundView");
+        Object hv = readField(mgr, "mViewHost");
+        boolean match = (bgView != null && bgView == v) || (hv != null && hv == host);
+        if (!match) return;
+        HyperHand.log("blur bg: panel host setView " + v.getClass().getSimpleName()
+                + " " + w + "x" + h + " attached=" + v.isAttachedToWindow());
+        applyNow(v, "background-panel", w, h);
+    }
+
+    /** 反射读字段（沿父类找），读不到返回 null。 */
+    private static Object readField(Object target, String name) {
+        if (target == null) return null;
+        for (Class<?> c = target.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            try {
+                Field f = c.getDeclaredField(name);
+                f.setAccessible(true);
+                return f.get(target);
+            } catch (NoSuchFieldException e) {
+                // 继续往父类找
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /** 字段名列表，只在"某个类找不到目标字段"时打印一次，方便换机型时定位。 */
+    private static String fieldNames(Object target) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            for (Field f : target.getClass().getDeclaredFields()) {
+                if (sb.length() > 0) sb.append(',');
+                sb.append(f.getName());
+            }
+        } catch (Throwable t) {
+            return "?";
+        }
+        return sb.toString();
+    }
+
+    /** 打印一小段视图树（类名 / 尺寸 / 背景 / 透明度），用于定位"到底哪一块在画灰色"。 */
+    private static String dumpTree(View v, int depth) {
+        StringBuilder sb = new StringBuilder();
+        if (v == null || depth > 3) return sb.toString();
+        for (int i = 0; i < depth; i++) sb.append("  ");
+        sb.append(v.getClass().getSimpleName())
+                .append('[').append(v.getWidth()).append('x').append(v.getHeight()).append(']')
+                .append(" bg=").append(describeBackground(v.getBackground()))
+                .append(" a=").append(v.getAlpha())
+                .append(" vis=").append(v.getVisibility());
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            int n = Math.min(g.getChildCount(), 4);
+            for (int i = 0; i < n; i++) {
+                sb.append("\n").append(dumpTree(g.getChildAt(i), depth + 1));
+            }
+        }
+        return sb.toString();
+    }
+
 
     private static boolean applyOnViewInternal(final View view, final String tag,
                                                     final int lpW, final int lpH) {
@@ -178,12 +309,19 @@ final class BlurBg {
             return true;
         }
 
-        // 关掉开关：遮罩还原成系统主题色（背景层才有主题色，overlay 交给系统自己重画）
+        // 关掉开关：把两个遮罩还原成系统主题色/透明，并解锁
         if (!c.blurBg) {
-            if (sBitmap != null || sRequestedKey != null) {
+            final View lockedOv = sLockedOverlay;
+            final View lockedPn = sLockedPanel;
+            if (lockedOv != null || lockedPn != null || sBitmap != null) {
                 sRequestedKey = null;
                 sBitmap = null;
                 sBitmapKey = null;
+                sLockedOverlay = null;
+                sLockedPanel = null;
+                // 先解锁再改，否则会被自己的拦截挡下
+                restore(lockedPn, true);
+                restore(lockedOv, false);
                 HyperHand.log("blur bg disabled");
             }
             return true;
@@ -211,9 +349,21 @@ final class BlurBg {
             HyperHand.log("blur bg: setBackground failed on " + tag + ": " + t);
             return true;
         }
+        // 贴好就立刻上锁：之后系统再怎么刷主题色都会被拦下，不存在"灰一下再变模糊"
+        if ("background-panel".equals(tag)) {
+            sLockedPanel = view;
+        } else {
+            sLockedOverlay = view;
+        }
         long now = android.os.SystemClock.uptimeMillis();
-        if (now - sLastOverlayLogAt > 2000) {
-            sLastOverlayLogAt = now;
+        boolean isPanel = "background-panel".equals(tag);
+        long last = isPanel ? sLastPanelLogAt : sLastOverlayLogAt;
+        if (now - last > 800) {
+            if (isPanel) {
+                sLastPanelLogAt = now;
+            } else {
+                sLastOverlayLogAt = now;
+            }
             HyperHand.log("blur bg applied: " + tag + " view=" + view.getWidth() + "x"
                     + view.getHeight() + " vis=" + view.getVisibility()
                     + " bgBefore=" + before + " key=" + key
@@ -265,6 +415,14 @@ final class BlurBg {
 
     /** 诊断探针：把两个遮罩分别涂成红/绿，用来确认屏幕上那块到底是谁画的。 */
     static void probe() {
+        // 探针需要强行涂色，临时放行 4 秒（之后自动恢复"拦系统重绘"）
+        sAllowAnyBackground = true;
+        new android.os.Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                sAllowAnyBackground = false;
+            }
+        }, 4000);
         final View bg = sLastWm == null ? null : fieldView(sLastWm, "mBackgroundView");
         if (bg != null) {
             onViewThread(bg, new Runnable() {
@@ -306,6 +464,71 @@ final class BlurBg {
         } else {
             v.post(r);
         }
+    }
+
+    /** 恢复系统外观：垫底层还原主题色，overlay 交回系统（下次入场它自己会重设）。 */
+    private static void restore(final View v, final boolean panel) {
+        if (v == null) return;
+        applyNow2(v, new Runnable() {
+            @Override
+            public void run() {
+                int color = 0;
+                if (panel) color = themeColor(sBgManager);
+                v.setBackground(color == 0 ? null : new ColorDrawable(color));
+            }
+        });
+    }
+
+    private static void applyNow2(View v, Runnable r) {
+        android.os.Handler h = v.getHandler();
+        if (h != null && h.getLooper() == Looper.myLooper()) {
+            r.run();
+        } else if (h != null) {
+            v.post(r);
+        } else {
+            r.run();   // 还没 attach，直接改
+        }
+    }
+
+    /** 读系统主题色（BackgroundWindowManager#getThemeColorForBackground），拿不到返回 0。 */
+    private static int themeColor(Object mgr) {
+        if (mgr == null) return 0;
+        try {
+            for (Method m : mgr.getClass().getDeclaredMethods()) {
+                if (m.getParameterCount() != 0) continue;
+                String n = m.getName();
+                if (n.contains("getThemeColor") || n.equals("getThemeColorForBackground")) {
+                    m.setAccessible(true);
+                    Object r = m.invoke(mgr);
+                    if (r instanceof Integer) return (Integer) r;
+                }
+            }
+        } catch (Throwable t) {
+            // 拿不到就交回 null，由系统下次自行绘制
+        }
+        return 0;
+    }
+
+    /**
+     * 立刻处理（能同步就同步）。
+     *
+     * 关键点：窗口刚 addView / 刚 setView 时 View 还没 attach，也就没有 ViewRootImpl，
+     * 不存在"必须在它自己线程改 View"的约束，可以直接 setBackground。
+     * 之前这里一律 post 到 View 的 handler，实测要 13~40ms 才执行 ——
+     * 而窗口的第一帧早就画出来了，那 1~2 帧就是肉眼看到的"灰层 + 闪"。
+     */
+    private static void applyNow(final View view, final String tag, final int lpW, final int lpH) {
+        if (view == null) return;
+        if (!view.isAttachedToWindow()) {
+            applyOnViewInternal(view, tag, lpW, lpH);
+            return;
+        }
+        onViewThread(view, new Runnable() {
+            @Override
+            public void run() {
+                applyOnViewInternal(view, tag, lpW, lpH);
+            }
+        });
     }
 
     /**

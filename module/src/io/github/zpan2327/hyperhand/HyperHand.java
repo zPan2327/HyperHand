@@ -6,6 +6,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -252,8 +253,80 @@ public class HyperHand extends XposedModule {
             n += hooks.hookMethods(bg, "initView", hooker);
             n += hooks.hookMethods(bg, "updateThemeOnly", hooker);
             log("BackgroundWindowManager hooked (" + n + ")");
+
+            // 记住实例，后面用它的 mViewHost 字段精确认出"垫底那层"的 View，
+            // 不靠"猜哪块 View 是遮罩"，避免误伤别界面。
+            int c = hooks.hookConstructors(bg, Hooks.after(new Hooks.After() {
+                @Override
+                public void run(XposedInterface.Chain chain, Object result) {
+                    try {
+                        BlurBg.onPanelManager(chain.getThisObject());
+                    } catch (Throwable t) {
+                        // 纯外观
+                    }
+                }
+            }));
+            log("BackgroundWindowManager ctor hooked (" + c + ")");
         } catch (Throwable t) {
             log("hook BackgroundWindowManager failed: " + t);
+        }
+
+        // 垫底层是一个 SurfaceControlViewHost 里的普通 View，走 setView 抓最直接
+        try {
+            Class<?> sch = hooks.findClass("android.view.SurfaceControlViewHost", cl);
+            if (sch != null) {
+                int n = hooks.hookMethods(sch, "setView", Hooks.after(new Hooks.After() {
+                    @Override
+                    public void run(XposedInterface.Chain chain, Object result) {
+                        try {
+                            List<Object> args = chain.getArgs();
+                            if (args.size() < 3) return;
+                            Object v = args.get(0);
+                            if (!(v instanceof View)) return;
+                            int w = args.get(1) instanceof Integer ? (Integer) args.get(1) : 0;
+                            int h = args.get(2) instanceof Integer ? (Integer) args.get(2) : 0;
+                            BlurBg.onHostSetView(chain.getThisObject(), (View) v, w, h);
+                        } catch (Throwable t) {
+                            // 纯外观
+                        }
+                    }
+                }));
+                log("SurfaceControlViewHost#setView hooked (" + n + ")");
+            }
+        } catch (Throwable t) {
+            log("hook SurfaceControlViewHost failed: " + t);
+        }
+
+        // 关键：锁住背景。系统在入场动画里会把遮罩刷回主题米白，
+        // 反复重贴必然闪；这里直接让它改不动（只放行我们自己的模糊图）。
+        try {
+            Class<?> viewCls = hooks.findClass("android.view.View", cl);
+            if (viewCls != null) {
+                int n = hooks.hookMethods(viewCls, "setBackgroundDrawable",
+                        Hooks.before(new Hooks.Before() {
+                            @Override
+                            public Object run(XposedInterface.Chain chain) {
+                                try {
+                                    List<Object> args = chain.getArgs();
+                                    Drawable d = null;
+                                    if (args.size() > 0 && args.get(0) instanceof Drawable) {
+                                        d = (Drawable) args.get(0);
+                                    }
+                                    Object self = chain.getThisObject();
+                                    if (self instanceof View
+                                            && BlurBg.blockBackgroundOverwrite((View) self, d)) {
+                                        return null;   // 不调用原方法 = 系统改不动
+                                    }
+                                } catch (Throwable ignored) {
+                                    // 拦截失败就走原方法，不影响系统
+                                }
+                                return Hooks.PROCEED;
+                            }
+                        }));
+                log("View#setBackgroundDrawable guard (" + n + ")");
+            }
+        } catch (Throwable t) {
+            log("hook View#setBackgroundDrawable failed: " + t);
         }
 
         // 教程层窗口：真正盖在上半屏的那条窗口（Window type 2024，

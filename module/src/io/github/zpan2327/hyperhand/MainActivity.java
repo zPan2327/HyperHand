@@ -62,6 +62,10 @@ public class MainActivity extends Activity {
     private Ui.ValueRow rBlurRadius;
     private Ui.ValueRow rBlurDim;
 
+    private Ui.ChoiceRow cAnimCurve;
+    private Ui.ValueRow rAnimScale;
+    private TextView animInfo;
+
     private LinearLayout advancedBox;
     private TextView gestureLog;
     private TextView status;
@@ -211,6 +215,32 @@ public class MainActivity extends Activity {
         rBlurDim = valueRow(cardLook, "压暗程度", "在模糊壁纸上叠一层黑，拉开与缩小窗口的层次", "%",
                 cur.blurDim, 0, 0, 60, 1);
         root.addView(cardLook);
+
+        // ---------------------------------------------------------- 动画
+        root.addView(Ui.sectionTitle(this, pal, "动画"));
+        LinearLayout cardAnim = Ui.card(this, pal);
+        cAnimCurve = Ui.choiceRow(this, cardAnim, pal, "缓动曲线",
+                "缩小/恢复动画的曲线。系统原生是 ease-out expo，前段极陡",
+                Cfg.ANIM_CURVE_SHORT, cur.animCurve, new Ui.OnChoice() {
+                    @Override
+                    public void onChoice(int index) {
+                        Ui.singleChoiceDialog(MainActivity.this, pal, "缓动曲线",
+                                Cfg.ANIM_CURVE_RAW_DESC + "\n\n" + Cfg.ANIM_CURVE_SUMMARIES[index],
+                                Cfg.ANIM_CURVE_NAMES, index, new Ui.OnChoice() {
+                                    @Override
+                                    public void onChoice(int picked) {
+                                        cAnimCurve.value = picked;
+                                        cAnimCurve.label.setText(Cfg.ANIM_CURVE_SHORT[picked]);
+                                        markDirty();
+                                    }
+                                });
+                    }
+                });
+        rAnimScale = valueRow(cardAnim, "动画时长", "1.00 = 系统原生 600ms；越大越慢", "×",
+                cur.animScale, 2, 0.60f, 2.00f, 0.05f);
+        animInfo = Ui.block(this, pal, animInfoText());
+        cardAnim.addView(animInfo);
+        root.addView(cardAnim);
 
         // ---------------------------------------------------------- 互斥
         root.addView(Ui.sectionTitle(this, pal, "互斥"));
@@ -445,6 +475,22 @@ public class MainActivity extends Activity {
         rHotDp.label.setText(Ui.fmt(rHotDp.value, 0));
         rBlurRadius.label.setText(Ui.fmt(rBlurRadius.value, 0));
         rBlurDim.label.setText(Ui.fmt(rBlurDim.value, 0));
+        rAnimScale.label.setText(Ui.fmt(rAnimScale.value, 2));
+    }
+
+    /**
+     * 动画区底部的说明：优先显示 SystemUI 写回来的真实系统值
+     * （Settings.Global 的 oh_tuner_anim_info），读不到就退回已知的静态数据。
+     */
+    private String animInfoText() {
+        try {
+            String live = Settings.Global.getString(getContentResolver(), Cfg.K_ANIM_INFO);
+            if (live != null && live.trim().length() > 0) return live;
+        } catch (Throwable ignored) {
+            // 下面走静态说明
+        }
+        return "系统原生 " + Cfg.SYSTEM_ANIM_MS + "ms · " + Cfg.ANIM_CURVE_RAW_DESC
+                + "\n保存并在底部下滑一次后，这里会显示实际生效的时长。";
     }
 
     private void markDirty() {
@@ -488,6 +534,9 @@ public class MainActivity extends Activity {
         rHotDp.value = Cfg.DEF_LAUNCHER_HOT_DP;
         rBlurRadius.value = Cfg.DEF_BLUR_RADIUS;
         rBlurDim.value = Cfg.DEF_BLUR_DIM;
+        cAnimCurve.value = Cfg.DEF_ANIM_CURVE;
+        cAnimCurve.label.setText(Cfg.ANIM_CURVE_SHORT[Cfg.DEF_ANIM_CURVE]);
+        rAnimScale.value = Cfg.DEF_ANIM_SCALE;
         relabel();
     }
 
@@ -534,11 +583,22 @@ public class MainActivity extends Activity {
         i.putExtra(Cfg.K_BLUR_BG, swBlur.isChecked() ? "1" : "0");
         i.putExtra(Cfg.K_BLUR_RADIUS, Ui.fmt(rBlurRadius.value, 0));
         i.putExtra(Cfg.K_BLUR_DIM, Ui.fmt(rBlurDim.value, 0));
+        i.putExtra(Cfg.K_ANIM_SCALE, Ui.fmt(rAnimScale.value, 2));
+        i.putExtra(Cfg.K_ANIM_CURVE, String.valueOf(cAnimCurve.value));
         sendBroadcast(i);
 
         status.setText("已提交到系统界面进程，立即生效。可下滑底部区域测试，"
                 + "点「最近手势」查看判定结果。");
         Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+        if (animInfo != null) {
+            // 广播是异步的，SystemUI 写回新的生效值要一点点时间
+            animInfo.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (animInfo != null) animInfo.setText(animInfoText());
+                }
+            }, 600);
+        }
     }
 
     // ---------------------------------------------------------------- 重启作用域

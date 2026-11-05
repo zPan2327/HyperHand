@@ -2,6 +2,41 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.7.0] - 2026-11-05
+
+把"缩小 / 恢复"动画的实测参数公开出来，并支持在不改系统窗口动画的前提下调缓它。
+触发算法、互斥闸门、遮罩外观均未改动。
+
+### Added
+
+- **动画参数实测**（dexdump + aapt2 + animator 计时探针）：
+  - 入场与出场共用 `OneHandedDisplayAreaOrganizer.mEnterExitAnimationDurationMs`，
+    默认 **600ms**（资源 `config_one_handed_translate_animation_duration` = 600，
+    可被系统属性 `persist.debug.one_handed_translate_animation_duration` 覆盖，构造时只读一次）。
+  - 一次切换会起 **8 个 animator**（每个 display area 一个），同一毫秒内 start。
+  - 曲线是 `f(t) = 1 + 2^(-10t)·sin((t-4)π/8)`，**t=0.1 已走完 50% 位移、t=0.3 走完 88%**，
+    这才是"傻快"的真正原因；单纯拉长时长只会变成"冲到位再干等"。
+- 设置页新增「动画」分组：
+  - 缓动曲线：原生 / 柔和（ease-out cubic，默认）/ 平缓（smoothstep）
+  - 动画时长倍率：0.60 ~ 2.00（默认 ×1.10 → 660ms）
+  - 卡片底部回显真实生效值（`oh_tuner_anim_info`，由 SystemUI 写入）：系统原生时长、当前值、上次实测。
+
+### Changed
+
+- `AnimCtl` 新增：hook `OneHandedDisplayAreaOrganizer` 构造器改写时长字段、
+  hook `setupOneHandedTransitionAnimator` 替换 interpolator、给 animator 挂 start/end 计时探针。
+  只作用于单手模式这一条动画，不碰 `ValueAnimator` 全局、不碰窗口动画缩放。
+- 保存配置后立即重算时长字段（`AnimCtl.onConfigChanged`），无需重启进程。
+
+### 验证（真机 Xiaomi 14 / OS3.0.305.0.WNCCNXM）
+
+| 配置 | 请求 | 实测 start→end |
+|---|---|---|
+| ×1.00 + 原生曲线 | 600ms | 614 ~ 626ms |
+| ×1.10 + 柔和曲线 | 660ms | 674 ~ 691ms |
+
+两者差值 60ms 与设定增量一致；日志见 `anim: duration 600ms -> 660ms (x1.10), curve=柔和`。
+
 ## [2.6.1] - 2026-11-05
 
 修掉"缩小动画还没结束，上半屏就先蒙了一层半透明灰"。触发算法与互斥闸门未改动。

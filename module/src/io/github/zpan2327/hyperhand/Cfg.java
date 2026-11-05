@@ -56,6 +56,14 @@ final class Cfg {
     static final String K_BLUR_RADIUS       = "oh_tuner_blur_radius";        // 模糊半径(dp)
     static final String K_BLUR_DIM          = "oh_tuner_blur_dim";           // 模糊壁纸压暗程度(%)
 
+    // ---------------------------------------------------------------- 新键（2.7 动画）
+    /** 缩小/恢复动画的时长倍率（1.0 = 系统原生的 600ms）。 */
+    static final String K_ANIM_SCALE        = "oh_tuner_anim_scale";
+    /** 动画曲线：0 原生 / 1 柔和 / 2 平缓。 */
+    static final String K_ANIM_CURVE        = "oh_tuner_anim_curve";
+    /** 只读：SystemUI 把"系统原始时长 + 当前生效值"写这里，供设置页显示。 */
+    static final String K_ANIM_INFO         = "oh_tuner_anim_info";
+
     /** 调试动作（不落盘，只当广播参数）：trigger / stop。 */
     static final String K_ACTION            = "oh_tuner_action";
 
@@ -65,7 +73,8 @@ final class Cfg {
             K_LAUNCHER_HOT_DP, K_DEBUG,
             K_MODE, K_MIN_VEL_DP, K_SLOW_ENABLED, K_SLOW_DY_DP, K_MIN_AVG_VEL, K_MAX_VELOCITY,
             K_VEL_WINDOW_MS, K_MIN_MONOTONIC, K_MIN_CONFIDENCE, K_ADAPTIVE, K_ZONE_BIAS,
-            K_BLUR_BG, K_BLUR_RADIUS, K_BLUR_DIM
+            K_BLUR_BG, K_BLUR_RADIUS, K_BLUR_DIM,
+            K_ANIM_SCALE, K_ANIM_CURVE
     };
 
     /** 设置页提交时一并带上的键（不含只读的 K_LAST_GESTURE）。 */
@@ -88,6 +97,30 @@ final class Cfg {
     /** 2.3 外观：默认开模糊壁纸；半径 24dp、压暗 12%（保留层次又不至于发灰）。 */
     static final float DEF_BLUR_RADIUS = 24f;
     static final float DEF_BLUR_DIM = 12f;
+
+    // ---------------------------------------------------------------- 2.7 动画
+    /** HyperOS 上 config_one_handed_translate_animation_duration 的默认值，仅作说明用。 */
+    static final int SYSTEM_ANIM_MS = 600;
+
+    static final int ANIM_CURVE_NATIVE = 0;
+    static final int ANIM_CURVE_SOFT = 1;
+    static final int ANIM_CURVE_SMOOTH = 2;
+
+    static final String[] ANIM_CURVE_NAMES = new String[] {
+            "原生（系统曲线）", "柔和（ease-out）", "平缓（smoothstep）"
+    };
+    static final String[] ANIM_CURVE_SHORT = new String[] {"原生", "柔和", "平缓"};
+    static final String[] ANIM_CURVE_SUMMARIES = new String[] {
+            "系统自带曲线：前 10% 时间就走完 50% 位移，所以显得冲",
+            "前段不再一步到位，中段更匀速，整体更接近 iOS 的收放感",
+            "起手与收尾都减速，位移最均匀，但起手会有一小段\"还没动\"",
+    };
+    /** 原生曲线的一句话描述，设置页直接显示。 */
+    static final String ANIM_CURVE_RAW_DESC = "曲线 ease-out expo（10% 时间 → 50% 位移）";
+
+    /** 默认把时长拉长 10% 并换成柔和曲线：先解决"傻快"，又不至于拖沓。 */
+    static final float DEF_ANIM_SCALE = 1.10f;
+    static final int DEF_ANIM_CURVE = ANIM_CURVE_SOFT;
 
     static final int MODE_NATURAL = 0;
     static final int MODE_SENSITIVE = 1;
@@ -158,6 +191,8 @@ final class Cfg {
     float launcherHotDp = DEF_LAUNCHER_HOT_DP;
     float blurRadiusDp = DEF_BLUR_RADIUS;
     float blurDim = DEF_BLUR_DIM;
+    float animScale = DEF_ANIM_SCALE;
+    int animCurve = DEF_ANIM_CURVE;
 
     private static Cfg sCached;
     private static long sCachedAt;
@@ -225,6 +260,11 @@ final class Cfg {
             c.blurBg = boolOf(cr, K_BLUR_BG, true);
             c.blurRadiusDp = clamp(floatOf(cr, K_BLUR_RADIUS, DEF_BLUR_RADIUS), 0f, 80f);
             c.blurDim = clamp(floatOf(cr, K_BLUR_DIM, DEF_BLUR_DIM), 0f, 70f);
+
+            // 动画：倍率 0.6~2.0，越界/NaN 一律回落到默认；曲线 0~2。
+            c.animScale = clamp(floatOf(cr, K_ANIM_SCALE, DEF_ANIM_SCALE), 0.6f, 2.0f);
+            c.animCurve = (int) clamp(intOf(cr, K_ANIM_CURVE, DEF_ANIM_CURVE),
+                    ANIM_CURVE_NATIVE, ANIM_CURVE_SMOOTH);
         } catch (Throwable t) {
             Log.w(HyperHand.TAG, "load config failed, use defaults", t);
         }
@@ -310,7 +350,8 @@ final class Cfg {
                 + ", slope=" + maxSlope + ", cooldown=" + cooldownMs
                 + ", launcherHotDp=" + launcherHotDp + ", shadeGuard=" + shadeGuard
                 + ", claimZone=" + claimZone + ", debug=" + debug
-                + ", blurBg=" + blurBg + "/" + blurRadiusDp + "dp/" + blurDim + "%}";
+                + ", blurBg=" + blurBg + "/" + blurRadiusDp + "dp/" + blurDim + "%}"
+                + ", anim=" + animScale + "x/curve" + animCurve;
     }
 
     /** 屏幕尺寸/密度缓存（每 3 秒刷新一次，兼容折叠屏/旋转/分屏变化）。 */

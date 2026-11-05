@@ -194,7 +194,14 @@ public class HyperHand extends XposedModule {
         // 4) 遮罩外观：把米白色换成模糊壁纸
         hookBackground(cl);
 
-        // 5) 提前注册配置接收器：否则要等第一次触摸才会注册，
+        // 5) 缩小/恢复动画：读系统时长并按其曲线调缓（只动单手模式这一条动画）
+        try {
+            AnimCtl.hook(cl, hooks);
+        } catch (Throwable t) {
+            log("hook anim failed: " + t);
+        }
+
+        // 6) 提前注册配置接收器：否则要等第一次触摸才会注册，
         //    设置页的「保存」「预览遮罩」在冷启动后第一次点会没有反应。
         registerReceiverLater();
     }
@@ -808,6 +815,8 @@ public class HyperHand extends XposedModule {
                             }
                             Cfg.invalidate();
                             log("config applied (" + n + " keys): " + Cfg.get(context));
+                            // 动画参数改了要立刻落到 organizer 的字段上，否则要等进程重启
+                            AnimCtl.onConfigChanged(context);
                         } catch (Throwable t) {
                             log("apply config failed: " + t);
                         }

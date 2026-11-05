@@ -254,7 +254,7 @@ adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_
 | `oh_tuner_anim_curve` | 动画曲线：`0` 原生 / `1` 舒缓 / `2` 柔和 / `3` 标准 / `4` 迅捷 | `3` |
 | `oh_tuner_anim_info` | 只读，SystemUI 回写"系统原生值 + 当前值 + 上次实测"，设置页直接显示 | —— |
 | `oh_tuner_end_boost` | 贴底才算单手模式（`0` 回到纯速度/距离判定） | `1` |
-| `oh_tuner_end_zone_dp` | 抬手点距屏幕底边小于该值算"到底" | `24` |
+| `oh_tuner_end_zone_dp` | 抬手点距屏幕底边小于该值算"到底" | `32` |
 
 > "随模式"的三组值：自然 `0` / 灵敏 `1` / 防误触 `2`。设置页里点某一项改了值，这一项就变成显式配置，
 > 不再跟随模式；点「恢复默认参数」会回到自然模式的推荐值。

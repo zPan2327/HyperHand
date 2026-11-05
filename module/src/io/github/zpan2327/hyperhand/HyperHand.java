@@ -551,13 +551,20 @@ public class HyperHand extends XposedModule {
                 sRec.add(ev.getHistoricalEventTime(i), ev.getHistoricalX(i), ev.getHistoricalY(i));
             }
             sRec.add(now, ev.getX(), ev.getY());
+
+            // 提前触发：手指一碰到屏幕底边就立刻判定，不等抬手。
+            // 等 UP 再判的话，在可滚动的页面上这几十毫秒里内容已经跟着滚了一段，
+            // 观感上就是"既滚了页面又进了单手模式"。到边即判能把这段滚动压到最短。
+            if (c.endBoost && !sTriggered && ev.getY() >= sc.height - c.endZoneDp * sc.density) {
+                decide(handler, ctx, c, sc, now, true);
+            }
             return;
         }
 
         if (action == MotionEvent.ACTION_UP) {
             if (sTracking && !sTriggered) {
                 sRec.add(now, ev.getX(), ev.getY());
-                decideOnUp(handler, ctx, c, sc, now);
+                decide(handler, ctx, c, sc, now, false);
             }
             sTracking = false;
             sTriggered = false;
@@ -574,9 +581,21 @@ public class HyperHand extends XposedModule {
         }
     }
 
-    /** 抬手时统一判定，避免"某次 MOVE 恰好没满足条件"导致时灵时不灵。 */
-    private static void decideOnUp(Object handler, Context ctx, Cfg c, Cfg.Screen sc, long now) {
+    /**
+     * 统一判定入口。
+     *
+     * @param early true = 手指刚碰到屏幕底边时的提前判定（MOVE 阶段）；
+     *              false = 抬手判定（UP 阶段）。
+     *              提前判定没成功时静默返回，不写日志也不发布，等下一帧或抬手再判，
+     *              否则一帧一条会把调试日志刷爆。
+     */
+    private static void decide(Object handler, Context ctx, Cfg c, Cfg.Screen sc, long now,
+                               boolean early) {
         final Recognizer.Result r = sRec.finish(now, c, sc);
+
+        if (!r.trigger && early) {
+            return;
+        }
 
         // 互斥：本次手势期间出现过通知中心/控制中心下拉信号 → 让位给原生
         if (r.trigger && c.shadeGuard && sShadeIntentAt >= (sDownTime - 60)) {
@@ -590,7 +609,7 @@ public class HyperHand extends XposedModule {
         }
 
         if (c.debug) {
-            log("GESTURE mode=" + c.mode + " " + r.oneLine() + " -> "
+            log("GESTURE mode=" + c.mode + (early ? " early " : " ") + r.oneLine() + " -> "
                     + (r.trigger ? "TRIGGER(" + r.path + ")" : "SKIP(" + r.reason + ")"));
         }
         publish(ctx, c, r, r.reason);

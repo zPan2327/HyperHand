@@ -83,10 +83,13 @@ final class BlurBg {
     private static volatile long sLastBlockLogAt;
     /** 诊断探针要能强行涂色，临时放行。 */
     private static volatile boolean sAllowAnyBackground;
+    /** overlay 已经改为"透明、由垫底层出图"的状态。 */
+    private static volatile boolean sOverlayTransparent;
 
     /** BackgroundWindowManager 实例（用来精确认出垫底那个 SurfaceControlViewHost）。 */
     private static volatile Object sBgManager;
     private static volatile boolean sPanelViewLogged;
+    private static volatile int sOverlayDumped;
 
     private BlurBg() {
     }
@@ -129,8 +132,25 @@ final class BlurBg {
         // 任何线程都能安全 setBackground）。位图已缓存时这一步当场完成，
         // 窗口第一帧画出来就是模糊壁纸，不会先闪一层灰。
         applyNow(view, tag, lpW, lpH);
+        // 前两次入场打印整棵视图树：确认"灰色"是不是某一层子 View 画的
+        if (sOverlayDumped < 2) {
+            sOverlayDumped++;
+            HyperHand.log("blur bg: overlay tree(" + sOverlayDumped + ") >>> " + dumpTree(view, 0));
+        }
         // 之后再稀疏补几次，兜住"系统在入场末尾把颜色刷回去"的情况（正常情况下会被锁拦掉）
         scheduleOverlay(view, tag, token, 0, lpW, lpH);
+        // 兜底：个别机型可能抓不到垫底层，那样 overlay 保持透明就没有模糊图了。
+        // 400ms 后仍未接管垫底层，就让 overlay 自己出图（退回 2.5.0 的行为）。
+        new android.os.Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (sLockedPanel == null && sLastOverlay == view) {
+                    sOverlayTransparent = false;
+                    applyNow(view, tag, lpW, lpH);
+                    HyperHand.log("blur bg: no panel captured, fallback to overlay blur");
+                }
+            }
+        }, 400);
     }
 
     private static final int[] OVERLAY_DELAYS = new int[] {260, 620, 1100, 1800};
@@ -181,6 +201,16 @@ final class BlurBg {
         return b == sBitmap || b == sCropped;
     }
 
+    private static boolean isTransparent(Drawable d) {
+        if (d == null) return true;
+        if (d instanceof ColorDrawable) return (((ColorDrawable) d).getColor() >>> 24) == 0;
+        return false;
+    }
+
+    private static boolean isTransparentBg(View v) {
+        return isTransparent(v.getBackground());
+    }
+
     /**
      * {@code View#setBackgroundDrawable} 的前置拦截。
      *
@@ -189,6 +219,8 @@ final class BlurBg {
     static boolean blockBackgroundOverwrite(View v, Drawable d) {
         if (v == null || sAllowAnyBackground) return false;
         if (v != sLockedOverlay && v != sLockedPanel) return false;
+        // overlay 走"透明"策略时，允许我们自己把它清成透明
+        if (v == sLockedOverlay && sOverlayTransparent && isTransparent(d)) return false;
         // 我们自己贴的图放行（否则自己的 setBackground 也被拦，永远贴不上）
         if (d instanceof BitmapDrawable) {
             Bitmap b = ((BitmapDrawable) d).getBitmap();
@@ -245,6 +277,22 @@ final class BlurBg {
         applyNow(v, "background-panel", w, h);
     }
 
+    /** 教程层在缓存就绪前先记下来，生成完再补一次。 */
+    static void dumpTutorialOnce(Object handler) {
+        if (handler == null || sTutorialDumped >= 3) return;
+        try {
+            Object v = readField(handler, "mTutorialView");
+            if (!(v instanceof View)) return;
+            sTutorialDumped++;
+            HyperHand.log("blur bg: tutorial tree(" + sTutorialDumped + ") >>> "
+                    + dumpTree((View) v, 0));
+        } catch (Throwable t) {
+            // 纯诊断
+        }
+    }
+
+    private static volatile int sTutorialDumped;
+
     /** 反射读字段（沿父类找），读不到返回 null。 */
     private static Object readField(Object target, String name) {
         if (target == null) return null;
@@ -279,7 +327,7 @@ final class BlurBg {
     /** 打印一小段视图树（类名 / 尺寸 / 背景 / 透明度），用于定位"到底哪一块在画灰色"。 */
     private static String dumpTree(View v, int depth) {
         StringBuilder sb = new StringBuilder();
-        if (v == null || depth > 3) return sb.toString();
+        if (v == null || depth > 5) return sb.toString();
         for (int i = 0; i < depth; i++) sb.append("  ");
         sb.append(v.getClass().getSimpleName())
                 .append('[').append(v.getWidth()).append('x').append(v.getHeight()).append(']')
@@ -288,7 +336,7 @@ final class BlurBg {
                 .append(" vis=").append(v.getVisibility());
         if (v instanceof android.view.ViewGroup) {
             android.view.ViewGroup g = (android.view.ViewGroup) v;
-            int n = Math.min(g.getChildCount(), 4);
+            int n = Math.min(g.getChildCount(), 6);
             for (int i = 0; i < n; i++) {
                 sb.append("\n").append(dumpTree(g.getChildAt(i), depth + 1));
             }
@@ -327,6 +375,26 @@ final class BlurBg {
             return true;
         }
 
+        final boolean isPanel = "background-panel".equals(tag);
+
+        // overlay 盖在应用**之上**：如果它自己带模糊图，缩小动画还没开始时
+        // 就会先蒙一层半透明的灰在应用上方（真机第 337 帧就是这个现象）。
+        // 所以只要垫底层已经能画模糊图，overlay 就保持透明，
+        // 让模糊只从"应用缩下去后露出的缝"里出现，动画节奏与原厂一致。
+        if (!isPanel) {
+            sLockedOverlay = view;
+            sOverlayTransparent = true;
+            if (!isTransparentBg(view)) {
+                try {
+                    view.setBackground(null);
+                    HyperHand.log("blur bg: overlay -> transparent (panel carries the blur)");
+                } catch (Throwable t) {
+                    // 纯外观
+                }
+            }
+            return true;
+        }
+
         final String key = keyOf(ctx, c);
         final Bitmap bmp = sBitmap;
         if (bmp == null || !key.equals(sBitmapKey) || bmp.isRecycled()) {
@@ -350,13 +418,12 @@ final class BlurBg {
             return true;
         }
         // 贴好就立刻上锁：之后系统再怎么刷主题色都会被拦下，不存在"灰一下再变模糊"
-        if ("background-panel".equals(tag)) {
+        if (isPanel) {
             sLockedPanel = view;
         } else {
             sLockedOverlay = view;
         }
         long now = android.os.SystemClock.uptimeMillis();
-        boolean isPanel = "background-panel".equals(tag);
         long last = isPanel ? sLastPanelLogAt : sLastOverlayLogAt;
         if (now - last > 800) {
             if (isPanel) {

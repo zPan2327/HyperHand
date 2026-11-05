@@ -2,6 +2,32 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.6.1] - 2026-11-05
+
+修掉"缩小动画还没结束，上半屏就先蒙了一层半透明灰"。触发算法与互斥闸门未改动。
+
+### Fixed
+
+- **动画期间的半透明灰层**：`one-handed-tutorial-overlay` 的 alpha 从 0 淡入，且它盖在
+  应用**之上**；2.5 把模糊图贴在这层上，于是动画还没开始时，半透明的模糊图就已经压在应用上方
+  （逐帧实测：触发后第 337 帧，桌面下半段数值未变，顶部 1~8% 已从 `128 111 85…` 压到 `103 88 76…`）。
+  → 现在把模糊图改贴到**垫底层**（`background-panel`，在应用窗口之下），
+  tutorial overlay **背景设为透明**（只保留提示文字/图标）。
+  于是只有应用真的缩小、让出缝隙时才会露出模糊，曝光节奏与动画一致；稳定态观感不变。
+- 兜底：若 400ms 后仍未抓到垫底层（个别机型/裁剪版本），自动退回"overlay 自己贴模糊图"。
+
+### Changed
+
+- 移除只在调试时使用的 `hh_swipe` 入口（它会以 root 执行 `input swipe`，
+  放在 release 包里等于给任何能启动 Activity 的应用留了 root 执行通道）。
+
+### 验证（真机 Xiaomi 14 / OS3.0.305.0.WNCCNXM）
+
+- 日志：`overlay window added` 之后不再出现 `applied: one-handed-tutorial-overlay`；
+  只有 `applied: background-panel ... bgBefore=Color#FFDFDDE5`。
+- 稳定态截图：上半屏模糊壁纸、与下方无缝、无黑边。
+- 系统刷回米白仍被拦：`blocked system repaint on overlay`。
+
 ## [2.5.0] - 2026-11-05
 
 修掉"手动触发时闪一下 + 先看到一层灰"。**触发算法、互斥闸门、缩小动画与退出逻辑均未改动。**

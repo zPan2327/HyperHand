@@ -380,6 +380,7 @@ public class HyperHand extends XposedModule {
                     @Override
                     public void run(XposedInterface.Chain chain, Object result) {
                         try {
+                            BlurBg.dumpTutorialOnce(chain.getThisObject());
                             BlurBg.refreshOverlay();
                         } catch (Throwable t) {
                             // 纯外观，失败不影响主流程

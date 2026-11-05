@@ -220,7 +220,7 @@ public class MainActivity extends Activity {
         root.addView(Ui.sectionTitle(this, pal, "动画"));
         LinearLayout cardAnim = Ui.card(this, pal);
         cAnimCurve = Ui.choiceRow(this, cardAnim, pal, "缓动曲线",
-                "缩小/恢复动画的曲线。系统原生是 ease-out expo，前段极陡",
+                "按起步速度从慢到快排列；改完即时生效，可来回对比",
                 Cfg.ANIM_CURVE_SHORT, cur.animCurve, new Ui.OnChoice() {
                     @Override
                     public void onChoice(int index) {
@@ -232,12 +232,29 @@ public class MainActivity extends Activity {
                                         cAnimCurve.value = picked;
                                         cAnimCurve.label.setText(Cfg.ANIM_CURVE_SHORT[picked]);
                                         markDirty();
+                                        applyAnimNow();
                                     }
                                 });
                     }
                 });
-        rAnimScale = valueRow(cardAnim, "动画时长", "1.00 = 系统原生 600ms；越大越慢", "×",
+        rAnimScale = valueRow(cardAnim, "动画时长", "1.00 = 系统原生 600ms；越大越慢，改动即时生效", "×",
                 cur.animScale, 2, 0.60f, 2.00f, 0.05f);
+        // 覆盖通用数值行：动画时长要即时下发，方便一边看一边调
+        rAnimScale.row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Ui.numberDialog(MainActivity.this, pal, "动画时长", "×", 0.60f, 2.00f, 0.05f, 2,
+                        rAnimScale.value, new Ui.OnNumber() {
+                            @Override
+                            public void onNumber(float v2) {
+                                rAnimScale.value = v2;
+                                rAnimScale.label.setText(Ui.fmt(v2, 2));
+                                markDirty();
+                                applyAnimNow();
+                            }
+                        });
+            }
+        });
         animInfo = Ui.block(this, pal, animInfoText());
         cardAnim.addView(animInfo);
         root.addView(cardAnim);
@@ -476,6 +493,30 @@ public class MainActivity extends Activity {
         rBlurRadius.label.setText(Ui.fmt(rBlurRadius.value, 0));
         rBlurDim.label.setText(Ui.fmt(rBlurDim.value, 0));
         rAnimScale.label.setText(Ui.fmt(rAnimScale.value, 2));
+    }
+
+    /**
+     * 动画参数单独即时下发：调曲线/时长本来就是为了"试手感"，
+     * 每次都要点保存再回桌面下滑一次太折腾，所以这两项改了就直接生效。
+     */
+    private void applyAnimNow() {
+        try {
+            Intent i = new Intent(HyperHand.ACTION_SET);
+            i.setPackage("com.android.systemui");
+            i.putExtra(Cfg.K_ANIM_CURVE, String.valueOf(cAnimCurve.value));
+            i.putExtra(Cfg.K_ANIM_SCALE, Ui.fmt(rAnimScale.value, 2));
+            sendBroadcast(i);
+            if (animInfo != null) {
+                animInfo.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (animInfo != null) animInfo.setText(animInfoText());
+                    }
+                }, 400);
+            }
+        } catch (Throwable t) {
+            // 纯外观，发不出去就等下次保存
+        }
     }
 
     /**

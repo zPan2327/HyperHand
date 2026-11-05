@@ -304,6 +304,10 @@ final class AnimCtl {
                 return new EaseOutCubic();
             case Cfg.ANIM_CURVE_SMOOTH:
                 return new SmoothStep();
+            case Cfg.ANIM_CURVE_STANDARD:
+                return new EaseOutQuart();
+            case Cfg.ANIM_CURVE_SNAPPY:
+                return new EaseOutQuint();
             case Cfg.ANIM_CURVE_NATIVE:
             default:
                 return null;    // null = 保留系统 OneHandedInterpolator
@@ -312,7 +316,8 @@ final class AnimCtl {
 
     /**
      * ease-out cubic：1 - (1-t)^3。
-     * t=0.3 时 0.657（系统原生 0.876），前段不再"一步到位"，中段更匀速。
+     * t=0.1 → 27%，t=0.3 → 66%，t=0.5 → 88%。
+     * 中段（0.2~0.6）几乎是直线，位移太均匀，容易觉得"机械、线性"。
      */
     static final class EaseOutCubic implements TimeInterpolator {
         @Override
@@ -325,9 +330,39 @@ final class AnimCtl {
     }
 
     /**
+     * ease-out quart：1 - (1-t)^4。
+     * t=0.1 → 34%，t=0.3 → 76%，t=0.5 → 94%。
+     * 比 cubic 更快起步、更快收进尾部，中段不再是直线 —— 既有加速感，又不至于像原生那样一冲到底。
+     */
+    static final class EaseOutQuart implements TimeInterpolator {
+        @Override
+        public float getInterpolation(float t) {
+            if (t <= 0f) return 0f;
+            if (t >= 1f) return 1f;
+            float u = 1f - t;
+            float u2 = u * u;
+            return 1f - u2 * u2;
+        }
+    }
+
+    /**
+     * ease-out quint：1 - (1-t)^5。
+     * t=0.1 → 41%，t=0.3 → 83%，节奏最接近系统原生，但前段没那么极端。
+     */
+    static final class EaseOutQuint implements TimeInterpolator {
+        @Override
+        public float getInterpolation(float t) {
+            if (t <= 0f) return 0f;
+            if (t >= 1f) return 1f;
+            float u = 1f - t;
+            float u2 = u * u;
+            return 1f - u2 * u2 * u;
+        }
+    }
+
+    /**
      * smoothstep：3t² - 2t³，起手和收尾都缓。
-     * t=0.3 时 0.216，位移分布最均匀，也最不容易"傻快"，
-     * 但起手会有一小段"还没动"的错觉。
+     * t=0.1 → 3%，t=0.3 → 22%，位移最均匀，但起手会有一小段"还没动"。
      */
     static final class SmoothStep implements TimeInterpolator {
         @Override

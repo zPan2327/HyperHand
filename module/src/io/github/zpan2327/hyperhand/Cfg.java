@@ -102,25 +102,37 @@ final class Cfg {
     /** HyperOS 上 config_one_handed_translate_animation_duration 的默认值，仅作说明用。 */
     static final int SYSTEM_ANIM_MS = 600;
 
+    /**
+     * 曲线按"前段推进速度"从慢到快排列，方便顺着试：
+     * 舒缓（起手慢）→ 柔和 → 标准 → 迅捷 → 原生（起手最冲）。
+     *
+     * 括号里是 t=0.1 / t=0.3 时的位移完成度，这是判断"傻快"还是"线性"的直接依据：
+     * 前段太快 = 傻快，中段接近直线 = 线性。
+     */
     static final int ANIM_CURVE_NATIVE = 0;
     static final int ANIM_CURVE_SOFT = 1;
     static final int ANIM_CURVE_SMOOTH = 2;
+    static final int ANIM_CURVE_STANDARD = 3;
+    static final int ANIM_CURVE_SNAPPY = 4;
 
     static final String[] ANIM_CURVE_NAMES = new String[] {
-            "原生（系统曲线）", "柔和（ease-out）", "平缓（smoothstep）"
+            "原生（系统曲线）", "舒缓（smoothstep）", "柔和（ease-out cubic）",
+            "标准（ease-out quart）", "迅捷（ease-out quint）"
     };
-    static final String[] ANIM_CURVE_SHORT = new String[] {"原生", "柔和", "平缓"};
+    static final String[] ANIM_CURVE_SHORT = new String[] {"原生", "舒缓", "柔和", "标准", "迅捷"};
     static final String[] ANIM_CURVE_SUMMARIES = new String[] {
-            "系统自带曲线：前 10% 时间就走完 50% 位移，所以显得冲",
-            "前段不再一步到位，中段更匀速，整体更接近 iOS 的收放感",
-            "起手与收尾都减速，位移最均匀，但起手会有一小段\"还没动\"",
+            "系统自带：10% 时间走完 50% 位移，观感最冲",
+            "起手与收尾都减速：10% 只走 3%，位移最均匀，但起手像\"顿一下\"",
+            "10% 走 27%、30% 走 66%：中段接近直线，容易觉得机械",
+            "10% 走 34%、30% 走 76%：起步果断、尾部从容，推荐",
+            "10% 走 41%、30% 走 83%：最接近原生节奏，只是没那么极端",
     };
     /** 原生曲线的一句话描述，设置页直接显示。 */
     static final String ANIM_CURVE_RAW_DESC = "曲线 ease-out expo（10% 时间 → 50% 位移）";
 
-    /** 默认把时长拉长 10% 并换成柔和曲线：先解决"傻快"，又不至于拖沓。 */
+    /** 默认：标准的 ease-out quart + 稍长一点的时长，既有减速感又不至于冲。 */
     static final float DEF_ANIM_SCALE = 1.10f;
-    static final int DEF_ANIM_CURVE = ANIM_CURVE_SOFT;
+    static final int DEF_ANIM_CURVE = ANIM_CURVE_STANDARD;
 
     static final int MODE_NATURAL = 0;
     static final int MODE_SENSITIVE = 1;
@@ -264,7 +276,7 @@ final class Cfg {
             // 动画：倍率 0.6~2.0，越界/NaN 一律回落到默认；曲线 0~2。
             c.animScale = clamp(floatOf(cr, K_ANIM_SCALE, DEF_ANIM_SCALE), 0.6f, 2.0f);
             c.animCurve = (int) clamp(intOf(cr, K_ANIM_CURVE, DEF_ANIM_CURVE),
-                    ANIM_CURVE_NATIVE, ANIM_CURVE_SMOOTH);
+                    ANIM_CURVE_NATIVE, ANIM_CURVE_SNAPPY);
         } catch (Throwable t) {
             Log.w(HyperHand.TAG, "load config failed, use defaults", t);
         }

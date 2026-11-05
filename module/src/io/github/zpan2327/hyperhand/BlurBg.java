@@ -25,7 +25,8 @@ import java.lang.reflect.Method;
  *
  *  2) 另有一条独立的 WindowManager 窗口 "one-handed-tutorial-overlay"
  *       Window #4 Window{... u0 one-handed-tutorial-overlay}  type=2024
- *       frame = 屏幕上半部分（1200×1068 / 2670），不可触摸
+ *       frame = 只占屏幕上半部分（本机实测 1200×1068，占屏高 40%），不可触摸
+ *       —— 尺寸/位置全部运行时读取，代码里不写死任何机型数值
  *     —— 它盖在 background-panel 之上，实测屏幕上看到的那块浅灰就是它。
  *     因为它是普通窗口，直接钩 WindowManagerGlobal#addView(View, LayoutParams, ...)
  *     就能拿到 View，按 window title 匹配即可，不必依赖 WMShell 内部字段名。
@@ -56,6 +57,9 @@ final class BlurBg {
     /** 最近一次处理过的窗口 View（探针用）。 */
     private static volatile View sLastOverlay;
     private static volatile String sLastOverlayTag;
+    /** 遮罩窗口的 LayoutParams 尺寸（View 还没量测时用它算裁切）。 */
+    private static volatile int sLastLpW;
+    private static volatile int sLastLpH;
     private static volatile Object sLastWm;
 
     private static volatile boolean sMissingLogged;
@@ -85,7 +89,7 @@ final class BlurBg {
         onViewThread(view, new Runnable() {
             @Override
             public void run() {
-                applyOnViewInternal(view, "background-panel");
+                applyOnViewInternal(view, "background-panel", 0, 0);
             }
         });
     }
@@ -94,20 +98,29 @@ final class BlurBg {
      * 任意"单手模式遮罩窗口"的 View（按 window title 命中后调用）。
      * 目前命中 one-handed-tutorial-overlay。
      */
-    static void applyToOverlay(final View view, final String tag) {
+    static void applyToOverlay(final View view, final String tag, final int lpW, final int lpH) {
         if (view == null) return;
         sLastOverlay = view;
         sLastOverlayTag = tag;
+        sLastLpW = lpW;
+        sLastLpH = lpH;
         final int token = ++sOverlayToken;
-        // 只补几次、而且是稀的：入场动画期间系统会重设颜色，
-        // 密集重贴会和系统重绘打架，表现为闪烁。动画结束后贴一次即可稳定。
-        scheduleOverlay(view, tag, token, 0);
+        // 关键：addView 之后立刻贴（此时 View 还没量测，用 LayoutParams 里的尺寸算裁切）。
+        // 位图已缓存时这一步就完成，窗口的第一帧画出来就是模糊壁纸，不会先闪一层灰。
+        onViewThread(view, new Runnable() {
+            @Override
+            public void run() {
+                applyOnViewInternal(view, tag, lpW, lpH);
+            }
+        });
+        // 之后再稀疏补几次，兜住"系统在入场末尾把颜色刷回去"的情况
+        scheduleOverlay(view, tag, token, 0, lpW, lpH);
     }
 
     private static final int[] OVERLAY_DELAYS = new int[] {260, 620, 1100, 1800};
 
     private static void scheduleOverlay(final View view, final String tag, final int token,
-                                        final int idx) {
+                                        final int idx, final int lpW, final int lpH) {
         if (idx >= OVERLAY_DELAYS.length) return;
         onViewThread(view, new Runnable() {
             @Override
@@ -117,10 +130,8 @@ final class BlurBg {
                     public void run() {
                         if (token != sOverlayToken) return;      // 已被新的一次入场取代
                         if (!view.isAttachedToWindow()) return;  // 已经退出单手模式
-                        applyOnViewInternal(view, tag);
-                        // 不做"已是我们就不补"的提前退出：系统可能在入场末尾才把
-                        // 颜色刷回去，留几次稀疏补丁兜底（每次先判重，不会重复贴）。
-                        scheduleOverlay(view, tag, token, idx + 1);
+                        applyOnViewInternal(view, tag, lpW, lpH);
+                        scheduleOverlay(view, tag, token, idx + 1, lpW, lpH);
                     }
                 }, OVERLAY_DELAYS[idx]);
             }
@@ -141,7 +152,7 @@ final class BlurBg {
         onViewThread(v, new Runnable() {
             @Override
             public void run() {
-                applyOnViewInternal(v, tag);
+                applyOnViewInternal(v, tag, sLastLpW, sLastLpH);
             }
         });
     }
@@ -155,7 +166,8 @@ final class BlurBg {
     }
 
 
-    private static boolean applyOnViewInternal(final View view, final String tag) {
+    private static boolean applyOnViewInternal(final View view, final String tag,
+                                                    final int lpW, final int lpH) {
         final Context ctx = Hooks.currentApplication();
         if (ctx == null) return true;
 
@@ -194,7 +206,7 @@ final class BlurBg {
         }
         String before = describeBackground(view.getBackground());
         try {
-            view.setBackground(makeDrawable(ctx, bmp, view));
+            view.setBackground(makeDrawable(ctx, bmp, view, lpW, lpH));
         } catch (Throwable t) {
             HyperHand.log("blur bg: setBackground failed on " + tag + ": " + t);
             return true;
@@ -211,6 +223,24 @@ final class BlurBg {
         return true;
     }
 
+    /**
+     * 模块挂载后预热：把模糊图提前算好并缓存。
+     * 否则"装完模块/重启 SystemUI 之后的第一次"入场会因为位图还没生成而先露一层灰。
+     */
+    static void warmUp(final Context ctx) {
+        try {
+            final Cfg c = Cfg.get(ctx);
+            if (!c.blurBg) return;
+            final String key = keyOf(ctx, c);
+            if (sBitmap != null && key.equals(sBitmapKey)) return;
+            if (sBuilding) return;
+            sRequestedKey = key;
+            buildAsync(ctx, c, key);
+        } catch (Throwable t) {
+            // 预热失败不影响功能
+        }
+    }
+
     /** 诊断：无条件把模糊位图贴到当前 overlay 上，并回读背景类型。 */
     static void forceApplyOverlay() {
         final View ov = sLastOverlay;
@@ -224,7 +254,7 @@ final class BlurBg {
         onViewThread(ov, new Runnable() {
             @Override
             public void run() {
-                ov.setBackground(makeDrawable(ctx, bmp, ov));
+                ov.setBackground(makeDrawable(ctx, bmp, ov, sLastLpW, sLastLpH));
                 ov.invalidate();
                 HyperHand.log("force: set blur on overlay " + ov.getWidth() + "x"
                         + ov.getHeight() + " -> bg=" + describeBackground(ov.getBackground())
@@ -281,13 +311,21 @@ final class BlurBg {
     /**
      * 按目标 View 的尺寸裁出"顶端对齐的那一块"再铺满。
      *
-     * 原因：遮罩窗口只有上半屏高（1200×1068），而模糊位图是整屏比例（200×445）。
-     * 直接 FILL 会被纵向压扁，用 gravity 缩放又会在某些 window 上留黑边，
-     * 所以这里显式裁一段同比例的区域，交给默认的 FILL 拉伸，结果最稳。
+     * 全部尺寸都是运行时取的，不写死任何机型参数：
+     *   1) 已量测（getWidth/getHeight）→ 用实际值；
+     *   2) 刚 addView 还没量测 → 用 LayoutParams 的 width/height（MATCH_PARENT 会是 -1）；
+     *   3) 连 LayoutParams 都是 -1 → 用真实屏幕宽度兜底（Cfg.Screen 走 getRealMetrics）。
+     *
+     * 目的：遮罩窗口通常只有上半屏高，而模糊位图是整屏比例。直接 FILL 会被纵向压扁，
+     * 用 gravity 缩放又会在部分 window 上留黑底，所以显式裁一段同比例区域再交给 FILL。
      */
-    private static Drawable makeDrawable(Context ctx, Bitmap full, View v) {
-        int vw = v.getWidth();
-        int vh = v.getHeight();
+    private static Drawable makeDrawable(Context ctx, Bitmap full, View v, int lpW, int lpH) {
+        int vw = v.getWidth() > 0 ? v.getWidth() : lpW;
+        int vh = v.getHeight() > 0 ? v.getHeight() : lpH;
+        if (vw <= 0 || vh <= 0) {
+            Cfg.Screen sc = Cfg.Screen.get(ctx);
+            if (vw <= 0) vw = sc.width;
+        }
         Bitmap use = full;
         if (vw > 0 && vh > 0) {
             float scale = vw / (float) full.getWidth();
@@ -387,7 +425,7 @@ final class BlurBg {
                 }
                 final View ov = sLastOverlay;
                 if (ov != null) {
-                    applyToOverlay(ov, sLastOverlayTag);
+                    applyToOverlay(ov, sLastOverlayTag, sLastLpW, sLastLpH);
                 }
             }
         }, "HyperHand-blur");

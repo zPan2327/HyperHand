@@ -210,6 +210,8 @@ public class HyperHand extends XposedModule {
                         return;
                     }
                     ensureConfigReceiver(ctx);
+                    // 预热模糊壁纸，保证第一次入场也是"第一帧就模糊"
+                    BlurBg.warmUp(ctx);
                 } catch (Throwable t) {
                     log("register config receiver (early) failed: " + t);
                 }
@@ -283,7 +285,9 @@ public class HyperHand extends XposedModule {
                             return;
                         }
                         log("blur bg: overlay window added: " + title);
-                        BlurBg.applyToOverlay((View) v, title);
+                        BlurBg.applyToOverlay((View) v, title,
+                                ((WindowManager.LayoutParams) lp).width,
+                                ((WindowManager.LayoutParams) lp).height);
                     } catch (Throwable t) {
                         log("window add hook error: " + t);
                     }

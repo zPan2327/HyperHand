@@ -89,6 +89,9 @@ public class HyperHand extends XposedModule {
             "com.miui.systemui.controlcenter.container.ControlCenterEventHandlerImpl";
     /** 控制中心本体（expand 入口在这里，手势之外的展开也会走）。 */
     static final String CLS_CC_IMPL = "com.miui.systemui.controlcenter.ControlCenterImpl";
+    /** 状态栏状态机：面板真正展开/收起时会 setState，用来判断"面板已经落定"。 */
+    static final String CLS_SB_STATE =
+            "com.android.systemui.statusbar.StatusBarStateControllerImpl";
 
     /** 桌面下拉手势真正发出事件的入口（桌面进程）。 */
     static final String CLS_SYSUI_PROXY_WRAPPER = "com.miui.home.recents.SystemUiProxyWrapper";
@@ -570,6 +573,31 @@ public class HyperHand extends XposedModule {
         } catch (Throwable t) {
             log("hook control center failed: " + t);
         }
+
+        // 面板"落定"信号：StatusBarState 切到展开态时会调 setState。
+        // 不判断具体状态值 —— 只有在我们刚发过"面板正在展开"的信号之后才响应，
+        // 所以锁屏/解锁引起的状态切换不会误触发。
+        try {
+            Class<?> ssc = hooks.findClass(CLS_SB_STATE, cl);
+            if (ssc != null) {
+                int n = hooks.hookMethods(ssc, "setState", Hooks.before(new Hooks.Before() {
+                    @Override
+                    public Object run(XposedInterface.Chain chain) {
+                        try {
+                            TopShade.onShadeSettled("panel_settled");
+                        } catch (Throwable ignored) {
+                            // 纯补丁
+                        }
+                        return Hooks.PROCEED;
+                    }
+                }));
+                log("StatusBarStateControllerImpl hooked (settled signal, " + n + ")");
+            } else {
+                log("StatusBarStateControllerImpl class not found");
+            }
+        } catch (Throwable t) {
+            log("hook status bar state controller failed: " + t);
+        }
     }
 
     static void markShadeIntent(String why) {
@@ -922,7 +950,13 @@ public class HyperHand extends XposedModule {
         try {
             ContentResolver cr = ctx.getContentResolver();
             if (Settings.Secure.getInt(cr, "one_handed_mode_enabled", 0) != 1) return true;
-            return Settings.Secure.getInt(cr, "one_handed_mode_activated", 0) == 1;
+            if (Settings.Secure.getInt(cr, "one_handed_mode_activated", 0) == 1) return true;
+            // 刚触发的那一下系统还没来得及回写激活位：startOneHanded() 的状态写盘跟在
+            // 窗口动画后面，实测有 0.3~0.8s 的空窗。这段时间按"已激活"处理，否则
+            // "刚落手就在中部下拉"会因为读不到 1 而被判成不在单手模式（日志里的
+            // `ignored (not in one-handed)`）。stop 是幂等的，多认一次无害。
+            final long t = sLastTriggerAt;
+            return t > 0 && SystemClock.uptimeMillis() - t < 1800;
         } catch (Throwable t) {
             return false;
         }

@@ -2,6 +2,25 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.5] - 2026-11-06
+
+修掉"有时候行有时候不行"和"面板还没拉完就退出"。
+
+### Fixed
+
+- **刚进单手模式 1.8s 内下拉不生效**：`startOneHanded()` 的状态写盘跟在窗口动画后面，
+  实测有 0.3~0.8s 空窗，这期间读不到 `one_handed_mode_activated=1`，
+  面板已经开了却被判成"不在单手模式"。`isOneHandedActive()` 改为
+  "距上次触发 1.8s 内一律视为激活"（stop 是幂等的）。
+- **内容区下拉位移门槛过高**：原来沿用状态栏的 36dp(≈108px)，
+  但面板是"跟手 + 惯性展开"，用户常拖 40~80px 就松手。内容区改用独立的
+  10dp 门槛，并在 MOVE 阶段挂 400ms 兜底（面板展开时输入焦点转移，有时收不到 UP）。
+- **面板没拉完就退出**：固定 120ms 的延迟改成"等面板落定"——
+  `armExit()` 先挂意图与 520ms 超时，`StatusBarStateControllerImpl#setState`
+  回调时再提前到 380ms（覆盖展开动画长度），之后才真正 `stopOneHanded()`。
+- debug 下新增 `app_swipe skip dy=.. need=.. shade=..` 与 `panel settled after ..ms`，
+  下次再出现异常能直接看出卡在哪一步。
+
 ## [2.9.4] - 2026-11-06
 
 补上最后一块漏网：在缩小窗口的**中间内容区**下拉，面板会出来但单手模式不退。

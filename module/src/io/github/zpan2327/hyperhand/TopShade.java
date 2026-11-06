@@ -63,6 +63,11 @@ final class TopShade {
     /** 缩小窗口内容区的下拉（桌面/应用把事件转发给 SystemUI 展开面板）。 */
     private static float sAppY;
     private static long sAppAt;
+    /** 内容区下拉的"抬手丢失"兜底任务（面板展开时输入焦点会转移，有时收不到 UP）。 */
+    private static Runnable sAppPending;
+
+    /** 最近一次非空的 Context：scheduleExit 可能被主线程/钩子线程同时调用。 */
+    private static Context sCtx;
 
     /** 模糊区那层 View，用来读它的高度（拿不到就按屏高兜底）。 */
     private static WeakReference<View> sOverlay = new WeakReference<View>(null);
@@ -147,6 +152,7 @@ final class TopShade {
     static void observe(int action, float x, float y) {
         final Context ctx = Hooks.currentApplication();
         if (ctx == null) return;
+        sCtx = ctx;
 
         if (action == MotionEvent.ACTION_DOWN) {
             final float blurBottom = blurZoneBottom(ctx);
@@ -183,14 +189,40 @@ final class TopShade {
             return;
         }
         if (sMode == MODE_APP) {
+            if (action == MotionEvent.ACTION_MOVE) {
+                // 面板一开始展开，输入焦点就会从应用转到 NotificationShade，
+                // 这时候 UP 有可能收不到（表现为"拉了但没退"，日志里一片空白）。
+                // 所以位移够了就先挂一个 400ms 的兜底：真的收到 UP 会取消它。
+                if (sAppPending == null
+                        && (y - sAppY) >= appPullPx(ctx)
+                        && HyperHand.lastShadeIntentAt() >= sAppAt - 100) {
+                    sAppPending = new Runnable() {
+                        @Override
+                        public void run() {
+                            sAppPending = null;
+                            onShadeGestureEnd("app_swipe_timeout");
+                        }
+                    };
+                    sHandler.postDelayed(sAppPending, 400);
+                }
+                return;
+            }
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 sMode = MODE_NONE;
-                final boolean pulledDown = (y - sAppY) >= barPullPx(ctx);
+                if (sAppPending != null) {
+                    sHandler.removeCallbacks(sAppPending);
+                    sAppPending = null;
+                }
+                final float dy = y - sAppY;
+                final boolean pulledDown = dy >= appPullPx(ctx);
                 // 同样要确认这次手势真的引发了面板展开，否则"在应用里往下滚一屏"
                 // 也会把单手模式退掉。
                 final boolean shadeOpened = HyperHand.lastShadeIntentAt() >= sAppAt - 100;
                 if (pulledDown && shadeOpened) {
                     onShadeGestureEnd("app_swipe");
+                } else if (Cfg.get(ctx).debug) {
+                    HyperHand.log("TOP SHADE: app_swipe skip dy=" + (int) dy
+                            + " need=" + (int) appPullPx(ctx) + " shade=" + shadeOpened);
                 }
             }
             return;
@@ -231,50 +263,104 @@ final class TopShade {
     }
 
     /**
-     * 系统自己把面板拉出来之后，补一次"退出单手模式"。
+     * 内容区下拉的最小位移。
      *
-     * 接在三处：MIUI 控制中心的手势处理器（handleExpandEvent 的 ACTION_UP）、
-     * 控制中心的 expand()、通知面板的 expand/expandToNotifications/expandToQs。
-     * 后两个是**唯一**的展开出口 —— 不管手势从哪儿起手，最后都要经过它，
-     * 所以挂在这里能覆盖状态栏、应用内、程序化调用等所有路径。
+     * 这里比状态栏带低得多：面板是"跟手 + 抬手后靠惯性展开"的，
+     * 用户经常拖 40~80px 就松手，用 36dp(≈108px) 会把这类手势判掉 ——
+     * 日志里那些 `launcher_forward` 之后再无下文的，多半就是这个原因。
+     * 10dp 只用来挡住"点一下"。
+     */
+    private static float appPullPx(Context ctx) {
+        return 10f * Cfg.Screen.get(ctx).density;
+    }
+
+    // ------------------------------------------------------------ 退出时机控制
+
+    /**
+     * 面板展开动画大约 300~400ms。等到这个时间还没收到"落定"信号就兜底退出。
+     */
+    private static final long EXIT_TIMEOUT_MS = 520;
+    /**
+     * 即使面板状态切换得很快，也至少等这么久再退 ——
+     * 固定 120ms 的旧做法会在面板还没铺开时就把窗口顶上去，看起来像"面板被甩走"。
+     * 380ms 大致是 HyperOS 通知中心/控制中心展开动画的长度。
+     */
+    private static final long EXIT_MIN_SETTLE_MS = 380;
+
+    /** 0 表示当前没有待执行的退出。 */
+    private static long sPendingAt;
+    private static String sPendingWhy;
+
+    private static final Runnable sExitTask = new Runnable() {
+        @Override
+        public void run() {
+            doExit();
+        }
+    };
+
+    /**
+     * 面板开始展开（走到 expand 出口 / 抬手 / 超时）。
      *
-     * 120ms 的延迟是为了让面板先起来，否则会被退出流程收掉（和模糊区那条一样的坑）。
+     * 注意这里**不立刻**退出单手模式，只记下意图，等
+     * {@link #onShadeSettled} 或超时再动 —— 否则面板动画还在跑，
+     * 整个窗口就被往上顶，观感是"还没拉出来就缩回去了"。
      */
     static void onShadeExpanded(String why) {
-        scheduleExit(why, 120);
+        armExit(why);
     }
 
     static void onShadeGestureEnd(String why) {
-        scheduleExit(why, 120);
+        armExit(why);
     }
 
-    private static void scheduleExit(String why, int delay) {
-        final Context ctx = Hooks.currentApplication();
+    /**
+     * 面板真正落定（StatusBarState 切到展开态）时回调。
+     *
+     * 只在我们自己"等着退出"的窗口内生效，所以不会误伤锁屏/解锁等无关的状态切换。
+     */
+    static void onShadeSettled(String why) {
+        if (sPendingAt == 0) return;
+        final long elapsed = android.os.SystemClock.uptimeMillis() - sPendingAt;
+        final long wait = Math.max(0, EXIT_MIN_SETTLE_MS - elapsed);
+        final Context ctx = sCtx;
+        if (ctx != null && Cfg.get(ctx).debug) {
+            HyperHand.log("TOP SHADE: panel settled after " + elapsed + "ms (" + why + ")");
+        }
+        sHandler.removeCallbacks(sExitTask);
+        sHandler.postDelayed(sExitTask, wait);
+    }
+
+    private static void armExit(String why) {
+        Context ctx = Hooks.currentApplication();
+        if (ctx == null) ctx = sCtx;          // 主线程调用时可能拿不到
         if (ctx == null) return;
         final Cfg c = Cfg.get(ctx);
         if (!c.enabled || !c.topShade) return;
-        final boolean active = HyperHand.isOneHandedActive(ctx);
-        if (!active) {
+        if (sPendingAt != 0) return;          // 已经在等这一次落定
+
+        if (!HyperHand.isOneHandedActive(ctx)) {
             // 面板确实开了、但此刻已经不在单手模式：正常（比如刚被别的路径退过）。
-            // 只在 debug 下留一行，方便排查"面板开了却没退"到底断在哪一步。
             if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (not in one-handed)");
             return;
         }
 
         final long now = android.os.SystemClock.uptimeMillis();
-        if (now - sLastExitAt < 500) {
+        if (sLastExitAt != 0 && now - sLastExitAt < 500) {
             if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (throttled)");
             return;
         }
-        sLastExitAt = now;
+        sPendingAt = now;
+        sPendingWhy = why;
+        sHandler.removeCallbacks(sExitTask);
+        sHandler.postDelayed(sExitTask, EXIT_TIMEOUT_MS);
+    }
 
-        HyperHand.log("TOP SHADE: shade opened via " + why + " -> exit one-handed");
-        sHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                HyperHand.stopOneHanded();
-            }
-        }, delay);
+    private static void doExit() {
+        if (sPendingAt == 0) return;
+        sPendingAt = 0;
+        sLastExitAt = android.os.SystemClock.uptimeMillis();
+        HyperHand.log("TOP SHADE: shade opened via " + sPendingWhy + " -> exit one-handed");
+        HyperHand.stopOneHanded();
     }
 
     /** @return true 表示这次事件由我们处理掉，不再交给系统。 */
@@ -377,13 +463,9 @@ final class TopShade {
             HyperHand.stopOneHanded();
             return;
         }
-        final int delay = Math.max(120, c.topShadeDelayMs);
-        sHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                HyperHand.stopOneHanded();
-            }
-        }, delay);
+        // 走统一的"等面板落定再退"。expand() 内部的钩子通常已经 arm 过一次，
+        // 这里只是兜底（重复 arm 会被忽略）。
+        armExit("blur_swipe");
     }
 
     /**

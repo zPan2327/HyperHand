@@ -86,7 +86,9 @@ jobs:
             PLATFORM="$(ls "$SDK/platforms" | sed -n 's/^android-\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)"
           fi
 
-          # 版本号来源优先级：显式传入 > tag 名 > 手动补发输入
+          # 版本号来源优先级：显式传入 > tag 名 > 手动补发输入。
+          # 发布场景（tag / 手动补发）必须能确定版本号；普通 main / PR 构建没有版本语义，
+          # 交给 module/build.sh 的默认值，别把日常 CI 拦下来。
           VERSION_NAME="${VERSION_NAME:-}"
           if [ -z "$VERSION_NAME" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
             VERSION_NAME="${GITHUB_REF_NAME#v}"
@@ -94,17 +96,18 @@ jobs:
           if [ -z "$VERSION_NAME" ] && [ -n "${DISPATCH_VERSION:-}" ]; then
             VERSION_NAME="${DISPATCH_VERSION#v}"
           fi
-          if [ -z "$VERSION_NAME" ]; then
-            echo "无法确定版本号：请推 v* 标签，或手动触发时填写 version 输入" >&2
+          if [ -z "$VERSION_NAME" ] && { [ "${GITHUB_REF_TYPE:-}" = "tag" ] || [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; }; then
+            echo "发布构建但无法确定版本号：推 v* 标签，或手动触发时填写 version 输入" >&2
             exit 1
           fi
 
-          echo "sdk=$SDK build-tools=$BT platform=$PLATFORM version=$VERSION_NAME"
+          echo "sdk=$SDK build-tools=$BT platform=$PLATFORM version=${VERSION_NAME:-<build.sh 默认值>}"
 
           chmod +x module/build.sh
+          # 空值不导出，让 build.sh 用自己脚本里的默认版本
+          if [ -n "$VERSION_NAME" ]; then export VERSION_NAME; fi
           BUILD_TOOLS_VERSION="$BT" \
           PLATFORM_VERSION="$PLATFORM" \
-          VERSION_NAME="$VERSION_NAME" \
           ./module/build.sh
 
           APK=module/out/HyperHand.apk

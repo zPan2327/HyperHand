@@ -6,6 +6,14 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      # 手动补发时必须显式给版本号：不带 tag 的 workflow_dispatch 拿不到 GITHUB_REF_NAME，
+      # 早先会一路退到默认的 2.0.0，把 release 打成 20000-2.0.0 发进模块仓库。
+      version:
+        description: '版本号（如 2.9.9）；推送 v* 标签时忽略此项'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -60,6 +68,8 @@ jobs:
 
       - name: Build APK
         id: apk
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -76,18 +86,25 @@ jobs:
             PLATFORM="$(ls "$SDK/platforms" | sed -n 's/^android-\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)"
           fi
 
-          # tag 构建时把版本号写进 APK
+          # 版本号来源优先级：显式传入 > tag 名 > 手动补发输入
           VERSION_NAME="${VERSION_NAME:-}"
           if [ -z "$VERSION_NAME" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
             VERSION_NAME="${GITHUB_REF_NAME#v}"
           fi
+          if [ -z "$VERSION_NAME" ] && [ -n "${DISPATCH_VERSION:-}" ]; then
+            VERSION_NAME="${DISPATCH_VERSION#v}"
+          fi
+          if [ -z "$VERSION_NAME" ]; then
+            echo "无法确定版本号：请推 v* 标签，或手动触发时填写 version 输入" >&2
+            exit 1
+          fi
 
-          echo "sdk=$SDK build-tools=$BT platform=$PLATFORM version=${VERSION_NAME:-2.0.0}"
+          echo "sdk=$SDK build-tools=$BT platform=$PLATFORM version=$VERSION_NAME"
 
           chmod +x module/build.sh
           BUILD_TOOLS_VERSION="$BT" \
           PLATFORM_VERSION="$PLATFORM" \
-          VERSION_NAME="${VERSION_NAME:-2.0.0}" \
+          VERSION_NAME="$VERSION_NAME" \
           ./module/build.sh
 
           APK=module/out/HyperHand.apk

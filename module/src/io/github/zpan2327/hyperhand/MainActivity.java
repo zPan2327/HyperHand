@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private Ui.SwitchView swBlur;
     private Ui.SwitchView swEndBoost;
     private Ui.SwitchView swZoneRatio;
+    private Ui.SwitchView swTopShade;
 
     private Ui.ChoiceRow cMode;
 
@@ -68,6 +69,8 @@ public class MainActivity extends Activity {
     private Ui.ValueRow rAnimScale;
     private Ui.ValueRow rEndZone;
     private Ui.ValueRow rZoneRatio;
+    private Ui.ChoiceRow cTopShadeSide;
+    private Ui.ValueRow rTopShadeDy;
     private TextView animInfo;
 
     private LinearLayout advancedBox;
@@ -286,6 +289,41 @@ public class MainActivity extends Activity {
         animInfo = Ui.block(this, pal, animInfoText());
         cardAnim.addView(animInfo);
         root.addView(cardAnim);
+
+        // ---------------------------------------------------------- 模糊区手势
+        root.addView(Ui.sectionTitle(this, pal, "模糊区手势"));
+        LinearLayout cardTop = Ui.card(this, pal);
+        swTopShade = Ui.switchRow(this, cardTop, pal, "下滑展开通知/控制中心",
+                "单手模式下，在上半屏模糊区域任意位置下滑，"
+                        + "直接拉出通知中心或控制中心，并立即退出单手模式。"
+                        + "不触发时点一下仍然是原生的\"退出单手模式\"", cur.topShade);
+        swTopShade.setOnCheckedChange(dirtyOnChange);
+        rTopShadeDy = valueRow(cardTop, "触发距离", "下滑多少 dp 才算数，防止把\"点一下\"误判成下拉", "dp",
+                cur.topShadeDyDp, 0, 8, 80, 1);
+        cTopShadeSide = Ui.choiceRow(this, cardTop, pal, "拉开哪个",
+                "左侧下滑出通知中心，右侧下滑出控制中心（HyperOS 习惯）",
+                Cfg.TOP_SIDE_SHORT, cur.topShadeSide, new Ui.OnChoice() {
+                    @Override
+                    public void onChoice(int index) {
+                        Ui.singleChoiceDialog(MainActivity.this, pal, "拉开哪个",
+                                "决定模糊区下滑时展开哪一块面板", Cfg.TOP_SIDE_NAMES, index,
+                                new Ui.OnChoice() {
+                                    @Override
+                                    public void onChoice(int picked) {
+                                        cTopShadeSide.value = picked;
+                                        cTopShadeSide.label.setText(Cfg.TOP_SIDE_SHORT[picked]);
+                                        markDirty();
+                                    }
+                                });
+                    }
+                });
+        cardTop.addView(Ui.block(this, pal,
+                "背景：单手模式把整个系统界面向下平移了约 40% 屏高，"
+                        + "于是状态栏也跟着下移到缩小窗口的顶部。"
+                        + "这块模糊区原本没有任何手势，"
+                        + "现在整个模糊区都可以当\"状态栏\"用。\n"
+                        + "左半屏下滑 → 通知中心；右半屏下滑 → 控制中心（可在上面改成固定一个）"));
+        root.addView(cardTop);
 
         // ---------------------------------------------------------- 互斥
         root.addView(Ui.sectionTitle(this, pal, "互斥"));
@@ -523,6 +561,7 @@ public class MainActivity extends Activity {
         rBlurDim.label.setText(Ui.fmt(rBlurDim.value, 0));
         rAnimScale.label.setText(Ui.fmt(rAnimScale.value, 2));
         rEndZone.label.setText(Ui.fmt(rEndZone.value, 0));
+        rTopShadeDy.label.setText(Ui.fmt(rTopShadeDy.value, 0));
     }
 
     /**
@@ -612,6 +651,10 @@ public class MainActivity extends Activity {
         rAnimScale.value = Cfg.DEF_ANIM_SCALE;
         switchWithoutMark(swEndBoost, true);
         rEndZone.value = Cfg.DEF_END_ZONE_DP;
+        switchWithoutMark(swTopShade, true);
+        rTopShadeDy.value = Cfg.DEF_TOP_SHADE_DY_DP;
+        cTopShadeSide.value = Cfg.DEF_TOP_SHADE_SIDE;
+        cTopShadeSide.label.setText(Cfg.TOP_SIDE_SHORT[Cfg.DEF_TOP_SHADE_SIDE]);
         relabel();
     }
 
@@ -679,6 +722,9 @@ public class MainActivity extends Activity {
         i.putExtra(Cfg.K_ANIM_CURVE, String.valueOf(cAnimCurve.value));
         i.putExtra(Cfg.K_END_BOOST, swEndBoost.isChecked() ? "1" : "0");
         i.putExtra(Cfg.K_END_ZONE_DP, Ui.fmt(rEndZone.value, 0));
+        i.putExtra(Cfg.K_TOP_SHADE, swTopShade.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_TOP_SHADE_DY_DP, Ui.fmt(rTopShadeDy.value, 0));
+        i.putExtra(Cfg.K_TOP_SHADE_SIDE, String.valueOf(cTopShadeSide.value));
         sendBroadcast(i);
 
         status.setText("已提交到系统界面进程，立即生效。可下滑底部区域测试，"

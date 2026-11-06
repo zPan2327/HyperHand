@@ -74,6 +74,14 @@ final class Cfg {
     /** 只读：SystemUI 把"系统原始时长 + 当前生效值"写这里，供设置页显示。 */
     static final String K_ANIM_INFO         = "oh_tuner_anim_info";
 
+    // ---------------------------------------------------------------- 新键（2.9 模糊区下拉）
+    /** 单手模式下，在上半屏模糊区域下滑 = 展开通知中心/控制中心，并立即退出单手模式。 */
+    static final String K_TOP_SHADE         = "oh_tuner_top_shade";
+    /** 触发所需的下滑距离（dp）。模糊区本身很矮，给一个"确实在往下拖"的下限即可。 */
+    static final String K_TOP_SHADE_DY_DP   = "oh_tuner_top_shade_dy_dp";
+    /** 展开哪一个：0 左通知右控制 / 1 总是通知中心 / 2 总是控制中心。 */
+    static final String K_TOP_SHADE_SIDE    = "oh_tuner_top_shade_side";
+
     /** 只读：最近一次屏幕底部附近的起手高度，供设置页校准触发区高度。 */
     static final String K_LAST_DOWN         = "oh_tuner_last_down";
 
@@ -88,7 +96,8 @@ final class Cfg {
             K_VEL_WINDOW_MS, K_MIN_MONOTONIC, K_MIN_CONFIDENCE, K_ADAPTIVE, K_ZONE_BIAS,
             K_BLUR_BG, K_BLUR_RADIUS, K_BLUR_DIM,
             K_ANIM_SCALE, K_ANIM_CURVE,
-            K_END_BOOST, K_END_ZONE_DP, K_ZONE_RATIO_MODE, K_ZONE_RATIO
+            K_END_BOOST, K_END_ZONE_DP, K_ZONE_RATIO_MODE, K_ZONE_RATIO,
+            K_TOP_SHADE, K_TOP_SHADE_DY_DP, K_TOP_SHADE_SIDE
     };
 
     /** 设置页提交时一并带上的键（不含只读的 K_LAST_GESTURE）。 */
@@ -171,6 +180,29 @@ final class Cfg {
      * 32dp 给这段主观误差留出余量，又不至于把"停在底部区域"的滚动动作也吞进来。
      */
     static final float DEF_END_ZONE_DP = 32f;
+
+    // ---------------------------------------------------------------- 2.9 模糊区下拉
+    /**
+     * 模糊区高度只有屏幕的 40% 左右，不可能像从顶部下拉那样需要很长距离；
+     * 36dp 是"手指确实在往下拖"与"手滑了一下"的分界。
+     */
+    static final float DEF_TOP_SHADE_DY_DP = 36f;
+
+    static final int TOP_SIDE_SPLIT = 0;
+    static final int TOP_SIDE_NOTIFY = 1;
+    static final int TOP_SIDE_CONTROL = 2;
+    static final String[] TOP_SIDE_NAMES = new String[] {
+            "左侧通知 / 右侧控制", "总是通知中心", "总是控制中心"
+    };
+    static final String[] TOP_SIDE_SHORT = new String[] {"左通知右控制", "通知中心", "控制中心"};
+    static final int DEF_TOP_SHADE_SIDE = TOP_SIDE_SPLIT;
+
+    /**
+     * 退出单手模式后等一小会儿再展开面板。
+     * 这两个动作动的是同一批"被整体下移"的窗口，同时做的话面板会跟着上移，
+     * 看起来像"拉下来又跳回去"；120ms 足够让窗口先归位。
+     */
+    static final int DEF_TOP_SHADE_DELAY_MS = 120;
 
     /**
      * 贴底路径要求的最小向下位移。
@@ -256,6 +288,10 @@ final class Cfg {
     float endZoneDp = DEF_END_ZONE_DP;
     boolean zoneRatioMode = true;
     float zoneRatio = DEF_ZONE_RATIO;
+    boolean topShade = true;
+    float topShadeDyDp = DEF_TOP_SHADE_DY_DP;
+    int topShadeSide = DEF_TOP_SHADE_SIDE;
+    int topShadeDelayMs = DEF_TOP_SHADE_DELAY_MS;
 
     private static Cfg sCached;
     private static long sCachedAt;
@@ -342,6 +378,12 @@ final class Cfg {
             // 落点判定：默认开（抬手必须贴底），带宽 8~80dp
             c.endBoost = boolOf(cr, K_END_BOOST, true);
             c.endZoneDp = clamp(floatOf(cr, K_END_ZONE_DP, DEF_END_ZONE_DP), 8f, 80f);
+
+            // 模糊区下拉（2.9）：默认开，36dp，左通知右控制
+            c.topShade = boolOf(cr, K_TOP_SHADE, true);
+            c.topShadeDyDp = clamp(floatOf(cr, K_TOP_SHADE_DY_DP, DEF_TOP_SHADE_DY_DP), 8f, 120f);
+            c.topShadeSide = (int) clamp(intOf(cr, K_TOP_SHADE_SIDE, DEF_TOP_SHADE_SIDE),
+                    TOP_SIDE_SPLIT, TOP_SIDE_CONTROL);
         } catch (Throwable t) {
             Log.w(HyperHand.TAG, "load config failed, use defaults", t);
         }
@@ -430,6 +472,7 @@ final class Cfg {
                 + ", blurBg=" + blurBg + "/" + blurRadiusDp + "dp/" + blurDim + "%}"
                 + ", anim=" + animScale + "x/curve" + animCurve
                 + ", endBoost=" + endBoost + "/" + endZoneDp + "dp"
+                + ", topShade=" + topShade + "/" + topShadeDyDp + "dp/side" + topShadeSide
                 + ", zoneRatio=" + (zoneRatioMode ? zoneRatio + "(" + zoneDp + "dp)" : "off") + "}";
     }
 

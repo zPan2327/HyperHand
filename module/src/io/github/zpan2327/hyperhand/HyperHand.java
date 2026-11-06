@@ -129,6 +129,8 @@ public class HyperHand extends XposedModule {
     private static boolean sTriggered;
     private static long sDownTime;
     private static long sLastTriggerAt;
+    /** 本次手势的 DOWN 时刻单手模式是否已激活（供 2.9 的模糊区手势复用，避免每帧读 Settings）。 */
+    private static boolean sOhActiveAtDown;
 
     private static volatile boolean sDebug = true;
     private static volatile boolean sReceiverRegistered;
@@ -381,6 +383,11 @@ public class HyperHand extends XposedModule {
                         BlurBg.applyToOverlay((View) v, title,
                                 ((WindowManager.LayoutParams) lp).width,
                                 ((WindowManager.LayoutParams) lp).height);
+                        // 同一个窗口也是"模糊区"唯一的触摸接收者（touchableRegion 就是上半屏），
+                        // 顺手把"下滑拉通知栏"的语义挂上去。
+                        if (lower.contains("overlay")) {
+                            TopShade.attach((View) v);
+                        }
                     } catch (Throwable t) {
                         log("window add hook error: " + t);
                     }
@@ -543,6 +550,17 @@ public class HyperHand extends XposedModule {
         final long now = ev.getEventTime();
         final Cfg.Screen sc = Cfg.Screen.get(ctx);
 
+        // 2.9：模糊区下滑拉通知栏的兜底路径。
+        // 单手模式激活时，overlay 上的子 View 可能吃掉触摸，挂在父 View 的 listener 就收不到；
+        // 而手势监视通道拿到的是全屏事件，与窗口层级无关。这里只在 DOWN 读一次状态，
+        // 避免每个 MOVE 都去读 Settings。
+        if (action == MotionEvent.ACTION_DOWN) {
+            sOhActiveAtDown = isOneHandedActive(ctx);
+        }
+        if (sOhActiveAtDown) {
+            TopShade.observe(action, ev.getRawX(), ev.getRawY());
+        }
+
         if (action == MotionEvent.ACTION_DOWN) {
             sTracking = false;
             sTriggered = false;
@@ -558,7 +576,7 @@ public class HyperHand extends XposedModule {
             publishDownGap(ctx, c, sc, x, y, inZone);
 
             if (inZone) {
-                if (isOneHandedActive(ctx)) return;
+                if (sOhActiveAtDown) return;
                 if (isKeyguardLocked(ctx)) return;
                 sTracking = true;
                 sDownTime = now;
@@ -720,6 +738,58 @@ public class HyperHand extends XposedModule {
         }
     }
 
+    /**
+     * 退出单手模式（走原生路径，带恢复动画）。
+     *
+     * OneHanded 接口上是无参的 stopOneHanded()；HyperOS 的 controller 上另有一个
+     * stopOneHanded(int reason)，MiuiFreeformModeController 就是反射调它并传 5，
+     * 所以两条都试一遍，最后才退回写状态位。
+     */
+    static void stopOneHanded() {
+        final Object ctrl = sController;
+        if (ctrl != null) {
+            Object impl = oneHandedImpl(ctrl);
+            if (impl != null) {
+                try {
+                    sHooks.call(impl, "stopOneHanded");
+                    log("stopOneHanded() via " + impl.getClass().getSimpleName());
+                    return;
+                } catch (Throwable t) {
+                    log("stopOneHanded() on " + impl.getClass().getSimpleName() + " failed: " + t);
+                }
+            }
+            try {
+                Method m = null;
+                for (Class<?> k = ctrl.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                    for (Method mm : k.getDeclaredMethods()) {
+                        if (mm.getName().equals("stopOneHanded") && mm.getParameterCount() == 1) {
+                            m = mm;
+                            break;
+                        }
+                    }
+                    if (m != null) break;
+                }
+                if (m != null) {
+                    m.setAccessible(true);
+                    m.invoke(ctrl, 5);
+                    log("stopOneHanded(int) via controller");
+                    return;
+                }
+            } catch (Throwable t) {
+                log("stopOneHanded(int) failed: " + t);
+            }
+        }
+        try {
+            Context ctx = Hooks.currentApplication();
+            if (ctx != null) {
+                Settings.Secure.putInt(ctx.getContentResolver(), "one_handed_mode_activated", 0);
+                log("stopOneHanded() fallback: wrote one_handed_mode_activated=0");
+            }
+        } catch (Throwable t) {
+            log("stopOneHanded fallback failed: " + t);
+        }
+    }
+
     /** 取 OneHandedController 里的 OneHanded 实现（有 startOneHanded() 的那个）。 */
     private static Object oneHandedImpl(Object ctrl) {
         try {
@@ -792,7 +862,7 @@ public class HyperHand extends XposedModule {
         return null;
     }
 
-    private static boolean isOneHandedActive(Context ctx) {
+    static boolean isOneHandedActive(Context ctx) {
         try {
             ContentResolver cr = ctx.getContentResolver();
             if (Settings.Secure.getInt(cr, "one_handed_mode_enabled", 0) != 1) return true;
@@ -894,6 +964,11 @@ public class HyperHand extends XposedModule {
                             if ("stop".equals(act)) {
                                 log("debug action: stop");
                                 Settings.Secure.putInt(cr, "one_handed_mode_activated", 0);
+                                return;
+                            }
+                            if ("topshade".equals(act)) {
+                                log("debug action: topshade");
+                                TopShade.fireNow(context);
                                 return;
                             }
                             int n = 0;

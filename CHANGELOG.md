@@ -2,6 +2,32 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.0] - 2026-11-06
+
+单手模式下，**上半屏模糊区任意位置下滑**即可拉出通知中心 / 控制中心，并自动退出单手模式。
+
+### Added
+
+- 新增「模糊区手势」分组：开关、触发距离（默认 36dp）、拉开哪个（左通知右控制 / 总是通知 / 总是控制）。
+- `TopShade.java`：监听 `one-handed-tutorial-overlay`（模糊区唯一的触摸窗口），
+  下滑判定通过后展开面板并在背后退出单手模式。
+
+### Changed
+
+- 新增原生退出路径 `stopOneHanded()`（`OneHandedImpl.stopOneHanded()`，
+  兜底 `controller.stopOneHanded(int)`），替换原来直接写 `one_handed_mode_activated=0` 的兜底。
+- 新增调试动作 `--es oh_tuner_action topshade`，不经过手势直接跑完整链路，便于验证。
+
+### Fixed
+
+- 展开面板与退出单手模式的**顺序**：先退出会把刚展开的面板收掉（日志成功、画面空白），
+  改为"先展开 → 等 120ms → 再退出"，面板得以保留。
+
+### Verified
+
+- 真机：`expanded via StatusBarManager` + `stopOneHanded() via OneHandedController$OneHandedImpl`，
+  截图确认通知中心 / 控制中心均保持展开，`one_handed_mode_activated=0`。
+
 ## [2.8.5] / [2.8.6] - 2026-11-05
 
 把"屏蔽区"从固定 72dp 改成**按屏幕高度比例、覆盖到 dock 栏上方**。

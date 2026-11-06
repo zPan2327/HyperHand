@@ -1,0 +1,314 @@
+package io.github.zpan2327.hyperhand;
+
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.MotionEvent;
+import android.view.View;
+
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
+
+/**
+ * 单手模式下"模糊区任意位置下滑"→ 展开通知中心 / 控制中心，并立即退出单手模式。
+ *
+ * <h3>为什么要单独做这一层</h3>
+ * 单手模式是把**所有** SystemUI 窗口整体下移（本机 1068px），于是：
+ * <pre>
+ *   y ∈ [0, 1068)     屏幕上半屏，只剩模糊壁纸（background-panel）
+ *   y = 1068          状态栏 / NotificationShade 的新位置，也就是"虚拟顶部"
+ *   y ∈ (1068, 2670]  缩小后的应用窗口
+ * </pre>
+ * 系统只把状态栏搬到了 1068 处，所以只有在那条线上往下拉才能出通知栏；
+ * 真正铺满上半屏的窗口是 {@code one-handed-tutorial-overlay}
+ * （frame=[0,0][1200,1068]，touchableRegion 也是这一块）。它正是"点上方退出单手模式"
+ * 的触摸接收者，所以把监听挂在它身上，就天然拿到了整个模糊区的触摸，
+ * 不需要再算边界，也不会干扰任何其它窗口的触摸分配。
+ *
+ * <h3>为什么不消费事件</h3>
+ * 未达阈值时返回 false，事件继续走系统原本的处理（点一下 = 退出单手模式）；
+ * 只有判定成"下滑"之后才吞掉后续事件，避免系统再按"点击"退一次。
+ */
+final class TopShade {
+
+    private static final Handler sHandler = new Handler(Looper.getMainLooper());
+
+    /** 已经挂过监听的 View，避免同一实例被反复包装。 */
+    private static final Set<View> sAttached =
+            Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
+
+    private static boolean sDown;
+    private static boolean sFired;
+    private static float sDownX;
+    private static float sDownY;
+    private static long sLastFireAt;
+
+    /** 模糊区那层 View，用来读它的高度（拿不到就按屏高兜底）。 */
+    private static WeakReference<View> sOverlay = new WeakReference<View>(null);
+    private static volatile int sOverlayHeight;
+
+    private TopShade() {
+    }
+
+    /**
+     * 给模糊区的遮罩 View 挂上语义：下滑 = 拉通知栏。
+     * 由 {@code WindowManagerGlobal#addView} 在标题含 "one-hand…overlay" 时调用。
+     */
+    static void attach(final View v) {
+        if (v == null) return;
+        synchronized (sAttached) {
+            if (sAttached.contains(v)) return;
+            sAttached.add(v);
+        }
+        sOverlay = new WeakReference<View>(v);
+        sOverlayHeight = v.getHeight();
+        final View.OnTouchListener prev = readListener(v);
+        v.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent ev) {
+                boolean mine = false;
+                try {
+                    mine = handle(ev);
+                } catch (Throwable t) {
+                    HyperHand.log("top shade gesture error: " + t);
+                }
+                if (mine) return true;
+                return prev != null && prev.onTouch(view, ev);
+            }
+        });
+        int children = v instanceof android.view.ViewGroup
+                ? ((android.view.ViewGroup) v).getChildCount() : -1;
+        HyperHand.log("top shade: swipe handler attached (" + v.getClass().getName()
+                + ", h=" + sOverlayHeight + ", children=" + children + ")");
+    }
+
+    /** 保留系统原有的 OnTouchListener，避免把"点上方退出"之类的原生行为顶掉。 */
+    private static View.OnTouchListener readListener(View v) {
+        try {
+            Field f = View.class.getDeclaredField("mListenerInfo");
+            f.setAccessible(true);
+            Object info = f.get(v);
+            if (info == null) return null;
+            Field lf = info.getClass().getDeclaredField("mOnTouchListener");
+            lf.setAccessible(true);
+            return (View.OnTouchListener) lf.get(info);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 模糊区下边界：优先用 overlay 实测高度，拿不到按 45% 屏高兜底（本机实测约 40%）。 */
+    static float blurZoneBottom(Context ctx) {
+        View v = sOverlay.get();
+        if (v != null) {
+            int h = v.getHeight();
+            if (h > 0) {
+                sOverlayHeight = h;
+                return h;
+            }
+        }
+        if (sOverlayHeight > 0) return sOverlayHeight;
+        return Cfg.Screen.get(ctx).height * 0.45f;
+    }
+
+    /**
+     * 手势监视通道的观察入口（兜底路径）。
+     *
+     * monitor 语义只观察、不消费，所以这里不需要返回值，也不会影响其它窗口。
+     * 之所以需要这条兜底：overlay 是个 FrameLayout，如果某个子 View 吃掉了触摸，
+     * 挂在父 View 上的 OnTouchListener 就收不到事件；而 monitor 收到的是全屏事件，
+     * 与窗口层级、子 View 无关。
+     */
+    static void observe(int action, float x, float y) {
+        final Context ctx = Hooks.currentApplication();
+        if (ctx == null) return;
+        if (y > blurZoneBottom(ctx)) return;        // 只认模糊区
+        handleCore(ctx, action, x, y);
+    }
+
+    /** @return true 表示这次事件由我们处理掉，不再交给系统。 */
+    private static boolean handle(MotionEvent ev) {
+        final Context ctx = Hooks.currentApplication();
+        if (ctx == null) return false;
+        if (ev.getPointerCount() > 1) return false;
+        final boolean fired = handleCore(ctx, ev.getActionMasked(), ev.getRawX(), ev.getRawY());
+        return fired;
+    }
+
+    private static boolean handleCore(Context ctx, int action, float x, float y) {
+        final Cfg c = Cfg.get(ctx);
+        if (!c.enabled || !c.topShade) {
+            sDown = false;
+            sFired = false;
+            return false;
+        }
+
+        if (action == MotionEvent.ACTION_DOWN) {
+            sDown = false;
+            sFired = false;
+            // 只在单手模式激活时接管；普通状态下这块窗口根本不存在，这里只是保险
+            if (!HyperHand.isOneHandedActive(ctx)) return false;
+            sDown = true;
+            sDownX = x;
+            sDownY = y;
+            return false;
+        }
+
+        if (!sDown) return false;
+
+        if (action == MotionEvent.ACTION_MOVE) {
+            if (sFired) return true;
+            final Cfg.Screen sc = Cfg.Screen.get(ctx);
+            final float dy = y - sDownY;
+            final float dx = Math.abs(x - sDownX);
+            final float need = Math.max(6f, c.topShadeDyDp) * sc.density;
+            // 竖直为主才认，横向滑动留给系统
+            if (dy >= need && dx <= dy * 1.6f) {
+                sFired = true;
+                fire(ctx, c, sc, sDownX);
+            }
+            return sFired;
+        }
+
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            final boolean fired = sFired;
+            sDown = false;
+            sFired = false;
+            return fired;
+        }
+        return false;
+    }
+
+    /** 调试入口：不经过手势判定，直接走"退出单手模式 + 展开面板"的完整链路。 */
+    static void fireNow(Context ctx) {
+        try {
+            Cfg c = Cfg.get(ctx);
+            Cfg.Screen sc = Cfg.Screen.get(ctx);
+            sLastFireAt = 0;                     // 调试入口不受防抖限制
+            fire(ctx, c, sc, sc.width / 2f);
+        } catch (Throwable t) {
+            HyperHand.log("top shade fireNow failed: " + t);
+        }
+    }
+
+    /**
+     * 先展开面板，等它站稳之后再在背后退出单手模式。
+     *
+     * 顺序是实测出来的：反过来（先 stop 再 expand）时，退出单手模式的流程会把
+     * 刚展开的面板收掉 —— 日志里 expand 成功，最后看到的却是干净桌面。
+     * 面板盖在最上层，窗口归位的动画藏在后面，观感上是"一下就拉下来了"，
+     * 等用户收起面板时手机已经在正常模式里，不需要再手动退出。
+     */
+    private static void fire(final Context ctx, final Cfg c, final Cfg.Screen sc,
+                             final float downX) {
+        final boolean controlCenter;
+        if (c.topShadeSide == Cfg.TOP_SIDE_CONTROL) {
+            controlCenter = true;
+        } else if (c.topShadeSide == Cfg.TOP_SIDE_NOTIFY) {
+            controlCenter = false;
+        } else {
+            // 默认按落点左右分：与 HyperOS"右侧下拉出控制中心"的习惯一致
+            controlCenter = downX > sc.width * 0.5f;
+        }
+
+        final long now = android.os.SystemClock.uptimeMillis();
+        if (now - sLastFireAt < 500) return;        // 防抖：同一次手势只拉一次
+        sLastFireAt = now;
+
+        HyperHand.log("TOP SHADE: swipe in blur area -> open "
+                + (controlCenter ? "control center" : "notification center")
+                + " then exit one-handed (dy=" + c.topShadeDyDp + "dp, x=" + (int) downX + ")");
+
+        final boolean opened = expand(ctx, controlCenter);
+        if (!opened) {
+            // 展不开就至少保证退出单手模式，别把用户困在缩小窗口里
+            HyperHand.log("TOP SHADE: expand failed, exit one-handed directly");
+            HyperHand.stopOneHanded();
+            return;
+        }
+        final int delay = Math.max(120, c.topShadeDelayMs);
+        sHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                HyperHand.stopOneHanded();
+            }
+        }, delay);
+    }
+
+    /**
+     * 展开面板。SystemUI 自己是 system uid，因此 StatusBarManager 这条隐藏 API 可以直接用；
+     * 万一被 ROM 改签名，再退回 binder 直连。
+     */
+    private static boolean expand(Context ctx, boolean controlCenter) {
+        if (viaStatusBarManager(ctx, controlCenter)) {
+            HyperHand.log("TOP SHADE: expanded via StatusBarManager");
+            return true;
+        }
+        if (viaBinder(controlCenter)) {
+            HyperHand.log("TOP SHADE: expanded via IStatusBarService");
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean viaStatusBarManager(Context ctx, boolean controlCenter) {
+        try {
+            Object sbm = ctx.getSystemService("statusbar");
+            if (sbm == null) return false;
+            Class<?> k = sbm.getClass();
+            if (controlCenter) {
+                if (invoke(k, sbm, "expandSettingsPanel",
+                        new Class<?>[]{String.class}, new Object[]{null})) {
+                    return true;
+                }
+                if (invoke(k, sbm, "expandSettingsPanel",
+                        new Class<?>[]{}, new Object[]{})) {
+                    return true;
+                }
+            }
+            return invoke(k, sbm, "expandNotificationsPanel",
+                    new Class<?>[]{}, new Object[]{});
+        } catch (Throwable t) {
+            HyperHand.log("expand via StatusBarManager failed: " + t);
+            return false;
+        }
+    }
+
+    private static boolean viaBinder(boolean controlCenter) {
+        try {
+            Class<?> sm = Class.forName("android.os.ServiceManager");
+            Object binder = sm.getMethod("getService", String.class).invoke(null, "statusbar");
+            if (binder == null) return false;
+            Class<?> stub = Class.forName("com.android.internal.statusbar.IStatusBarService$Stub");
+            Object svc = stub.getMethod("asInterface", android.os.IBinder.class)
+                    .invoke(null, binder);
+            if (svc == null) return false;
+            Class<?> k = svc.getClass();
+            if (controlCenter && invoke(k, svc, "expandSettingsPanel",
+                    new Class<?>[]{String.class}, new Object[]{null})) {
+                return true;
+            }
+            return invoke(k, svc, "expandNotificationsPanel",
+                    new Class<?>[]{}, new Object[]{});
+        } catch (Throwable t) {
+            HyperHand.log("expand via IStatusBarService failed: " + t);
+            return false;
+        }
+    }
+
+    private static boolean invoke(Class<?> k, Object target, String name,
+                                  Class<?>[] types, Object[] args) {
+        try {
+            Method m = k.getMethod(name, types);
+            m.setAccessible(true);
+            m.invoke(target, args);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+}

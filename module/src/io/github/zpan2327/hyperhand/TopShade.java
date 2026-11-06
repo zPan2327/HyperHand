@@ -46,6 +46,12 @@ final class TopShade {
     private static float sDownX;
     private static float sDownY;
     private static long sLastFireAt;
+    /** "面板被拉出来 -> 退出单手模式"这条补丁的节流。 */
+    private static long sLastExitAt;
+
+    /** 虚拟顶部那条状态栏上的下拉（系统自己展开面板，我们只管退出单手模式）。 */
+    private static boolean sStripDown;
+    private static float sStripY;
 
     /** 模糊区那层 View，用来读它的高度（拿不到就按屏高兜底）。 */
     private static WeakReference<View> sOverlay = new WeakReference<View>(null);
@@ -116,18 +122,92 @@ final class TopShade {
     }
 
     /**
-     * 手势监视通道的观察入口（兜底路径）。
+     * 手势监视通道的观察入口（兜底路径 + "虚拟顶部"区域）。
      *
      * monitor 语义只观察、不消费，所以这里不需要返回值，也不会影响其它窗口。
      * 之所以需要这条兜底：overlay 是个 FrameLayout，如果某个子 View 吃掉了触摸，
      * 挂在父 View 上的 OnTouchListener 就收不到事件；而 monitor 收到的是全屏事件，
      * 与窗口层级、子 View 无关。
+     *
+     * 除了模糊区，这里还接管"虚拟顶部"那条状态栏：在那一带往下拉是系统自己在展开
+     * 通知中心/控制中心，我们不复刻这个动作，只负责在抬手时把单手模式退掉，
+     * 让"无论从哪儿拉出面板都会退出单手模式"这件事保持一致。
      */
     static void observe(int action, float x, float y) {
         final Context ctx = Hooks.currentApplication();
         if (ctx == null) return;
-        if (y > blurZoneBottom(ctx)) return;        // 只认模糊区
-        handleCore(ctx, action, x, y);
+
+        final float blurBottom = blurZoneBottom(ctx);
+        // 注意边界：overlay 的 touchableRegion 是 [0, 1068)，1068 本身已经属于状态栏，
+        // 所以用 < 而不是 <=，避免在分界线上同时触发"自己展开"和"系统展开"。
+        if (y < blurBottom) {                       // 模糊区：走完整判定（展开 + 退出）
+            handleCore(ctx, action, x, y);
+            return;
+        }
+        if (y > blurBottom + statusStripHeight(ctx)) return;   // 状态栏以下：别人的地盘
+
+        // 虚拟顶部：系统自己处理下拉，我们只在抬手时补一次"退出单手模式"
+        if (action == MotionEvent.ACTION_DOWN) {
+            sStripDown = true;
+            sStripY = y;
+            return;
+        }
+        if (!sStripDown) return;
+        if (action == MotionEvent.ACTION_MOVE) return;
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            final boolean pulledDown = (y - sStripY) >= barPullPx(ctx);
+            sStripDown = false;
+            if (pulledDown) {
+                onShadeGestureEnd("virtual_top");
+            }
+        }
+    }
+
+    /** 虚拟顶部那条状态栏的高度（含一点余量，覆盖手指压线的情况）。 */
+    private static float statusStripHeight(Context ctx) {
+        final float density = Cfg.Screen.get(ctx).density;
+        int h = 0;
+        try {
+            android.content.res.Resources r = ctx.getResources();
+            int id = r.getIdentifier("status_bar_height", "dimen", "android");
+            if (id > 0) h = r.getDimensionPixelSize(id);
+        } catch (Throwable ignored) {
+            // 走下面的兜底
+        }
+        if (h <= 0) h = Math.round(28 * density);
+        return h + 12 * density;
+    }
+
+    /** 状态栏那条里判定"确实在往下拉"的最小距离。 */
+    private static float barPullPx(Context ctx) {
+        return Math.max(12f, Cfg.get(ctx).topShadeDyDp) * Cfg.Screen.get(ctx).density;
+    }
+
+    /**
+     * 系统自己把面板拉出来之后，补一次"退出单手模式"。
+     *
+     * 目前接在 MIUI 控制中心的手势处理器上（handleExpandEvent 的 ACTION_UP）：
+     * 那条路径不经过模糊区，也不一定落在状态栏那一条带子里，所以单独兜住。
+     * 120ms 的延迟是为了让面板先落定，否则会被退出流程收掉（和模糊区那条一样的坑）。
+     */
+    static void onShadeGestureEnd(String why) {
+        final Context ctx = Hooks.currentApplication();
+        if (ctx == null) return;
+        final Cfg c = Cfg.get(ctx);
+        if (!c.enabled || !c.topShade) return;
+        if (!HyperHand.isOneHandedActive(ctx)) return;
+
+        final long now = android.os.SystemClock.uptimeMillis();
+        if (now - sLastExitAt < 500) return;
+        sLastExitAt = now;
+
+        HyperHand.log("TOP SHADE: shade opened via " + why + " -> exit one-handed");
+        sHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                HyperHand.stopOneHanded();
+            }
+        }, 120);
     }
 
     /** @return true 表示这次事件由我们处理掉，不再交给系统。 */

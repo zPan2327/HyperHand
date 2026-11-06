@@ -509,6 +509,19 @@ public class HyperHand extends XposedModule {
                     @Override
                     public Object run(XposedInterface.Chain chain) {
                         markShadeIntent("control_center");
+                        // 2.9.1：控制中心被拉出来之后，把单手模式一并退掉（和模糊区手势保持一致）。
+                        // 只认抬手，避免拖动过程中窗口跟着上移。
+                        try {
+                            List<Object> args = chain.getArgs();
+                            if (args.size() >= 1 && args.get(0) instanceof MotionEvent) {
+                                MotionEvent me = (MotionEvent) args.get(0);
+                                if (me.getActionMasked() == MotionEvent.ACTION_UP) {
+                                    TopShade.onShadeGestureEnd("control_center");
+                                }
+                            }
+                        } catch (Throwable ignored) {
+                            // 纯补丁，失败不影响原有行为
+                        }
                         return Hooks.PROCEED;
                     }
                 }));

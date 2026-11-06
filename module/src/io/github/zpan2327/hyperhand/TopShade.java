@@ -200,10 +200,10 @@ final class TopShade {
                         @Override
                         public void run() {
                             sAppPending = null;
-                            onShadeGestureEnd("app_swipe_timeout");
+                            onShadeGestureEnd("app_swipe_timeout", false);
                         }
                     };
-                    sHandler.postDelayed(sAppPending, 400);
+                    sHandler.postDelayed(sAppPending, 250);
                 }
                 return;
             }
@@ -219,7 +219,7 @@ final class TopShade {
                 // 也会把单手模式退掉。
                 final boolean shadeOpened = HyperHand.lastShadeIntentAt() >= sAppAt - 100;
                 if (pulledDown && shadeOpened) {
-                    onShadeGestureEnd("app_swipe");
+                    onShadeGestureEnd("app_swipe", false);
                 } else if (Cfg.get(ctx).debug) {
                     HyperHand.log("TOP SHADE: app_swipe skip dy=" + (int) dy
                             + " need=" + (int) appPullPx(ctx) + " shade=" + shadeOpened);
@@ -237,7 +237,7 @@ final class TopShade {
             // 否则"在状态栏上滑一下又缩回去"也会把单手模式退掉。
             final boolean shadeOpened = HyperHand.lastShadeIntentAt() >= sStripAt - 100;
             if (pulledDown && shadeOpened) {
-                onShadeGestureEnd("virtual_top");
+                onShadeGestureEnd("virtual_top", true);
             }
         }
     }
@@ -263,26 +263,29 @@ final class TopShade {
     }
 
     /**
-     * 内容区下拉的最小位移。
+     * 内容区下拉的最小位移：**必须超过 36dp（本机 ≈108px）**，和状态栏那条同一档。
      *
-     * 这里比状态栏带低得多：面板是"跟手 + 抬手后靠惯性展开"的，
-     * 用户经常拖 40~80px 就松手，用 36dp(≈108px) 会把这类手势判掉 ——
-     * 日志里那些 `launcher_forward` 之后再无下文的，多半就是这个原因。
-     * 10dp 只用来挡住"点一下"。
+     * 这一档是有意提高的：内容区是应用/桌面的地盘，门槛太低会把正常滚动、
+     * 或者"想滚动但手抖了一下"误判成拉面板。用户要求这里保持 108px。
      */
     private static float appPullPx(Context ctx) {
-        return 10f * Cfg.Screen.get(ctx).density;
+        return Math.max(12f, Cfg.get(ctx).topShadeDyDp) * Cfg.Screen.get(ctx).density;
     }
 
     // ------------------------------------------------------------ 退出时机控制
 
     /**
-     * 面板展开动画大约 300~400ms。等到这个时间还没收到"落定"信号就兜底退出。
+     * 快退：模糊区 / 状态栏边缘这两条是"自己拉"的，手感和原生一致 ——
+     * 拉下来就走，不等面板动画。120ms 只是让面板先画出第一帧，
+     * 否则会被退出流程直接收掉（早期踩过的坑）。
+     */
+    private static final long EXIT_FAST_MS = 120;
+    /**
+     * 慢退的超时兜底：内容区是"应用/桌面转发"的，等面板真正铺开再退。
      */
     private static final long EXIT_TIMEOUT_MS = 520;
     /**
-     * 即使面板状态切换得很快，也至少等这么久再退 ——
-     * 固定 120ms 的旧做法会在面板还没铺开时就把窗口顶上去，看起来像"面板被甩走"。
+     * 慢退最早也要等这么久 —— 固定 120ms 会在面板还没铺开时把窗口顶上去。
      * 380ms 大致是 HyperOS 通知中心/控制中心展开动画的长度。
      */
     private static final long EXIT_MIN_SETTLE_MS = 380;
@@ -290,6 +293,8 @@ final class TopShade {
     /** 0 表示当前没有待执行的退出。 */
     private static long sPendingAt;
     private static String sPendingWhy;
+    /** 这一次是"快退"还是"等面板落定再退"。快退可以覆盖慢退，反之不行。 */
+    private static boolean sPendingFast;
 
     private static final Runnable sExitTask = new Runnable() {
         @Override
@@ -301,16 +306,18 @@ final class TopShade {
     /**
      * 面板开始展开（走到 expand 出口 / 抬手 / 超时）。
      *
-     * 注意这里**不立刻**退出单手模式，只记下意图，等
-     * {@link #onShadeSettled} 或超时再动 —— 否则面板动画还在跑，
-     * 整个窗口就被往上顶，观感是"还没拉出来就缩回去了"。
+     * 钩子这条路径来源不明确，一律按"慢退"处理；如果同一次手势里
+     * 模糊区或状态栏边缘已经排了快退，这里的慢退会被忽略。
      */
     static void onShadeExpanded(String why) {
-        armExit(why);
+        armExit(why, false);
     }
 
-    static void onShadeGestureEnd(String why) {
-        armExit(why);
+    /**
+     * @param fast 模糊区 / 状态栏边缘 = true（立即退）；内容区 = false（等落定）
+     */
+    static void onShadeGestureEnd(String why, boolean fast) {
+        armExit(why, fast);
     }
 
     /**
@@ -320,6 +327,7 @@ final class TopShade {
      */
     static void onShadeSettled(String why) {
         if (sPendingAt == 0) return;
+        if (sPendingFast) return;             // 快退不等落定，避免被拖成慢动作
         final long elapsed = android.os.SystemClock.uptimeMillis() - sPendingAt;
         final long wait = Math.max(0, EXIT_MIN_SETTLE_MS - elapsed);
         final Context ctx = sCtx;
@@ -330,36 +338,49 @@ final class TopShade {
         sHandler.postDelayed(sExitTask, wait);
     }
 
-    private static void armExit(String why) {
+    private static void armExit(String why, boolean fast) {
         Context ctx = Hooks.currentApplication();
         if (ctx == null) ctx = sCtx;          // 主线程调用时可能拿不到
         if (ctx == null) return;
         final Cfg c = Cfg.get(ctx);
         if (!c.enabled || !c.topShade) return;
-        if (sPendingAt != 0) return;          // 已经在等这一次落定
+
+        final long now = android.os.SystemClock.uptimeMillis();
+
+        if (sPendingAt != 0) {
+            // 已经从别的路径排上队了：只有快退能把它提前，慢退不要拖后腿。
+            if (!fast || sPendingFast) return;
+            sPendingAt = now;
+            sPendingWhy = why;
+            sPendingFast = true;
+            sHandler.removeCallbacks(sExitTask);
+            sHandler.postDelayed(sExitTask, EXIT_FAST_MS);
+            return;
+        }
 
         if (!HyperHand.isOneHandedActive(ctx)) {
             // 面板确实开了、但此刻已经不在单手模式：正常（比如刚被别的路径退过）。
             if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (not in one-handed)");
             return;
         }
-
-        final long now = android.os.SystemClock.uptimeMillis();
         if (sLastExitAt != 0 && now - sLastExitAt < 500) {
             if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (throttled)");
             return;
         }
         sPendingAt = now;
         sPendingWhy = why;
+        sPendingFast = fast;
         sHandler.removeCallbacks(sExitTask);
-        sHandler.postDelayed(sExitTask, EXIT_TIMEOUT_MS);
+        sHandler.postDelayed(sExitTask, fast ? EXIT_FAST_MS : EXIT_TIMEOUT_MS);
     }
 
     private static void doExit() {
         if (sPendingAt == 0) return;
         sPendingAt = 0;
         sLastExitAt = android.os.SystemClock.uptimeMillis();
-        HyperHand.log("TOP SHADE: shade opened via " + sPendingWhy + " -> exit one-handed");
+        HyperHand.log("TOP SHADE: shade opened via " + sPendingWhy
+                + (sPendingFast ? " -> exit one-handed (fast)" : " -> exit one-handed"));
+        sPendingFast = false;
         HyperHand.stopOneHanded();
     }
 
@@ -464,8 +485,9 @@ final class TopShade {
             return;
         }
         // 走统一的"等面板落定再退"。expand() 内部的钩子通常已经 arm 过一次，
-        // 这里只是兜底（重复 arm 会被忽略）。
-        armExit("blur_swipe");
+        // 这里只是兜底（重复 arm 会被忽略）。模糊区这条是"自己拉"的，
+        // 和原生手感一致 —— 用快退，不等面板动画。
+        armExit("blur_swipe", true);
     }
 
     /**

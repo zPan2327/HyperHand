@@ -557,7 +557,9 @@ public class HyperHand extends XposedModule {
                             if (args.size() >= 1 && args.get(0) instanceof MotionEvent) {
                                 MotionEvent me = (MotionEvent) args.get(0);
                                 if (me.getActionMasked() == MotionEvent.ACTION_UP) {
-                                    TopShade.onShadeGestureEnd("control_center");
+                                    // 慢退：控制中心这条不知道起点，交给模糊区/状态栏
+                                    // 那两条快退去覆盖（快退可以抢先，慢退不会拖后腿）
+                                    TopShade.onShadeGestureEnd("control_center", false);
                                 }
                             }
                         } catch (Throwable ignored) {

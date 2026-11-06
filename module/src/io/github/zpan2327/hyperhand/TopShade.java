@@ -63,8 +63,8 @@ final class TopShade {
     /** 缩小窗口内容区的下拉（桌面/应用把事件转发给 SystemUI 展开面板）。 */
     private static float sAppY;
     private static long sAppAt;
-    /** 内容区下拉的"抬手丢失"兜底任务（面板展开时输入焦点会转移，有时收不到 UP）。 */
-    private static Runnable sAppPending;
+    /** 通知面板控制器实例（从 expand 钩子拿到），用来读真实展开比例。 */
+    private static WeakReference<Object> sPanel = new WeakReference<Object>(null);
 
     /** 最近一次非空的 Context：scheduleExit 可能被主线程/钩子线程同时调用。 */
     private static Context sCtx;
@@ -189,40 +189,21 @@ final class TopShade {
             return;
         }
         if (sMode == MODE_APP) {
-            if (action == MotionEvent.ACTION_MOVE) {
-                // 面板一开始展开，输入焦点就会从应用转到 NotificationShade，
-                // 这时候 UP 有可能收不到（表现为"拉了但没退"，日志里一片空白）。
-                // 所以位移够了就先挂一个 400ms 的兜底：真的收到 UP 会取消它。
-                if (sAppPending == null
-                        && (y - sAppY) >= appPullPx(ctx)
-                        && HyperHand.lastShadeIntentAt() >= sAppAt - 100) {
-                    sAppPending = new Runnable() {
-                        @Override
-                        public void run() {
-                            sAppPending = null;
-                            onShadeGestureEnd("app_swipe_timeout", false);
-                        }
-                    };
-                    sHandler.postDelayed(sAppPending, 250);
-                }
-                return;
-            }
+            if (action == MotionEvent.ACTION_MOVE) return;
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 sMode = MODE_NONE;
-                if (sAppPending != null) {
-                    sHandler.removeCallbacks(sAppPending);
-                    sAppPending = null;
-                }
                 final float dy = y - sAppY;
                 final boolean pulledDown = dy >= appPullPx(ctx);
-                // 同样要确认这次手势真的引发了面板展开，否则"在应用里往下滚一屏"
-                // 也会把单手模式退掉。
-                final boolean shadeOpened = HyperHand.lastShadeIntentAt() >= sAppAt - 100;
-                if (pulledDown && shadeOpened) {
-                    onShadeGestureEnd("app_swipe", false);
+                final boolean shadeIntent = HyperHand.lastShadeIntentAt() >= sAppAt - 100;
+                if (pulledDown && shadeIntent) {
+                    // 关键：这里**不再**直接排退出。
+                    // `launcher_forward` 只说明"桌面把事件转发过来了"，
+                    // 面板完全可能因为位移不够又缩回去 —— 那就不该退单手模式。
+                    // 先等 320ms，读面板真实的展开比例，确认真被拉出来了才退。
+                    scheduleExpandedCheck("app_swipe", 320);
                 } else if (Cfg.get(ctx).debug) {
                     HyperHand.log("TOP SHADE: app_swipe skip dy=" + (int) dy
-                            + " need=" + (int) appPullPx(ctx) + " shade=" + shadeOpened);
+                            + " need=" + (int) appPullPx(ctx) + " shade=" + shadeIntent);
                 }
             }
             return;
@@ -336,6 +317,83 @@ final class TopShade {
         }
         sHandler.removeCallbacks(sExitTask);
         sHandler.postDelayed(sExitTask, wait);
+    }
+
+    /** 记住面板控制器实例（由 expand 钩子传入），后面要靠它读展开比例。 */
+    static void rememberPanel(Object panel) {
+        if (panel != null) sPanel = new WeakReference<Object>(panel);
+    }
+
+    /**
+     * 面板是否**真的**被拉出来了 —— 直接读面板自身的展开比例，
+     * 不看任何"下拉意图"信号。
+     *
+     * 为什么不能用 {@code launcher_forward}：它只说明桌面把触摸转发给了 SystemUI。
+     * 位移不够时面板会自己缩回去，拿它当判据就会"没拉出来也退单手模式"。
+     */
+    static boolean isPanelExpanded() {
+        final Object p = sPanel.get();
+        if (p == null) return false;
+        for (Class<?> k = p.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            try {
+                Field f = k.getDeclaredField("mExpandedFraction");
+                f.setAccessible(true);
+                final Object v = f.get(p);
+                if (v instanceof Float) return ((Float) v) >= 0.35f;
+            } catch (Throwable ignored) {
+                // 换父类继续找，或落到下面的方法兜底
+            }
+        }
+        try {
+            Method m = p.getClass().getDeclaredMethod("isExpanded");
+            m.setAccessible(true);
+            final Object v = m.invoke(p);
+            if (v instanceof Boolean) return (Boolean) v;
+        } catch (Throwable ignored) {
+            // 读不到就当作"没展开"：宁可少退一次，也不要误退
+        }
+        return false;
+    }
+
+    /**
+     * 延迟一段时间后确认面板是否真的展开，确认到了才退出单手模式。
+     *
+     * 用于内容区（应用/桌面转发展开）与控制中心拖动这两条路径 ——
+     * 它们的共同点是"先有下拉动作，面板是否出来由系统后面决定"。
+     */
+    static void scheduleExpandedCheck(final String why, int delayMs) {
+        Context ctx = Hooks.currentApplication();
+        if (ctx == null) ctx = sCtx;
+        if (ctx == null) return;
+        final Cfg c = Cfg.get(ctx);
+        if (!c.enabled || !c.topShade) return;
+        if (!HyperHand.isOneHandedActive(ctx)) {
+            if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (not in one-handed)");
+            return;
+        }
+        final boolean dbg = c.debug;
+        sHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (isPanelExpanded()) {
+                    exitNow(why);
+                } else if (dbg) {
+                    HyperHand.log("TOP SHADE: " + why + " not expanded, stay in one-handed");
+                }
+            }
+        }, delayMs);
+    }
+
+    /** 立刻退出（不做落定等待），并清掉可能已排队的任务。 */
+    private static void exitNow(String why) {
+        final long now = android.os.SystemClock.uptimeMillis();
+        if (sLastExitAt != 0 && now - sLastExitAt < 500) return;
+        sLastExitAt = now;
+        sPendingAt = 0;
+        sPendingFast = false;
+        sHandler.removeCallbacks(sExitTask);
+        HyperHand.log("TOP SHADE: shade opened via " + why + " -> exit one-handed");
+        HyperHand.stopOneHanded();
     }
 
     private static void armExit(String why, boolean fast) {

@@ -2,6 +2,26 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.7] - 2026-11-06
+
+把判据从"下拉意图"换成"面板真的展开了"，修掉内容区误退。
+
+### Fixed
+
+- 内容区下拉的旧判据是 `lastShadeIntentAt()`（出现过 `launcher_forward`）。
+  但这条信号只说明"桌面把触摸转发给了 SystemUI"，位移不够时面板会自己缩回去，
+  于是**面板没拉出来也把单手模式退掉**。
+- 改为读面板真实的展开比例：`NotificationPanelViewController#mExpandedFraction >= 0.35`，
+  面板实例从 `expand` 钩子的 `chain.getThisObject()` 取得；字段读不到退化成
+  `isExpanded()`，两者都读不到就当作"没展开"（宁可不退）。
+- 内容区与控制中心拖动改为"延迟 320ms 确认"：真的展开就立刻退，
+  没展开就什么都不做。`launcher_forward` 只作为"值得检查"的前置条件。
+- 模糊区 / 状态栏边缘不变（自己调 expand，天然知道面板出来了），仍 120ms 快退。
+
+### Added
+
+- `probe` 调试动作多输出 `panelExpanded=` 与 `activated=`，便于现场确认判据。
+
 ## [2.9.6] - 2026-11-06
 
 退出改成分速：跟手的走快退，内容区走慢退。

@@ -509,6 +509,9 @@ public class HyperHand extends XposedModule {
                         @Override
                         public Object run(XposedInterface.Chain chain) {
                             markShadeIntent("shade_expand");
+                            // 顺手记下面板实例：后面判断"面板到底有没有真的展开"
+                            // 要读它的展开比例（launcher_forward 只代表意图，不够）
+                            TopShade.rememberPanel(chain.getThisObject());
                             TopShade.onShadeExpanded("notification_shade");
                             return Hooks.PROCEED;
                         }
@@ -557,9 +560,9 @@ public class HyperHand extends XposedModule {
                             if (args.size() >= 1 && args.get(0) instanceof MotionEvent) {
                                 MotionEvent me = (MotionEvent) args.get(0);
                                 if (me.getActionMasked() == MotionEvent.ACTION_UP) {
-                                    // 慢退：控制中心这条不知道起点，交给模糊区/状态栏
-                                    // 那两条快退去覆盖（快退可以抢先，慢退不会拖后腿）
-                                    TopShade.onShadeGestureEnd("control_center", false);
+                                    // 抬手不代表面板一定出来：进度不够时系统会把它收回。
+                                    // 所以只做"延迟确认"，真展开了才退。
+                                    TopShade.scheduleExpandedCheck("control_center", 320);
                                 }
                             }
                         } catch (Throwable ignored) {
@@ -1046,6 +1049,8 @@ public class HyperHand extends XposedModule {
                             if ("probe".equals(act)) {
                                 log("debug action: probe");
                                 BlurBg.probe();
+                                log("probe: panelExpanded=" + TopShade.isPanelExpanded()
+                                        + " activated=" + isOneHandedActive(context));
                                 return;
                             }
                             if ("trigger".equals(act)) {

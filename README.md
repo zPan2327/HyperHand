@@ -259,6 +259,7 @@ adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_
 | `oh_tuner_end_boost` | 贴底才算单手模式（`0` 回到纯速度/距离判定） | `1` |
 | `oh_tuner_end_zone_dp` | 抬手点距屏幕底边小于该值算"到底" | `32` |
 | `oh_tuner_top_shade` | 单手模式下模糊区下滑展开通知/控制中心 | `1` |
+| —— | 只要面板被拉出来（任意入口）都会退出单手模式，见 docs §10.7 | —— |
 | `oh_tuner_top_shade_dy_dp` | 触发所需的向下距离（dp） | `36` |
 | `oh_tuner_top_shade_side` | 拉开哪个：`0` 左通知右控制 / `1` 总是通知 / `2` 总是控制 | `0` |
 

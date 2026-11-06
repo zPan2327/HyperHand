@@ -87,6 +87,8 @@ public class HyperHand extends XposedModule {
     /** 控制中心下拉事件处理。 */
     static final String CLS_CC_HANDLER =
             "com.miui.systemui.controlcenter.container.ControlCenterEventHandlerImpl";
+    /** 控制中心本体（expand 入口在这里，手势之外的展开也会走）。 */
+    static final String CLS_CC_IMPL = "com.miui.systemui.controlcenter.ControlCenterImpl";
 
     /** 桌面下拉手势真正发出事件的入口（桌面进程）。 */
     static final String CLS_SYSUI_PROXY_WRAPPER = "com.miui.home.recents.SystemUiProxyWrapper";
@@ -494,12 +496,48 @@ public class HyperHand extends XposedModule {
                         n++;
                     }
                 }
-                log("NotificationPanelViewController hooked (shade guard, " + n + ")");
+                // 2.9.3：面板真正的展开入口只有这三个。
+                // 不管手势从哪儿起手（状态栏、应用内、锁屏、程序化调用），
+                // 最终都会落到 expand/expandToNotifications/expandToQs 上，
+                // 挂这里比逐个猜手势起点可靠得多。
+                int opened = 0;
+                for (String name : new String[]{"expand", "expandToNotifications", "expandToQs"}) {
+                    opened += hooks.hookMethods(pvc, name, Hooks.before(new Hooks.Before() {
+                        @Override
+                        public Object run(XposedInterface.Chain chain) {
+                            markShadeIntent("shade_expand");
+                            TopShade.onShadeExpanded("notification_shade");
+                            return Hooks.PROCEED;
+                        }
+                    }));
+                }
+                log("NotificationPanelViewController hooked (shade guard, " + n
+                        + "; expand entry, " + opened + ")");
             } else {
                 log("NotificationPanelViewController class not found");
             }
         } catch (Throwable t) {
             log("hook panel controller failed: " + t);
+        }
+
+        // 控制中心自己的展开入口（手势之外，快捷方式/程序化调用也走这里）
+        try {
+            Class<?> ccImpl = hooks.findClass(CLS_CC_IMPL, cl);
+            if (ccImpl != null) {
+                int n = hooks.hookMethods(ccImpl, "expand", Hooks.before(new Hooks.Before() {
+                    @Override
+                    public Object run(XposedInterface.Chain chain) {
+                        markShadeIntent("control_center_expand");
+                        TopShade.onShadeExpanded("control_center");
+                        return Hooks.PROCEED;
+                    }
+                }));
+                log("ControlCenterImpl hooked (expand entry, " + n + ")");
+            } else {
+                log("ControlCenterImpl class not found");
+            }
+        } catch (Throwable t) {
+            log("hook control center impl failed: " + t);
         }
 
         try {
@@ -540,6 +578,11 @@ public class HyperHand extends XposedModule {
             sLastShadeLogAt = sShadeIntentAt;
             log("shade intent: " + why);
         }
+    }
+
+    /** 最近一次"面板开始下拉"的时刻（uptimeMillis），供 2.9.1 的虚拟顶部判定使用。 */
+    static long lastShadeIntentAt() {
+        return sShadeIntentAt;
     }
 
     /**

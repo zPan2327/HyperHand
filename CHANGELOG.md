@@ -2,6 +2,33 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.3] - 2026-11-06
+
+改成挂"面板的展开出口"，覆盖所有能拉出通知中心/控制中心的路径。
+
+### Fixed
+
+- 之前是手写手势判定（模糊区 + 状态栏带 + 控制中心手势），总有覆盖不到的入口。
+  现在额外挂 `NotificationPanelViewController#expand/expandToNotifications/expandToQs`
+  与 `ControlCenterImpl#expand` —— 无论从状态栏、应用内、锁屏还是程序化调用展开，
+  最终都会经过这些方法，命中即退出单手模式。
+- 120ms 延迟保留，避免退出流程把刚展开的面板收掉。
+
+### Verified
+
+- `cmd statusbar expand-notifications` → `shade opened via notification_shade` + 退出，面板保持展开
+- `cmd statusbar expand-settings` → `shade opened via control_center` + 退出，控制中心保持展开
+
+## [2.9.2] - 2026-11-06
+
+### Fixed
+
+- 状态栏带的区域判断被写成了**每帧校验**：手指往下拖之后 UP 的 y 已经越过区线，
+  "抬手退出"永远执行不到 —— 表现成控制中心能退、通知中心不退。
+  改成只在 ACTION_DOWN 判定一次手势归属，MOVE/UP 按归属走完。
+- 顺带补上"必须确认这次手势真的把面板拉出来了"（看 shade intent），
+  避免在状态栏上轻划一下也把单手模式退掉。
+
 ## [2.9.1] - 2026-11-06
 
 统一"退出单手模式"的时机：**只要把通知中心/控制中心拉出来，就退出单手模式**。

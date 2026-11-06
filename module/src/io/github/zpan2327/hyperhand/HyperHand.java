@@ -134,6 +134,10 @@ public class HyperHand extends XposedModule {
     private static boolean sTriggered;
     private static long sDownTime;
     private static long sLastTriggerAt;
+    /** 最近一次 StatusBarState 切换的时刻（毫秒时间戳，0 = 从未），调试用。 */
+    static volatile long sLastSetStateAt;
+    /** 最近一次 StatusBarState 的目标值，调试用。 */
+    static volatile int sLastSetStateValue = -1;
     /** 本次手势的 DOWN 时刻单手模式是否已激活（供 2.9 的模糊区手势复用，避免每帧读 Settings）。 */
     private static boolean sOhActiveAtDown;
 
@@ -530,10 +534,19 @@ public class HyperHand extends XposedModule {
         try {
             Class<?> ccImpl = hooks.findClass(CLS_CC_IMPL, cl);
             if (ccImpl != null) {
+                // 控制中心不走 NotificationPanelViewController，展开状态得读它自己的。
+                // 构造器记实例，probe 才能看到它的真实状态。
+                hooks.hookMethods(ccImpl, "<init>", Hooks.after(new Hooks.After() {
+                    @Override
+                    public void run(XposedInterface.Chain chain, Object result) {
+                        TopShade.rememberControlCenter(chain.getThisObject());
+                    }
+                }));
                 int n = hooks.hookMethods(ccImpl, "expand", Hooks.before(new Hooks.Before() {
                     @Override
                     public Object run(XposedInterface.Chain chain) {
                         markShadeIntent("control_center_expand");
+                        TopShade.rememberControlCenter(chain.getThisObject());
                         TopShade.onShadeExpanded("control_center");
                         return Hooks.PROCEED;
                     }
@@ -561,8 +574,8 @@ public class HyperHand extends XposedModule {
                                 MotionEvent me = (MotionEvent) args.get(0);
                                 if (me.getActionMasked() == MotionEvent.ACTION_UP) {
                                     // 抬手不代表面板一定出来：进度不够时系统会把它收回。
-                                    // 所以只做"延迟确认"，真展开了才退。
-                                    TopShade.scheduleExpandedCheck("control_center", 320);
+                                    // 只进入"待确认"，等状态机切换/展开出口来证实。
+                                    TopShade.armConfirm("control_center");
                                 }
                             }
                         } catch (Throwable ignored) {
@@ -589,6 +602,9 @@ public class HyperHand extends XposedModule {
                     @Override
                     public Object run(XposedInterface.Chain chain) {
                         try {
+                            Object a0 = chain.getArg(0);
+                            if (a0 instanceof Integer) sLastSetStateValue = (Integer) a0;
+                            sLastSetStateAt = SystemClock.uptimeMillis();
                             TopShade.onShadeSettled("panel_settled");
                         } catch (Throwable ignored) {
                             // 纯补丁
@@ -1050,7 +1066,17 @@ public class HyperHand extends XposedModule {
                                 log("debug action: probe");
                                 BlurBg.probe();
                                 log("probe: panelExpanded=" + TopShade.isPanelExpanded()
+                                        + " fraction=" + TopShade.panelFraction()
+                                        + " cc=[" + TopShade.controlCenterState() + "]"
+                                        + " setStateValue=" + sLastSetStateValue
+                                        + " setStateAgo=" + (sLastSetStateAt == 0 ? -1
+                                        : (SystemClock.uptimeMillis() - sLastSetStateAt))
                                         + " activated=" + isOneHandedActive(context));
+                                return;
+                            }
+                            if ("armconfirm".equals(act)) {
+                                log("debug action: armconfirm");
+                                TopShade.armConfirm("debug_confirm");
                                 return;
                             }
                             if ("trigger".equals(act)) {

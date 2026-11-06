@@ -65,6 +65,8 @@ final class TopShade {
     private static long sAppAt;
     /** 通知面板控制器实例（从 expand 钩子拿到），用来读真实展开比例。 */
     private static WeakReference<Object> sPanel = new WeakReference<Object>(null);
+    /** 控制中心实现实例：HyperOS 的控制中心不走 NotificationPanelViewController。 */
+    private static WeakReference<Object> sCc = new WeakReference<Object>(null);
 
     /** 最近一次非空的 Context：scheduleExit 可能被主线程/钩子线程同时调用。 */
     private static Context sCtx;
@@ -196,11 +198,9 @@ final class TopShade {
                 final boolean pulledDown = dy >= appPullPx(ctx);
                 final boolean shadeIntent = HyperHand.lastShadeIntentAt() >= sAppAt - 100;
                 if (pulledDown && shadeIntent) {
-                    // 关键：这里**不再**直接排退出。
-                    // `launcher_forward` 只说明"桌面把事件转发过来了"，
-                    // 面板完全可能因为位移不够又缩回去 —— 那就不该退单手模式。
-                    // 先等 320ms，读面板真实的展开比例，确认真被拉出来了才退。
-                    scheduleExpandedCheck("app_swipe", 320);
+                    // 不直接退：先进入"待确认"，等系统给出"确实要打开"的证据。
+                    // 证据一到就立刻退（几十毫秒级），证据不来就什么都不做。
+                    armConfirm("app_swipe");
                 } else if (Cfg.get(ctx).debug) {
                     HyperHand.log("TOP SHADE: app_swipe skip dy=" + (int) dy
                             + " need=" + (int) appPullPx(ctx) + " shade=" + shadeIntent);
@@ -291,6 +291,11 @@ final class TopShade {
      * 模糊区或状态栏边缘已经排了快退，这里的慢退会被忽略。
      */
     static void onShadeExpanded(String why) {
+        // 正在"待确认"：这就是证据 —— 系统真的调了展开出口，立刻退，不等动画。
+        if (sConfirmAt != 0) {
+            confirmOpened("expand");
+            return;
+        }
         armExit(why, false);
     }
 
@@ -307,6 +312,12 @@ final class TopShade {
      * 只在我们自己"等着退出"的窗口内生效，所以不会误伤锁屏/解锁等无关的状态切换。
      */
     static void onShadeSettled(String why) {
+        // 待确认时这是最硬的证据：状态机都切到展开态了。
+        // 而且它来得比"展开完成"早得多（实测 17ms），正好保证跟手。
+        if (sConfirmAt != 0) {
+            confirmOpened("settled");
+            return;
+        }
         if (sPendingAt == 0) return;
         if (sPendingFast) return;             // 快退不等落定，避免被拖成慢动作
         final long elapsed = android.os.SystemClock.uptimeMillis() - sPendingAt;
@@ -325,43 +336,171 @@ final class TopShade {
     }
 
     /**
-     * 面板是否**真的**被拉出来了 —— 直接读面板自身的展开比例，
-     * 不看任何"下拉意图"信号。
+     * 面板当前的展开比例；读不到返回 -1。
      *
-     * 为什么不能用 {@code launcher_forward}：它只说明桌面把触摸转发给了 SystemUI。
-     * 位移不够时面板会自己缩回去，拿它当判据就会"没拉出来也退单手模式"。
+     * 注意：这个比例来自 {@code NotificationPanelViewController}，只反映**通知面板**。
+     * HyperOS 的控制中心是另一套实现，展开时这个值不一定涨 —— 所以它不能单独当判据，
+     * 只用来做"已经露头了"的辅助确认。
      */
-    static boolean isPanelExpanded() {
+    static float panelFraction() {
         final Object p = sPanel.get();
-        if (p == null) return false;
+        if (p == null) return -1f;
         for (Class<?> k = p.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
             try {
                 Field f = k.getDeclaredField("mExpandedFraction");
                 f.setAccessible(true);
                 final Object v = f.get(p);
-                if (v instanceof Float) return ((Float) v) >= 0.35f;
+                if (v instanceof Float) return (Float) v;
             } catch (Throwable ignored) {
-                // 换父类继续找，或落到下面的方法兜底
+                // 换父类继续找
             }
         }
-        try {
-            Method m = p.getClass().getDeclaredMethod("isExpanded");
-            m.setAccessible(true);
-            final Object v = m.invoke(p);
-            if (v instanceof Boolean) return (Boolean) v;
-        } catch (Throwable ignored) {
-            // 读不到就当作"没展开"：宁可少退一次，也不要误退
-        }
-        return false;
+        return -1f;
+    }
+
+    static boolean isPanelExpanded() {
+        return panelFraction() >= 0.35f;
+    }
+
+    /** 记住控制中心实现实例。 */
+    static void rememberControlCenter(Object cc) {
+        if (cc != null) sCc = new WeakReference<Object>(cc);
     }
 
     /**
-     * 延迟一段时间后确认面板是否真的展开，确认到了才退出单手模式。
+     * 控制中心自己的展开状态值。
      *
-     * 用于内容区（应用/桌面转发展开）与控制中心拖动这两条路径 ——
-     * 它们的共同点是"先有下拉动作，面板是否出来由系统后面决定"。
+     * HyperOS 的控制中心不走 NotificationPanelViewController，而是自己维护一个
+     * StateFlow（`getExpandedState()`）。读它比读通知面板的比例可靠得多。
      */
-    static void scheduleExpandedCheck(final String why, int delayMs) {
+    private static Object ccExpandedValue() {
+        final Object o = sCc.get();
+        if (o == null) return null;
+        try {
+            Method m = o.getClass().getDeclaredMethod("getExpandedState");
+            m.setAccessible(true);
+            final Object flow = m.invoke(o);
+            if (flow == null) return null;
+            Method gv = flow.getClass().getMethod("getValue");
+            gv.setAccessible(true);
+            return gv.invoke(flow);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 控制中心是否已经展开（枚举名里含 EXPAND 且不是 COLLAPSED）。 */
+    static boolean isControlCenterExpanded() {
+        final Object v = ccExpandedValue();
+        if (v == null) return false;
+        if (v instanceof Boolean) return (Boolean) v;
+        final String s = String.valueOf(v).toUpperCase(java.util.Locale.US);
+        return s.contains("EXPAND") && !s.contains("COLLAPS");
+    }
+
+    /**
+     * 控制中心当前状态（调试用）。HyperOS 的控制中心不走 NotificationPanelViewController，
+     * 所以它的展开与否要从自己的状态字段/视图尺寸读。
+     */
+    static String controlCenterState() {
+        final Object o = sCc.get();
+        if (o == null) return "null";
+        final StringBuilder sb = new StringBuilder(o.getClass().getSimpleName());
+        if (o instanceof View) {
+            final View v = (View) o;
+            sb.append(" vis=").append(v.getVisibility())
+                    .append(" h=").append(v.getHeight())
+                    .append(" a=").append(String.format(java.util.Locale.US, "%.2f", v.getAlpha()));
+        }
+        for (String fn : new String[]{"_expandState", "expandState", "_visibleState", "visibleState"}) {
+            for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                try {
+                    Field f = k.getDeclaredField(fn);
+                    f.setAccessible(true);
+                    Object v = f.get(o);
+                    String txt = String.valueOf(v);
+                    if (txt.length() > 60) txt = txt.substring(0, 60) + "…";
+                    sb.append(" ").append(fn).append("=").append(txt);
+                    break;
+                } catch (Throwable ignored) {
+                    // 换父类/换字段名
+                }
+            }
+        }
+        // Kotlin 属性通常会生成 getter，字段读不到就试着调方法
+        for (String mn : new String[]{"getExpandState", "getExpandedState", "getExpansionState",
+                "getVisibleState", "getAppearState", "isExpanded"}) {
+            try {
+                Method m = o.getClass().getDeclaredMethod(mn);
+                m.setAccessible(true);
+                Object v = m.invoke(o);
+                if (v != null) {
+                    try {
+                        // StateFlow：再取当前值，才是真正能比较的东西
+                        Method gv = v.getClass().getMethod("getValue");
+                        gv.setAccessible(true);
+                        v = gv.invoke(v);
+                    } catch (Throwable ignored) {
+                        // 不是 flow，直接用
+                    }
+                }
+                String txt = String.valueOf(v);
+                if (txt.length() > 60) txt = txt.substring(0, 60) + "…";
+                sb.append(" ").append(mn).append("()=").append(txt);
+            } catch (Throwable ignored) {
+                // 该方法不存在
+            }
+        }
+        sb.append(" ccExpanded=").append(isControlCenterExpanded());
+        return sb.toString();
+    }
+
+    /** "待确认"窗口：内容区/控制中心下拉后，等一个"确实要打开"的证据。0 = 不在等待。 */
+    private static long sConfirmAt;
+    private static String sConfirmWhy;
+    /** 最长等这么久，等不到就当没触发（不退出单手模式）。 */
+    private static final long CONFIRM_TIMEOUT_MS = 700;
+
+    /**
+     * 轮询确认：一旦面板露出一点（或状态机切到展开），立刻退出；一直不露头就放弃。
+     *
+     * 用 60ms 的轮询而不是固定延时，是因为"要打开"的时刻本来就早于"完全展开"，
+     * 只有这样才能做到跟手 —— 固定 320ms 再判断，用户会觉得慢半拍。
+     */
+    private static final Runnable sConfirmTask = new Runnable() {
+        @Override
+        public void run() {
+            if (sConfirmAt == 0) return;
+            if (android.os.SystemClock.uptimeMillis() - sConfirmAt > CONFIRM_TIMEOUT_MS) {
+                if (sCtx != null && Cfg.get(sCtx).debug) {
+                    HyperHand.log("TOP SHADE: " + sConfirmWhy
+                            + " not opened, stay in one-handed");
+                }
+                sConfirmAt = 0;
+                return;
+            }
+            if (panelFraction() > 0.02f) {
+                confirmOpened("panel_visible");
+                return;
+            }
+            if (isControlCenterExpanded()) {
+                confirmOpened("cc_expanded");
+                return;
+            }
+            sHandler.postDelayed(this, 60);
+        }
+    };
+
+    /**
+     * 内容区 / 控制中心拖动下拉之后调用：进入"待确认"。
+     *
+     * 这类手势的共同点是"先有下拉动作，面板能不能出来由系统后面决定"。
+     * 我们不猜，只等证据：状态机切换（{@link #onShadeSettled}）、
+     * 展开出口（{@link #onShadeExpanded}）、或者面板露出第一帧。
+     * 600ms 内都没有证据 → 收工，不动单手模式。
+     */
+    static void armConfirm(final String why) {
+        if (sConfirmAt != 0) return;          // 已经在等，别把计时器一次次重置
         Context ctx = Hooks.currentApplication();
         if (ctx == null) ctx = sCtx;
         if (ctx == null) return;
@@ -371,17 +510,19 @@ final class TopShade {
             if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (not in one-handed)");
             return;
         }
-        final boolean dbg = c.debug;
-        sHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (isPanelExpanded()) {
-                    exitNow(why);
-                } else if (dbg) {
-                    HyperHand.log("TOP SHADE: " + why + " not expanded, stay in one-handed");
-                }
-            }
-        }, delayMs);
+        sConfirmAt = android.os.SystemClock.uptimeMillis();
+        sConfirmWhy = why;
+        sHandler.removeCallbacks(sConfirmTask);
+        sHandler.postDelayed(sConfirmTask, 80);
+    }
+
+    /** 收到"确实要打开"的证据：立刻退出，不等面板展开完。 */
+    private static void confirmOpened(String evidence) {
+        if (sConfirmAt == 0) return;
+        final String why = sConfirmWhy;
+        sConfirmAt = 0;
+        sHandler.removeCallbacks(sConfirmTask);
+        exitNow(why + " via " + evidence);
     }
 
     /** 立刻退出（不做落定等待），并清掉可能已排队的任务。 */
@@ -391,6 +532,8 @@ final class TopShade {
         sLastExitAt = now;
         sPendingAt = 0;
         sPendingFast = false;
+        sConfirmAt = 0;
+        sHandler.removeCallbacks(sConfirmTask);
         sHandler.removeCallbacks(sExitTask);
         HyperHand.log("TOP SHADE: shade opened via " + why + " -> exit one-handed");
         HyperHand.stopOneHanded();

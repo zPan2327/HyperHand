@@ -2,6 +2,31 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.8] - 2026-11-06
+
+控制中心走的是另一套面板，判据补上；同时把"等落定"改成"待确认 + 轮询"，更跟手。
+
+### Fixed
+
+- **中部下拉控制中心不退出**：HyperOS 的控制中心不走 `NotificationPanelViewController`，
+  通知面板的 `mExpandedFraction` 对它永远是 0（实测控制中心展开时仍为 0.0）。
+  补上控制中心自己的状态：`ControlCenterImpl#getExpandedState()` 取 `getValue()`。
+  两者并联，任一为真即认定"面板确实打开了"。
+- `ControlCenterImpl` 实例改从**构造器**钩子拿 —— 中部下拉这条路径不会调用 `expand()`，
+  只挂 expand 会拿到 null。
+
+### Changed
+
+- 内容区 / 控制中心拖动不再固定等 320ms 或 520ms，改成"待确认 + 60ms 轮询"：
+  面板露头或控制中心状态为 true 就**立刻**退，700ms 内没证据就放弃（保持单手）。
+- 证据统一为三种：`expand` 出口、`setState` 状态机切换、`panel_visible`/`cc_expanded` 轮询。
+
+### Added
+
+- `armconfirm` 调试动作（模拟"待确认"状态，便于不开手也能验证）。
+- `probe` 增加 `fraction` / `cc=[…]` / `setStateValue` / `setStateAgo`。
+- 实测：armconfirm 后展开 → 39ms 内退出；不展开 → 2s 后仍 `activated=1`。
+
 ## [2.9.7] - 2026-11-06
 
 把判据从"下拉意图"换成"面板真的展开了"，修掉内容区误退。

@@ -2,6 +2,24 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.10] - 2026-11-06
+
+模块在 LSPosed 仓库里的显示名改成「HyperHand-媲美iPhone的单手模式增强」，同时把发布签名统一。
+
+### Changed
+
+- `android:label` 改为 `HyperHand-媲美iPhone的单手模式增强`。LSPosed 模块库（modules.lsposed.org）
+  与 LSPosed 管理器里显示的模块名都取自这里，改名后两处同步生效。
+- 模块仓库（`Xposed-Modules-Repo/io.github.zpan2327.hyperhand`）自此使用与本地构建**相同的签名密钥**
+  （CI 从 `ANDROID_KEYSTORE_B64` 还原 keystore）。此前 CI 无密钥、用临时签名，从模块仓库更新会和
+  本地安装的版本签名冲突、必须卸载重装；2.9.10 起可以覆盖安装。
+
+### Fixed
+
+- CI 手动补发（`workflow_dispatch`）拿不到 tag 名，会一路退到默认 `2.0.0`，把 release 发成
+  `20000-2.0.0` 同步进模块仓库。现在必须显式填写 `version` 输入，缺失直接失败。
+- 普通 main / PR 构建不再被版本号校验拦住（只有 tag 与手动补发才强制要求版本号）。
+
 ## [2.9.9] - 2026-11-06
 
 修掉"桌面触发单手模式时顺手把通知中心拉下来"。

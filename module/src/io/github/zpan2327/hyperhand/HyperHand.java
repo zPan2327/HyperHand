@@ -466,9 +466,13 @@ public class HyperHand extends XposedModule {
                                 Context ctx = Hooks.currentApplication();
                                 Cfg c = ctx == null ? null : Cfg.get(ctx);
                                 if (c != null && c.enabled && c.claimZone
-                                        && sTracking && !sTriggered
-                                        && SystemClock.uptimeMillis() - sDownTime < 1500) {
-                                    if (c.debug) log("swallowed launcher shade forward (zone owned)");
+                                        && sTracking
+                                        && SystemClock.uptimeMillis() - sDownTime < 2500) {
+                                    // 注意这里**不看** sTriggered：触发之后手指往往还在继续拖，
+                                    // 那些 MOVE 如果漏出去，桌面/系统就会顺手把通知中心拉下来。
+                                    // 只要手势起于底部触发区、且还没结束，整段都归单手模式。
+                                    if (c.debug) log("swallowed launcher shade forward (zone "
+                                            + (sTriggered ? "after trigger" : "owned") + ")");
                                     return Boolean.TRUE;
                                 }
                                 markShadeIntent("launcher_forward");
@@ -512,6 +516,7 @@ public class HyperHand extends XposedModule {
                     opened += hooks.hookMethods(pvc, name, Hooks.before(new Hooks.Before() {
                         @Override
                         public Object run(XposedInterface.Chain chain) {
+                            if (blockShadeByZoneGesture(chain, "notification_shade")) return null;
                             markShadeIntent("shade_expand");
                             // 顺手记下面板实例：后面判断"面板到底有没有真的展开"
                             // 要读它的展开比例（launcher_forward 只代表意图，不够）
@@ -545,6 +550,7 @@ public class HyperHand extends XposedModule {
                 int n = hooks.hookMethods(ccImpl, "expand", Hooks.before(new Hooks.Before() {
                     @Override
                     public Object run(XposedInterface.Chain chain) {
+                        if (blockShadeByZoneGesture(chain, "control_center")) return null;
                         markShadeIntent("control_center_expand");
                         TopShade.rememberControlCenter(chain.getThisObject());
                         TopShade.onShadeExpanded("control_center");
@@ -619,6 +625,24 @@ public class HyperHand extends XposedModule {
         } catch (Throwable t) {
             log("hook status bar state controller failed: " + t);
         }
+    }
+
+    /**
+     * 底部触发区起手的手势不该把面板拉出来。
+     *
+     * 日志证据：`TRIGGER(E)` 之后 7ms 就冒出 `shade_expand` —— 触发单手模式后
+     * 手指还在继续往下拖，这串 MOVE 被系统当成了"下拉状态栏"，
+     * 结果就是"进单手模式的同时通知中心滑下来"。
+     *
+     * @return true 表示调用方应该直接返回 null，跳过原方法
+     */
+    private static boolean blockShadeByZoneGesture(XposedInterface.Chain chain, String tag) {
+        if (!isZoneGesture()) return false;
+        // 只拦 void 方法：返回 null 会让非 void 方法的调用方拿到 null
+        java.lang.reflect.Executable e = chain.getExecutable();
+        if (e instanceof Method && ((Method) e).getReturnType() != void.class) return false;
+        if (sDebug) log("blocked shade expand (" + tag + ", zone gesture)");
+        return true;
     }
 
     static void markShadeIntent(String why) {
@@ -965,6 +989,17 @@ public class HyperHand extends XposedModule {
             log("resolve controller failed: " + t);
         }
         return null;
+    }
+
+    /**
+     * 当前手势是否起手于底部触发区、且还没结束。
+     *
+     * 这类手势整段归单手模式：触发之后手指往往还在继续往下拖，
+     * 如果剩下的 MOVE 被系统解释成"下拉状态栏"，就会出现
+     * "刚进单手模式，通知中心跟着滑下来"的现象。
+     */
+    static boolean isZoneGesture() {
+        return sTracking && SystemClock.uptimeMillis() - sDownTime < 2500;
     }
 
     static boolean isOneHandedActive(Context ctx) {

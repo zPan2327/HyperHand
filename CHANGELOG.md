@@ -2,6 +2,21 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.9] - 2026-11-06
+
+修掉"桌面触发单手模式时顺手把通知中心拉下来"。
+
+### Fixed
+
+- 日志显示 `TRIGGER(E)` 之后 7ms 就出现 `shade_expand`：触发后手指仍在继续拖，
+  剩余 MOVE 被当成下拉状态栏。两层修复：
+  - 桌面转发入口的吞掉条件去掉 `!sTriggered`（触发后同样要吞），
+    时间窗 1500ms → 2500ms；
+  - `NotificationPanelViewController#expand*` 与 `ControlCenterImpl#expand`
+    增加拦截：起手于底部触发区、手势未结束时直接跳过原方法（仅拦 void 方法）。
+- 判据用新增的 `isZoneGesture()`（`sTracking` 且距 DOWN < 2500ms），
+  抬手指后自动失效，不影响之后正常拉面板。
+
 ## [2.9.8] - 2026-11-06
 
 控制中心走的是另一套面板，判据补上；同时把"等落定"改成"待确认 + 轮询"，更跟手。

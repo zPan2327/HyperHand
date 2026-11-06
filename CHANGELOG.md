@@ -2,6 +2,23 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.9.4] - 2026-11-06
+
+补上最后一块漏网：在缩小窗口的**中间内容区**下拉，面板会出来但单手模式不退。
+
+### Fixed
+
+- 单手模式下屏幕分三段（模糊区 / 虚拟顶部 / 内容区 / 底部触发区），
+  在内容区下拉时事件由桌面或应用接住再**转发**给 SystemUI（日志 `shade intent: launcher_forward`），
+  这条转发通道既没有抬手钩子、也不一定经过 `NotificationPanelViewController#expand`，
+  所以之前只有模糊区和状态栏带能退出。
+- 手势监视通道新增 `MODE_APP` 归属：DOWN 时按 y 落点定一次归属，
+  UP 时要求位移 ≥ 触发距离**且**本次手势期间出现过 shade intent，
+  两者同时满足才退出 —— 避免"在应用里正常滚动一屏"被误判。
+- 拖动过程中不退出，仍只在抬手时结算，否则窗口会带着面板一起上移。
+- `scheduleExit` 在 debug 下会打印被拒绝的原因（`not in one-handed` / `throttled`），
+  方便排查"面板开了却没退"到底断在哪一步。
+
 ## [2.9.3] - 2026-11-06
 
 改成挂"面板的展开出口"，覆盖所有能拉出通知中心/控制中心的路径。

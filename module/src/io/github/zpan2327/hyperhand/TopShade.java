@@ -53,11 +53,16 @@ final class TopShade {
     private static final int MODE_NONE = 0;
     private static final int MODE_BLUR = 1;
     private static final int MODE_STRIP = 2;
+    /** 单手模式下缩小窗口的内容区（屏幕中部）：下拉同样能出面板，但走的是转发通道。 */
+    private static final int MODE_APP = 3;
     private static int sMode = MODE_NONE;
 
     /** 虚拟顶部那条状态栏上的下拉（系统自己展开面板，我们只管退出单手模式）。 */
     private static float sStripY;
     private static long sStripAt;
+    /** 缩小窗口内容区的下拉（桌面/应用把事件转发给 SystemUI 展开面板）。 */
+    private static float sAppY;
+    private static long sAppAt;
 
     /** 模糊区那层 View，用来读它的高度（拿不到就按屏高兜底）。 */
     private static WeakReference<View> sOverlay = new WeakReference<View>(null);
@@ -145,6 +150,8 @@ final class TopShade {
 
         if (action == MotionEvent.ACTION_DOWN) {
             final float blurBottom = blurZoneBottom(ctx);
+            final Cfg.Screen sc = Cfg.Screen.get(ctx);
+            final Cfg c = Cfg.get(ctx);
             // 注意边界：overlay 的 touchableRegion 是 [0, 1068)，1068 本身已经属于状态栏，
             // 所以用 < 而不是 <=，避免在分界线上同时触发"自己展开"和"系统展开"。
             sMode = MODE_NONE;
@@ -155,6 +162,15 @@ final class TopShade {
                 sMode = MODE_STRIP;                     // 虚拟顶部那条状态栏
                 sStripY = y;
                 sStripAt = android.os.SystemClock.uptimeMillis();
+            } else if (y < sc.zoneTop(c) - 8f * sc.density) {
+                // 缩小窗口的内容区（屏幕中部）。
+                // 单手模式下这一块是应用/桌面的地盘，下拉时它们会把事件转发给 SystemUI
+                // 去展开面板（日志里的 shade intent: launcher_forward），而那条转发通道
+                // 没有"抬手"钩子可挂 —— 之前只有模糊区和状态栏带能退出，中间这块漏了。
+                // 这里按同一套语义补上：抬手时若确认面板被拉出来过，就退出单手模式。
+                sMode = MODE_APP;
+                sAppY = y;
+                sAppAt = android.os.SystemClock.uptimeMillis();
             }
             return;
         }
@@ -164,6 +180,19 @@ final class TopShade {
         // "不在区域内"挡掉 —— 左侧下拉（通知中心）因此永远等不到退出。
         if (sMode == MODE_BLUR) {
             handleCore(ctx, action, x, y);
+            return;
+        }
+        if (sMode == MODE_APP) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                sMode = MODE_NONE;
+                final boolean pulledDown = (y - sAppY) >= barPullPx(ctx);
+                // 同样要确认这次手势真的引发了面板展开，否则"在应用里往下滚一屏"
+                // 也会把单手模式退掉。
+                final boolean shadeOpened = HyperHand.lastShadeIntentAt() >= sAppAt - 100;
+                if (pulledDown && shadeOpened) {
+                    onShadeGestureEnd("app_swipe");
+                }
+            }
             return;
         }
         if (sMode != MODE_STRIP) return;
@@ -224,10 +253,19 @@ final class TopShade {
         if (ctx == null) return;
         final Cfg c = Cfg.get(ctx);
         if (!c.enabled || !c.topShade) return;
-        if (!HyperHand.isOneHandedActive(ctx)) return;
+        final boolean active = HyperHand.isOneHandedActive(ctx);
+        if (!active) {
+            // 面板确实开了、但此刻已经不在单手模式：正常（比如刚被别的路径退过）。
+            // 只在 debug 下留一行，方便排查"面板开了却没退"到底断在哪一步。
+            if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (not in one-handed)");
+            return;
+        }
 
         final long now = android.os.SystemClock.uptimeMillis();
-        if (now - sLastExitAt < 500) return;
+        if (now - sLastExitAt < 500) {
+            if (c.debug) HyperHand.log("TOP SHADE: " + why + " ignored (throttled)");
+            return;
+        }
         sLastExitAt = now;
 
         HyperHand.log("TOP SHADE: shade opened via " + why + " -> exit one-handed");

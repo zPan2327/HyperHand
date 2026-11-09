@@ -8,7 +8,8 @@
     <application
         android:label="@string/app_name"
         android:description="@string/app_description"
-        android:icon="@android:drawable/ic_menu_manage"
+        android:icon="@drawable/ic_hyperhand"
+        android:roundIcon="@drawable/ic_hyperhand"
         android:hasCode="true"
         android:theme="@android:style/Theme.DeviceDefault.DayNight">
 

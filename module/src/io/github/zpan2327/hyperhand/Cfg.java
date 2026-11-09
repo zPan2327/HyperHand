@@ -85,6 +85,13 @@ final class Cfg {
     /** 只读：最近一次屏幕底部附近的起手高度，供设置页校准触发区高度。 */
     static final String K_LAST_DOWN         = "oh_tuner_last_down";
 
+    /**
+     * 只读：模块在系统界面 / 桌面进程里注入成功时写下的心跳（epoch 毫秒）。
+     * 「概览」页用它判断"模块是否真的在跑"，比只看总开关诚实。
+     */
+    static final String K_ALIVE_SYSUI       = "oh_tuner_alive_sysui";
+    static final String K_ALIVE_LAUNCHER    = "oh_tuner_alive_launcher";
+
     /** 调试动作（不落盘，只当广播参数）：trigger / stop。 */
     static final String K_ACTION            = "oh_tuner_action";
 
@@ -430,6 +437,29 @@ final class Cfg {
             return s != null && s.trim().length() > 0;
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    /** 读心跳时间戳；读不到或格式不对返回 0。 */
+    static long aliveTs(Context ctx, String key) {
+        try {
+            String s = Settings.Global.getString(ctx.getContentResolver(), key);
+            if (s == null || s.trim().length() == 0) return 0L;
+            return Long.parseLong(s.trim());
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
+    /** 模块在每个被注入的进程里写一次心跳，供「概览」页显示运行状态。 */
+    static void markAlive(Context ctx) {
+        try {
+            String pkg = ctx.getPackageName();
+            String key = "com.miui.home".equals(pkg) ? K_ALIVE_LAUNCHER : K_ALIVE_SYSUI;
+            Settings.Global.putString(ctx.getContentResolver(), key,
+                    String.valueOf(System.currentTimeMillis()));
+        } catch (Throwable t) {
+            // 桌面进程可能没有 WRITE_SECURE_SETTINGS，写不进去就只影响显示
         }
     }
 

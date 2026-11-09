@@ -228,6 +228,36 @@ public class HyperHand extends XposedModule {
         // 6) 提前注册配置接收器：否则要等第一次触摸才会注册，
         //    设置页的「保存」「预览遮罩」在冷启动后第一次点会没有反应。
         registerReceiverLater();
+        markAliveLater();
+    }
+
+    /**
+     * 注入完成后往 Settings.Global 写一次心跳（epoch 毫秒）。
+     * 「概览」页据此显示"系统界面 / 桌面 何时注入"，比只看总开关更诚实。
+     * 只写一次，不影响手势路径；桌面进程可能没有写权限，失败也不影响功能。
+     */
+    private static void markAliveLater() {
+        final Handler h = new Handler(Looper.getMainLooper());
+        h.postDelayed(new Runnable() {
+            int tries = 0;
+
+            @Override
+            public void run() {
+                try {
+                    Context ctx = Hooks.currentApplication();
+                    if (ctx == null && tries++ < 8) {
+                        h.postDelayed(this, 700);
+                        return;
+                    }
+                    if (ctx != null) {
+                        Cfg.markAlive(ctx);
+                        log("heartbeat: " + ctx.getPackageName());
+                    }
+                } catch (Throwable t) {
+                    log("heartbeat failed: " + t);
+                }
+            }
+        }, 900);
     }
 
     private static void registerReceiverLater() {
@@ -1292,6 +1322,8 @@ public class HyperHand extends XposedModule {
         } catch (Throwable t) {
             log("hook SystemUiProxyWrapper failed: " + t);
         }
+
+        markAliveLater();
     }
 
     /** 吞转发的日志每 800ms 最多一条，避免每个 MOVE 刷爆。 */

@@ -33,3 +33,6 @@ logcat*.txt
 /.vscode/
 .DS_Store
 Thumbs.db
+
+# 本地验证截图（真机/模拟器取证，体积大，不入库）
+/shots/

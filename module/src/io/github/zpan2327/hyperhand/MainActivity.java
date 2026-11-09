@@ -22,10 +22,13 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * HyperHand 的界面外壳：三个页面（概览 / 设置 / 关于）+ 悬浮式液态玻璃底栏。
+ * 界面外壳：三页（概览 / 设置 / 关于）+ 折叠大标题栏 + 悬浮液态玻璃底栏。
  *
- * 设计语言统一由 {@link Theme} 提供，组件在 {@link Ui}，图标在 {@link Icons}，
- * 底栏在 {@link GlassBar}。业务逻辑（保存广播、重启作用域、调试动作）与 2.9 完全一致。
+ * 布局参照 SonyPods 的 Scaffold：内容层满屏，顶栏浮在上面随滚动折叠，
+ * 底栏悬浮在内容之上（内容从它下面穿过，玻璃才有东西可模糊）。
+ * 视觉 token 全部来自 {@link Theme}，控件在 {@link Ui}。
+ *
+ * 业务逻辑（保存广播、重启作用域、调试动作）与 2.9 / 3.0 完全一致。
  */
 public class MainActivity extends Activity {
 
@@ -38,6 +41,7 @@ public class MainActivity extends Activity {
 
     private FrameLayout contentHost;
     private FrameLayout root;
+    private TopBar topBar;
     private GlassBar nav;
     private TextView savePill;
     private FrameLayout.LayoutParams navLp;
@@ -49,7 +53,6 @@ public class MainActivity extends Activity {
 
     private int current = TAB_OVERVIEW;
     private boolean dirty;
-    private int bottomInset;
     private int statusInset;
 
     @Override
@@ -80,7 +83,6 @@ public class MainActivity extends Activity {
         }
 
         setContentView(buildShell());
-        // 支持 am start --es tab settings 直接打开某一页（截图/调试用，正常启动仍是概览）
         int start = TAB_OVERVIEW;
         String tab = getIntent() == null ? null : getIntent().getStringExtra("tab");
         if ("settings".equals(tab)) {
@@ -91,12 +93,23 @@ public class MainActivity extends Activity {
         current = start;
         nav.setSelectedImmediate(start);
         selectTab(start, false);
+        // 截图/调试用：am start --ei scroll 600 直接把当前页滚到指定位置，
+        // 用来验证折叠标题栏与玻璃底栏在滚动中的表现
+        int scroll = getIntent() == null ? 0 : getIntent().getIntExtra("scroll", 0);
+        if (scroll > 0 && pages[start] instanceof android.widget.ScrollView) {
+            final android.widget.ScrollView sv = (android.widget.ScrollView) pages[start];
+            sv.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    sv.scrollTo(0, scroll);
+                }
+            }, 400);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // 用户常见操作：回桌面滑一下 → 切回来看看判定结果
         if (overviewPage != null && current == TAB_OVERVIEW) {
             overviewPage.refresh();
         }
@@ -116,7 +129,6 @@ public class MainActivity extends Activity {
         root.addView(contentHost, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // 三页一次性建好，切换只做显隐与位移动画，滚动位置和未保存的编辑都能留住
         overviewPage = new OverviewPage(this);
         settingsPage = new SettingsPage(this);
         aboutPage = new AboutPage(this);
@@ -130,13 +142,18 @@ public class MainActivity extends Activity {
             contentHost.addView(pages[i], lp);
         }
 
+        // 折叠大标题栏：浮在内容之上，随当前页的滚动位置折叠
+        topBar = new TopBar(this, pal);
+        root.addView(topBar, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         nav = new GlassBar(this, pal);
         navLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         navLp.gravity = Gravity.BOTTOM;
-        navLp.leftMargin = Theme.dp(this, 14);
-        navLp.rightMargin = Theme.dp(this, 14);
-        navLp.bottomMargin = Theme.dp(this, 14);
+        navLp.leftMargin = Theme.dp(this, 20);
+        navLp.rightMargin = Theme.dp(this, 20);
+        navLp.bottomMargin = Theme.dp(this, 12);
         root.addView(nav, navLp);
         nav.setOnTabSelected(new GlassBar.OnTabSelected() {
             @Override
@@ -148,7 +165,8 @@ public class MainActivity extends Activity {
         // 有未保存改动时浮在底栏上方的"保存"胶囊
         savePill = Ui.primaryButton(this, pal, "保存并立即生效");
         savePill.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Theme.T_SUM);
-        savePill.setPadding(Theme.dp(this, 18), Theme.dp(this, 10), Theme.dp(this, 18), Theme.dp(this, 10));
+        savePill.setPadding(Theme.dp(this, 20), Theme.dp(this, 11),
+                Theme.dp(this, 20), Theme.dp(this, 11));
         savePill.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -158,9 +176,10 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams pillLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         pillLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        pillLp.bottomMargin = Theme.dp(this, 86);
+        pillLp.bottomMargin = Theme.dp(this, 108);
         savePill.setVisibility(View.GONE);
         savePill.setAlpha(0f);
+        savePill.setElevation(Theme.dpf(this, 6));
         root.addView(savePill, pillLp);
 
         root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
@@ -168,21 +187,19 @@ public class MainActivity extends Activity {
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
                 android.graphics.Insets bars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                contentHost.setPadding(0, 0, 0, 0);
                 statusInset = bars.top;
-                navLp.bottomMargin = Theme.dp(MainActivity.this, 14) + bars.bottom;
-                navLp.leftMargin = Theme.dp(MainActivity.this, 14);
-                navLp.rightMargin = Theme.dp(MainActivity.this, 14);
+                topBar.setStatusInset(bars.top);
+
+                navLp.bottomMargin = Theme.dp(MainActivity.this, 12) + bars.bottom;
+                navLp.leftMargin = Theme.dp(MainActivity.this, 20);
+                navLp.rightMargin = Theme.dp(MainActivity.this, 20);
                 nav.setLayoutParams(navLp);
 
                 FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) savePill.getLayoutParams();
-                lp.bottomMargin = Theme.dp(MainActivity.this, 86) + bars.bottom;
+                lp.bottomMargin = Theme.dp(MainActivity.this, 108) + bars.bottom;
                 savePill.setLayoutParams(lp);
 
-                // 滚动时内容会从玻璃下面穿过（玻璃才有东西可模糊），
-                // 滚到底时最后一行正好停在栏上沿
-                bottomInset = Theme.dp(MainActivity.this, 64 + 14 + 8) + bars.bottom;
-                applyBottomInset();
+                applyInsets();
                 nav.setBackdropSource(contentHost);
                 return insets;
             }
@@ -191,25 +208,28 @@ public class MainActivity extends Activity {
         return root;
     }
 
-    private void applyBottomInset() {
+    /** 内容顶部留给折叠标题栏（展开高度），底部留给悬浮底栏。 */
+    private void applyInsets() {
+        int top = topBar.expandedHeight();
+        // 底栏自身 78dp（64 + 上下 7 的溢出）+ 12dp 外边距 + 16dp 呼吸
+        int bottom = navLp.bottomMargin + Theme.dp(this, 78 + 16);
         for (int i = 0; i < pages.length; i++) {
             View p = pages[i];
             if (p instanceof android.widget.ScrollView) {
                 android.widget.ScrollView sv = (android.widget.ScrollView) p;
-                // 关于页全屏出血：渐变直接铺到状态栏下面，和 SonyPods 一致
-                sv.setClipToPadding(i != TAB_ABOUT);
-                sv.setPadding(0, i == TAB_ABOUT ? 0 : statusInset, 0, 0);
+                sv.setClipToPadding(false);
                 View child = sv.getChildAt(0);
                 if (child != null) {
-                    int top = i == TAB_ABOUT ? 0 : Theme.dp(this, 8);
-                    child.setPadding(child.getPaddingLeft(), top,
-                            child.getPaddingRight(), bottomInset);
+                    // 关于页的渐变要铺到状态栏下面，所以顶部不加内边距，由页内自行处理
+                    int padTop = i == TAB_ABOUT ? 0 : top;
+                    child.setPadding(child.getPaddingLeft(), padTop,
+                            child.getPaddingRight(), bottom);
                 }
-                p.setOnScrollChangeListener(new View.OnScrollChangeListener() {
+                sv.setOnScrollChangeListener(new View.OnScrollChangeListener() {
                     @Override
                     public void onScrollChange(View v, int x, int y, int ox, int oy) {
-                        if (nav != null) {
-                            nav.onContentScrolled();
+                        if (v.getVisibility() == View.VISIBLE && topBar != null) {
+                            topBar.setScroll(y);
                         }
                     }
                 });
@@ -245,13 +265,13 @@ public class MainActivity extends Activity {
         } else {
             in.setVisibility(View.VISIBLE);
             in.setAlpha(0f);
-            in.setTranslationX(dir * Theme.dp(this, 20));
-            in.animate().alpha(1f).translationX(0f).setDuration(260)
+            in.setTranslationX(dir * Theme.dp(this, 24));
+            in.animate().alpha(1f).translationX(0f).setDuration(280)
                     .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
                     .start();
             out.setVisibility(View.VISIBLE);
             final View outgoing = out;
-            out.animate().alpha(0f).translationX(-dir * Theme.dp(this, 20)).setDuration(170)
+            out.animate().alpha(0f).translationX(-dir * Theme.dp(this, 24)).setDuration(180)
                     .withEndAction(new Runnable() {
                         @Override
                         public void run() {
@@ -264,6 +284,7 @@ public class MainActivity extends Activity {
 
         current = index;
         nav.select(index, true);
+        applyTopBar(index);
 
         if (index == TAB_OVERVIEW) {
             overviewPage.refresh();
@@ -271,6 +292,48 @@ public class MainActivity extends Activity {
             settingsPage.refreshGestureLog();
         }
         contentHost.postInvalidateOnAnimation();
+    }
+
+    /** 每一页的标题 / 副标题 / 右上角动作。 */
+    private void applyTopBar(int index) {
+        if (index == TAB_OVERVIEW) {
+            topBar.setPage("概览", "单手模式增强", Icons.RESTART, new TopBar.OnAction() {
+                @Override
+                public void onAction() {
+                    showRestartMenu();
+                }
+            });
+        } else if (index == TAB_SETTINGS) {
+            topBar.setPage("设置", "改动保存后立即生效", -1, null);
+        } else {
+            // 关于页是渐变英雄区，自带大标题，收起后只剩顶部一行小标题
+            topBar.setPage("关于", "", false, -1, null);
+        }
+        topBar.setScroll(scrollYOf(index));
+        applyInsets();
+    }
+
+    private int scrollYOf(int index) {
+        View p = pages[index];
+        return p instanceof android.widget.ScrollView
+                ? ((android.widget.ScrollView) p).getScrollY() : 0;
+    }
+
+    private void showRestartMenu() {
+        Ui.popupMenu(this, pal, topBar,
+                new String[] {"重启系统界面", "重启小米桌面", "重启两个作用域"},
+                new Ui.OnChoice() {
+                    @Override
+                    public void onChoice(int index) {
+                        if (index == 0) {
+                            restartScope("sysui");
+                        } else if (index == 1) {
+                            restartScope("home");
+                        } else {
+                            restartScopes();
+                        }
+                    }
+                });
     }
 
     void goSettings() {
@@ -289,7 +352,6 @@ public class MainActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        // 深浅色切换后整页重建，避免两套 token 混用
         recreate();
     }
 
@@ -329,12 +391,12 @@ public class MainActivity extends Activity {
             if (savePill.getVisibility() != View.VISIBLE) {
                 savePill.setVisibility(View.VISIBLE);
                 savePill.setAlpha(0f);
-                savePill.setTranslationY(Theme.dp(this, 12));
+                savePill.setTranslationY(Theme.dpf(this, 12));
             }
             savePill.animate().alpha(1f).translationY(0f).setDuration(200)
                     .setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f)).start();
         } else {
-            savePill.animate().alpha(0f).translationY(Theme.dp(this, 12)).setDuration(150)
+            savePill.animate().alpha(0f).translationY(Theme.dpf(this, 12)).setDuration(150)
                     .withEndAction(new Runnable() {
                         @Override
                         public void run() {
@@ -394,7 +456,7 @@ public class MainActivity extends Activity {
         return "还没有记录。开启调试日志后，在屏幕底部下滑一次再看这里。";
     }
 
-    /** 全屏二级页 overlay：盖在所有页面与底栏之上（比 Dialog 可靠，MIUI 上不会透底）。 */
+    /** 全屏二级页 overlay：盖在所有页面与底栏之上。 */
     void showOverlay(View v) {
         if (root == null) {
             return;

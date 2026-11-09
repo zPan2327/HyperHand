@@ -49,17 +49,20 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 
 ## 界面
 
-设置页按 HyperOS / Miuix 的设计语言重做（参照 [SonyPods](https://github.com/Mercury000/SonyPods)）：`#F7F7F7` 页面底色、
-白色 16dp 圆角卡片、14sp 段落标题、17sp 行标题 + 14sp 摘要、0.75dp 左内缩分隔线、`#3482FF` 强调色，深色模式跟随系统。
-右侧直接显示当前值，点一行用滑杆改，底部一次性提交。
+设置页按 HyperOS / Miuix 的设计语言重做（参照 [SonyPods](https://github.com/Mercury000/SonyPods) 的版式、
+[Miuix](https://github.com/compose-miuix-ui/miuix) 的组件规格、[AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)
+的液态玻璃结构）：折叠式大标题栏（title1 32sp → 收起后 title3 20sp）、`#F7F7F7` 页面底色、
+白色 16dp squircle 卡片、14sp Bold 段落标题、17sp Medium 行标题 + 14sp 摘要、
+行与行之间不画分隔线、`#3482FF` 强调色，深色模式跟随系统。
+右上角的数值直接显示当前值，点一行用滑杆改，底部一次性提交。
 
 <p>
+<img src="docs/screenshots/overview.png" width="250" alt="概览">
 <img src="docs/screenshots/light.png" width="250" alt="浅色">
 <img src="docs/screenshots/dark.png" width="250" alt="深色">
-<img src="docs/screenshots/dialog.png" width="250" alt="数值对话框">
 </p>
 
-设计稿来源与逐条 token 对照见 [docs/设计稿对照.md](docs/设计稿对照.md)。没有引入 Compose / AndroidX，全部是原生 View 代码绘制，2.2 的 APK 约 45 KB。
+设计稿来源与逐条 token 对照见 [docs/设计稿对照.md](docs/设计稿对照.md)。没有引入 Compose / AndroidX，全部是原生 View 代码绘制，APK 约 200 KB。
 
 ## 验证环境
 

@@ -80,19 +80,15 @@ final class SettingsPage {
         return page.scroll;
     }
 
-    void setBottomInset(int px) {
-        page.setBottomInset(px);
-    }
-
     // ---------------------------------------------------------------- 构建
 
     private void build() {
         Cfg cur = host.cfg();
 
-        page.add(Ui.pageHeader(c, pal, "设置", "所有参数保存后立即生效", null));
+        // 标题由外壳的折叠大标题栏负责，页面内容直接从第一个分组开始
 
         // ---------------------------------------------------------- 模块
-        page.add(Ui.section(c, pal, "模块", true));
+        page.add(Ui.section(c, pal, "模块"));
         LinearLayout cardModule = Ui.card(c, pal);
         swEnabled = Ui.switchRow(c, cardModule, pal, "启用模块",
                 "总开关。关闭后所有钩子立即失效，系统恢复原生行为", cur.enabled);
@@ -103,7 +99,7 @@ final class SettingsPage {
         page.add(cardModule);
 
         // ---------------------------------------------------------- 识别
-        page.add(Ui.section(c, pal, "识别", false));
+        page.add(Ui.section(c, pal, "识别"));
         LinearLayout cardMode = Ui.card(c, pal);
         cMode = Ui.choiceRow(c, cardMode, pal, "触发模式",
                 "切换模式会填入一组推荐敏感度，保存后生效",
@@ -145,7 +141,7 @@ final class SettingsPage {
         page.add(cardJudge, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---------------------------------------------------------- 触发区
-        page.add(Ui.section(c, pal, "触发区", false));
+        page.add(Ui.section(c, pal, "触发区"));
         LinearLayout cardZone = Ui.card(c, pal);
         swZoneRatio = Ui.switchRow(c, cardZone, pal, "延伸到 dock 栏上方",
                 "按屏幕高度比例算触发区，覆盖整个 dock；这块区域里的下拉不会打开通知/控制中心",
@@ -164,7 +160,7 @@ final class SettingsPage {
         page.add(cardZone, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---------------------------------------------------------- 外观
-        page.add(Ui.section(c, pal, "外观", false));
+        page.add(Ui.section(c, pal, "外观"));
         LinearLayout cardLook = Ui.card(c, pal);
         swBlur = Ui.switchRow(c, cardLook, pal, "模糊壁纸背景",
                 "把上方米白遮罩换成高斯模糊的当前壁纸", cur.blurBg);
@@ -176,7 +172,7 @@ final class SettingsPage {
         page.add(cardLook, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---------------------------------------------------------- 动效
-        page.add(Ui.section(c, pal, "动效", false));
+        page.add(Ui.section(c, pal, "动效"));
         LinearLayout cardAnim = Ui.card(c, pal);
         cAnimCurve = Ui.choiceRow(c, cardAnim, pal, "缓动曲线",
                 "按起步速度从慢到快排列；改完即时生效，可来回对比",
@@ -204,7 +200,7 @@ final class SettingsPage {
         page.add(cardAnim, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---------------------------------------------------------- 模糊区手势
-        page.add(Ui.section(c, pal, "模糊区手势", false));
+        page.add(Ui.section(c, pal, "模糊区手势"));
         LinearLayout cardTop = Ui.card(c, pal);
         swTopShade = Ui.switchRow(c, cardTop, pal, "下滑展开通知/控制中心",
                 "在模糊区任意位置下滑即可拉开面板并退出单手模式；"
@@ -237,7 +233,7 @@ final class SettingsPage {
         page.add(cardTop, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---------------------------------------------------------- 互斥
-        page.add(Ui.section(c, pal, "互斥", false));
+        page.add(Ui.section(c, pal, "互斥"));
         LinearLayout cardGuard = Ui.card(c, pal);
         swShadeGuard = Ui.switchRow(c, cardGuard, pal, "与下拉手势互斥",
                 "手势中出现通知/控制中心意图就放弃单手模式", cur.shadeGuard);
@@ -250,7 +246,7 @@ final class SettingsPage {
         page.add(cardGuard, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---------------------------------------------------------- 高级
-        page.add(Ui.section(c, pal, "高级", false));
+        page.add(Ui.section(c, pal, "高级"));
         LinearLayout cardToggle = Ui.card(c, pal);
         swAdvanced = Ui.switchRow(c, cardToggle, pal, "显示高级参数",
                 "速度采样窗口、轨迹稳定性、冷却等", false);
@@ -285,7 +281,7 @@ final class SettingsPage {
         });
 
         // ---------------------------------------------------------- 调试
-        page.add(Ui.section(c, pal, "调试", false));
+        page.add(Ui.section(c, pal, "调试"));
         LinearLayout cardDebug = Ui.card(c, pal);
         swDebug = Ui.switchRow(c, cardDebug, pal, "调试日志",
                 "用 logcat -s HyperHand 观察判定过程，并记录最近手势", cur.debug);

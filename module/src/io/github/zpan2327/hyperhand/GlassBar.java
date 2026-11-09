@@ -13,26 +13,25 @@ import android.view.View;
 import android.view.ViewConfiguration;
 
 /**
- * 悬浮式液态玻璃底栏 —— 逐行移植 Kyant0/AndroidLiquidGlass 的
- * <pre>catalog/components/LiquidBottomTabs.kt</pre>
+ * 悬浮式液态玻璃底栏 —— 移植 Kyant0/AndroidLiquidGlass 的
+ * {@code catalog/components/LiquidBottomTabs.kt}（SonyPods 的
+ * {@code LiquidGlassNavigationBar.kt} 是它的同一套实现）。
  *
- * 结构与源码一致（三个叠加层）：
+ * 结构完全按源码的三层：
  * <ol>
- *   <li><b>底栏</b> 64dp 胶囊：vibrancy + blur(8dp) + lens(24dp, 24dp)，
- *       表面 containerColor = 0xFFFAFAFA / 0xFF121212 @ 40%，常驻 highlight；</li>
- *   <li><b>折射层</b>（源码里 alpha=0 的 tabsBackdrop）：只参与指示器的折射，
- *       内容是"强调色图标"，所以按下时胶囊里会出现被吸出来的图标；</li>
- *   <li><b>指示器</b> 56dp 胶囊：backdrop = 页面内容 + 折射层，
- *       effects 只有 lens(10dp×p, 14dp×p, 色散)（注意：没有 blur），
- *       surface = black 10%×(1-p) + black 3%×p，highlight / innerShadow 全部 ×p。</li>
+ *   <li><b>玻璃体</b>：Capsule，{@code vibrancy() → blur(8dp) → lens(24dp, 24dp)}，
+ *       onDrawSurface 铺 {@code #FAFAFA @ 40%}（暗色 {@code #121212 @ 40%}），
+ *       highlight 用 BloomStroke（白 0.12、双光源）；</li>
+ *   <li><b>折射层</b>（源码里 alpha=0 的那排）：只把"强调色图标"画进独立层，
+ *       供指示器的透镜一起折射 —— 按下时胶囊里会浮出被放大的图标；</li>
+ *   <li><b>指示器</b>：56dp 高的胶囊，effects 只有
+ *       {@code lens(10dp × p, 14dp × p, 色散)}，没有 blur；
+ *       onDrawSurface = 黑 10% × (1-p) + 黑 3% × p；
+ *       layerBlock 里做 {@code scaleX/Y} 与速度形变；innerShadow × p。</li>
  * </ol>
  *
- * 手势（DampedDragAnimation）：按下即 press，横向拖动让指示器跟手并让整条底栏
- * 弹性位移（4dp × easeOut），松手按最近的一格吸附并切换页面；速度会带来
- * 横向拉伸 / 纵向压扁的形变。
- *
- * 弹簧参数逐个对源码：value spring(1.0, 1000)、press spring(1.0, 1000)、
- * scaleX spring(0.6, 250)、scaleY spring(0.7, 250)、panel spring(0.5, 300)。
+ * 手势照搬 DampedDragAnimation：按下 press→1（scale 78/56），拖动让指示器按
+ * 1/tabWidth 跟手，整条底栏还有 {@code 4dp × easeOut} 的横向橡皮筋位移。
  */
 final class GlassBar extends View {
 
@@ -43,66 +42,27 @@ final class GlassBar extends View {
     private static final int[] ICONS = {Icons.HOME, Icons.GEAR, Icons.INFO};
     private static final String[] LABELS = {"概览", "设置", "关于"};
 
+    /** 源码：Row 高 64dp、内边距 4dp；指示器高 56dp。 */
     private static final float BAR_H = 64f;
     private static final float PILL_H = 56f;
+    private static final float PAD = 4f;
     /** pressedScale = 78f / 56f。 */
-    private static final float PRESSED_SCALE = 64f / 56f;
+    private static final float PRESSED_SCALE = 78f / 56f;
     /** drawBackdrop 的 padding = max(padding, 40.dp)。 */
     private static final float SAMPLE_PAD = 40f;
-    /** 指示器放大后上下溢出 (78-64)/2，canvas 要留出这段，否则被裁。 */
+    /** 指示器放大后上下溢出 (78-64)/2，canvas 要留出这段。 */
     private static final float OVERFLOW = 7f;
-    /** 拖动时整条底栏的弹性位移上限。 */
+    /** 拖动时整条底栏的橡皮筋幅度。 */
     private static final float PANEL_SHIFT = 4f;
-
-    /** 弹簧：半隐式欧拉 + 子步长，避免大 stiffness 下数值爆炸。 */
-    static final class Spring {
-        float value;
-        float target;
-        float velocity;
-        float stiffness = 900f;
-        float damping = 49f;
-
-        Spring(float v) {
-            value = v;
-            target = v;
-        }
-
-        void set(float stiffness, float ratio) {
-            this.stiffness = stiffness;
-            this.damping = 2f * ratio * (float) Math.sqrt(stiffness);
-        }
-
-        void to(float t) {
-            target = t;
-        }
-
-        void snap(float v) {
-            value = v;
-            target = v;
-            velocity = 0f;
-        }
-
-        boolean settled() {
-            return Math.abs(target - value) < 0.0008f && Math.abs(velocity) < 0.008f;
-        }
-
-        void step(float dt) {
-            int n = Math.max(1, (int) Math.ceil(dt / (1f / 240f)));
-            float h = dt / n;
-            for (int i = 0; i < n; i++) {
-                float a = -stiffness * (value - target) - damping * velocity;
-                velocity += a * h;
-                value += velocity * h;
-            }
-            if (Math.abs(target - value) < 0.0008f && Math.abs(velocity) < 0.008f) {
-                value = target;
-                velocity = 0f;
-            }
-        }
-    }
+    /** 图标 22dp、文字 11sp（miuix footnote2）。 */
+    private static final float ICON_DP = 22f;
 
     private final Theme.Colors pal;
     private final int touchSlop;
+    /** 源码：亮色强调 #0088FF，暗色 #0091FF。 */
+    private final int accent;
+    /** 源码：亮色 #FAFAFA @ 40%，暗色 #121212 @ 40%。 */
+    private final int containerColor;
 
     private final Paint tintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -111,29 +71,20 @@ final class GlassBar extends View {
     private final RectF barRect = new RectF();
     private final RectF pillRect = new RectF();
     private final Rect sampleSrc = new Rect();
-    private final Path edgePath = new Path();
-    private final Path edgeInner = new Path();
-    private final Rect edgeSrc = new Rect();
-    private final RectF edgeDst = new RectF();
-    private final RectF edgeInnerRect = new RectF();
-    private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Path clipPath = new Path();
     private final Path pillClip = new Path();
 
     private float barW;
-    private float barH;
     private float tabW;
     private float radius;
     private float density;
 
     private int selected;
-    /** 指示器位置（0..n-1 连续值）。 */
-    private final Spring pos = new Spring(0f);
-    private final Spring press = new Spring(0f);
-    private final Spring scaleX = new Spring(1f);
-    private final Spring scaleY = new Spring(1f);
-    /** 整条底栏的弹性位移（像素，拖动时累积，松手回 0）。 */
-    private final Spring panel = new Spring(0f);
+    private final Ui.Spring pos = new Ui.Spring(0f);
+    private final Ui.Spring press = new Ui.Spring(0f);
+    private final Ui.Spring scaleX = new Ui.Spring(1f);
+    private final Ui.Spring scaleY = new Ui.Spring(1f);
+    private final Ui.Spring panel = new Ui.Spring(0f);
     private float panelTargetPx;
 
     private boolean dragging;
@@ -144,7 +95,8 @@ final class GlassBar extends View {
 
     private View backdropSource;
     private Bitmap sample;
-    private Bitmap tabsLayer;
+    /** 指示器专用的更糊版本：胶囊里那层透镜不该看见文字形状。 */
+    private Bitmap sampleSoft;
     private int sampleX;
     private int sampleY;
     private float sampleScale;
@@ -193,10 +145,17 @@ final class GlassBar extends View {
         this.pal = p;
         this.density = c.getResources().getDisplayMetrics().density;
         this.touchSlop = ViewConfiguration.get(c).getScaledTouchSlop();
+        this.accent = p.night ? 0xFF0091FF : 0xFF0088FF;
+        // 源码是 surface @ 40%（#FAFAFA / #121212）。本机没有 GPU 高斯模糊，
+        // 采样靠降采样 + 盒式模糊近似，40% 压不住文字的残影，会读成"脏玻璃"；
+        // 62% 既能挡住残影，又仍能看出下面有内容在动。
+        this.containerColor = p.night ? Theme.alpha(0xFF121212, 0.62f) : Theme.alpha(0xFFFAFAFA, 0.62f);
         labelPaint.setTextAlign(Paint.Align.CENTER);
-        labelPaint.setTextSize(Theme.dp(c, Theme.T_TAB));
-        labelPaint.setTypeface(Theme.medium());
-        // 与 DampedDragAnimation 完全一致的弹簧参数
+        labelPaint.setTextSize(Theme.dpf(c, Theme.T_TAB));
+        labelPaint.setTypeface(Theme.regular());
+        labelPaint.setColor(p.title);
+        // DampedDragAnimation 的弹簧参数：value spring(1, 1000)、press spring(1, 1000)、
+        // scaleX spring(0.6, 250)、scaleY spring(0.7, 250)、panel spring(0.5, 300)
         pos.set(1000f, 1.0f);
         press.set(1000f, 1.0f);
         scaleX.set(250f, 0.6f);
@@ -213,13 +172,8 @@ final class GlassBar extends View {
     void setBackdropSource(View v) {
         backdropSource = v;
         sample = null;
-        tabsLayer = null;
         samplingFailed = false;
         invalidate();
-    }
-
-    int getSelected() {
-        return selected;
     }
 
     void setSelectedImmediate(int index) {
@@ -232,7 +186,6 @@ final class GlassBar extends View {
         invalidate();
     }
 
-    /** 外部切页（点按 / 代码调用）：指示器弹过去。 */
     void select(int index, boolean animate) {
         int target = clampIndex(index);
         selected = target;
@@ -255,34 +208,22 @@ final class GlassBar extends View {
         return i < 0 ? 0 : (i >= ICONS.length ? ICONS.length - 1 : i);
     }
 
-    void onContentScrolled() {
-        postInvalidateOnAnimation();
-    }
-
     @Override
     protected void onMeasure(int w, int h) {
         int screenW = MeasureSpec.getSize(w);
-        barH = Theme.dp(getContext(), BAR_H);
-        float overflow = Theme.dp(getContext(), OVERFLOW);
-        // 源码是 fillMaxWidth：撑满可用宽度，视觉边距由 MainActivity 的外层 margin 控制
-        barW = screenW;
-        tabW = (barW - Theme.dp(getContext(), 8)) / ICONS.length;
-        radius = barH / 2f;
-        setMeasuredDimension(screenW, Math.round(barH + overflow * 2f));
+        setMeasuredDimension(screenW, Math.round(Theme.dpf(getContext(), BAR_H + OVERFLOW * 2f)));
     }
 
     @Override
     protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
-        float overflow = Theme.dp(getContext(), OVERFLOW);
-        // 以实际 View 宽度为准（外层 margin 决定浮动边距），避免和屏幕宽不一致
+        float overflow = Theme.dpf(getContext(), OVERFLOW);
         barW = w;
-        tabW = (barW - Theme.dp(getContext(), 8)) / ICONS.length;
-        float left = 0f;
-        barRect.set(left, overflow, left + barW, overflow + barH);
+        tabW = (barW - Theme.dpf(getContext(), 8)) / ICONS.length;
+        barRect.set(0f, overflow, barW, overflow + Theme.dpf(getContext(), BAR_H));
+        radius = barRect.height() / 2f;
         clipPath.reset();
         Squircle.rect(clipPath, barRect, radius);
-        pillRect.setEmpty();
         sample = null;
     }
 
@@ -295,7 +236,6 @@ final class GlassBar extends View {
                 downX = e.getX();
                 lastX = downX;
                 dragging = false;
-                // DampedDragAnimation.press()：按下即 1，scaleX/Y 到 78/56
                 press.to(1f);
                 scaleX.to(PRESSED_SCALE);
                 scaleY.to(PRESSED_SCALE);
@@ -310,7 +250,6 @@ final class GlassBar extends View {
                     dragging = true;
                 }
                 if (dragging) {
-                    // onDrag：指示器按 1/tabWidth 跟手，整条底栏同步弹性位移
                     pos.to(clamp(pos.target + dx / tabW, 0f, ICONS.length - 1));
                     panelTargetPx = clamp(panelTargetPx + dx, -barW * 3f, barW * 3f);
                     panel.to(panelTargetPx);
@@ -323,7 +262,6 @@ final class GlassBar extends View {
                 boolean cancel = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
                 int target;
                 if (dragging && !cancel) {
-                    // onDragStopped：按最近格吸附
                     target = clampIndex(Math.round(pos.value));
                 } else if (dragging) {
                     target = selected;
@@ -361,7 +299,7 @@ final class GlassBar extends View {
         if (barW <= 0) {
             return 0;
         }
-        float local = x - barRect.left - Theme.dp(getContext(), 4) - panelOffsetPx();
+        float local = x - Theme.dpf(getContext(), PAD) - panelOffsetPx();
         return clampIndex((int) Math.floor(local / tabW));
     }
 
@@ -369,17 +307,14 @@ final class GlassBar extends View {
         return v < lo ? lo : (v > hi ? hi : v);
     }
 
-    /**
-     * panelOffset：4dp × sign(fraction) × EaseOut(|fraction|)，
-     * fraction = 累积位移 / 整条宽度（源码里就是 offset / maxWidth）。
-     */
+    /** panelOffset：4dp × sign(fraction) × EaseOut(|fraction|)。 */
     private float panelOffsetPx() {
         float fraction = clamp(panel.value / Math.max(1f, barW), -1f, 1f);
         if (fraction == 0f) {
             return 0f;
         }
-        float eased = 1f - (float) Math.pow(1f - Math.abs(fraction), 3f);   // EaseOut(cubic)
-        return Math.signum(fraction) * Theme.dp(getContext(), PANEL_SHIFT) * eased;
+        float eased = 1f - (float) Math.pow(1f - Math.abs(fraction), 3f);
+        return Math.signum(fraction) * Theme.dpf(getContext(), PANEL_SHIFT) * eased;
     }
 
     // ---------------------------------------------------------------- 绘制
@@ -387,7 +322,6 @@ final class GlassBar extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         long now = SystemClock.uptimeMillis();
-        // 每帧采样：玻璃里的背景必须与内容同步
         if (now - lastSampleAt >= 16 || sample == null) {
             captureSample();
             lastSampleAt = now;
@@ -399,48 +333,31 @@ final class GlassBar extends View {
 
         // 1) Shadow(radius = 10dp)：亮 0.1 / 暗 0.2
         RectF shadowRect = new RectF(barRect);
-        shadowRect.offset(0, Theme.dp(getContext(), 1.5f));
-        // 投影加重：白底上要让玻璃"离开"页面，否则看不出是独立一层
         LiquidGlass.drawSoftShadow(canvas, shadowRect, radius,
-                14f * density, 0xFF0B1220, pal.night ? 0.34f : 0.16f);
+                Theme.dpf(getContext(), 10f), 0xFF000000, pal.night ? 0.20f : 0.10f);
 
-        // 2) 底栏玻璃：vibrancy + blur(8dp) + lens(24dp, 24dp)
+        // 2) 玻璃体：vibrancy + blur(8dp) + lens(24dp, 24dp)
         canvas.save();
         canvas.clipPath(clipPath);
-        // 底栏：磨砂 + 网格折射（位移压到 3dp，大面积才不会拖影）
-        drawGlassBand(canvas, barRect, radius, 0f,
-                9f * density, 3.2f * density, false, null);
-        // onDrawSurface：containerColor = surface @ 0.4
-        tintPaint.setColor(pal.night
-                ? Theme.alpha(0xFF14161C, 0.30f)
-                : Theme.alpha(0xFFF7FAFF, 0.26f));
+        drawGlassBand(canvas, barRect, radius, Theme.dpf(getContext(), 8f),
+                Theme.dpf(getContext(), 24f), Theme.dpf(getContext(), 24f));
+        // onDrawSurface：containerColor
+        tintPaint.setColor(containerColor);
         canvas.drawRect(barRect, tintPaint);
 
-        // 边缘：先一圈极细暗边把玻璃和页面分开（白底上白高光是看不见的），
-        // 再叠一道从上到下由亮到暗的白色高光，形成玻璃厚度。
-        rimPaint.setStyle(Paint.Style.STROKE);
-        rimPaint.setStrokeWidth(Math.max(1f, density));
-        rimPaint.setColor(pal.night
-                ? Theme.alpha(0xFFFFFFFF, 0.10f)
-                : Theme.alpha(0xFF0B1220, 0.06f));
-        canvas.drawRoundRect(barRect, radius, radius, rimPaint);
-
+        // highlight：iosIndicatorSpecular.copy(alpha = 0.75f)
         LiquidGlass.drawSdfHighlight(canvas, barRect, radius,
-                Math.max(1.6f, 0.9f * density), 1f, 45f);
-
-        // 底部内阴影：玻璃下缘的厚度
-        LiquidGlass.drawInnerShadow(canvas, barRect, radius,
-                2f * density, 7f * density, 0xFF0B1220, pal.night ? 0.30f : 0.09f);
+                Math.max(1f, 1f * density), 0.75f, 45f);
         canvas.restore();
 
-        // 3) 图标（底层，对应源码第一个 Row 的 content）
+        // 3) 未选中的图标 + 文字
         drawTabs(canvas);
 
-        // 4) 指示器（源码最上层 Box）：backdrop 含折射层，只有 lens 无 blur
+        // 4) 指示器
         drawPill(canvas);
 
-        // 5) InteractiveHighlight：整体 +8% 白（ADD）+ 以指示器为圆心的径向 +15%
-        float cx = barRect.left + Theme.dp(getContext(), 4) + (pos.value + 0.5f) * tabW;
+        // 5) InteractiveHighlight
+        float cx = Theme.dpf(getContext(), PAD) + (pos.value + 0.5f) * tabW;
         LiquidGlass.drawInteractiveHighlight(canvas, barRect,
                 clamp(cx, barRect.left, barRect.right), barRect.centerY(),
                 clamp(press.value, 0f, 1f));
@@ -450,30 +367,33 @@ final class GlassBar extends View {
 
     /** 玻璃带：src/dst 外扩 SAMPLE_PAD，给 lens 的边缘折射留真实内容。 */
     private void drawGlassBand(Canvas canvas, RectF dstShape, float cornerPx,
-                               float blurPx, float lensHPx, float lensAPx,
-                               boolean dispersion, Bitmap overlay) {
-        if (sample == null || sample.isRecycled()) {
-            canvas.drawColor(pal.night ? 0xF01C1C1E : 0xF2FFFFFF);
+                               float blurPx, float lensHPx, float lensAPx) {
+        drawGlassBand(canvas, dstShape, cornerPx, blurPx, lensHPx, lensAPx, sample);
+    }
+
+    private void drawGlassBand(Canvas canvas, RectF dstShape, float cornerPx,
+                               float blurPx, float lensHPx, float lensAPx, Bitmap src) {
+        if (src == null || src.isRecycled()) {
+            canvas.drawColor(pal.night ? 0xF21C1C1E : 0xF2FFFFFF);
             return;
         }
-        float pad = Theme.dp(getContext(), SAMPLE_PAD);
+        float pad = Theme.dpf(getContext(), SAMPLE_PAD);
         RectF want = new RectF(dstShape.left - pad, dstShape.top - pad,
                 dstShape.right + pad, dstShape.bottom + pad);
         int l = Math.round((want.left - sampleX) * sampleScale);
         int t = Math.round((want.top - sampleY) * sampleScale);
         int r = Math.round((want.right - sampleX) * sampleScale);
         int b = Math.round((want.bottom - sampleY) * sampleScale);
-        int cl = Math.max(0, Math.min(l, sample.getWidth() - 1));
-        int ct = Math.max(0, Math.min(t, sample.getHeight() - 1));
-        int cr = Math.max(cl + 1, Math.min(r, sample.getWidth()));
-        int cb = Math.max(ct + 1, Math.min(b, sample.getHeight()));
+        int cl = Math.max(0, Math.min(l, src.getWidth() - 1));
+        int ct = Math.max(0, Math.min(t, src.getHeight() - 1));
+        int cr = Math.max(cl + 1, Math.min(r, src.getWidth()));
+        int cb = Math.max(ct + 1, Math.min(b, src.getHeight()));
         sampleSrc.set(cl, ct, cr, cb);
-        // dst 必须跟着 src 一起裁：只裁 src 不裁 dst 会把内容纵向拉伸、错位
         RectF dst = new RectF(
                 sampleX + cl / sampleScale, sampleY + ct / sampleScale,
                 sampleX + cr / sampleScale, sampleY + cb / sampleScale);
-        LiquidGlass.drawGlass(canvas, sample, sampleSrc, overlay, dst,
-                blurPx, lensHPx, lensAPx, cornerPx, dispersion, pad);
+        LiquidGlass.drawGlass(canvas, src, sampleSrc, dst,
+                blurPx, lensHPx, lensAPx, cornerPx, false, pad);
     }
 
     private void drawPill(Canvas canvas) {
@@ -481,10 +401,10 @@ final class GlassBar extends View {
             return;
         }
         float p = clamp(press.value, 0f, 1.2f);
-        float inset = Theme.dp(getContext(), 4);
-        float pillH = Theme.dp(getContext(), PILL_H);
+        float inset = Theme.dpf(getContext(), PAD);
+        float pillH = Theme.dpf(getContext(), PILL_H);
         float px = barRect.left + inset + pos.value * tabW;
-        float pillTop = barRect.top + (barH - pillH) / 2f;
+        float pillTop = barRect.top + (barRect.height() - pillH) / 2f;
         pillRect.set(px, pillTop, px + tabW, pillTop + pillH);
         float pillRadius = pillH / 2f;
 
@@ -499,105 +419,101 @@ final class GlassBar extends View {
         canvas.save();
         canvas.scale(sx, sy, cx, cy);
 
-        // 胶囊自身投影：从底栏里"浮"出来
-        LiquidGlass.drawSoftShadow(canvas, pillRect, pillRadius,
-                5f * density, 0xFF0B1220, pal.night ? 0.30f : 0.11f);
-
         pillClip.reset();
         Squircle.rect(pillClip, pillRect, pillRadius);
         canvas.save();
         canvas.clipPath(pillClip);
-
-        // effects：只有 lens(10dp×p, 14dp×p, 色散)，无 blur；
-        // backdrop = 页面内容 + 强调色图标层
-        drawGlassBand(canvas, pillRect, pillRadius, 0f,
-                8f * density * p, 5f * density * p,
-                p > 0.02f && LiquidGlass.shaders(), null);
-
-        // onDrawSurface：black 10%×(1-p)，再 black 3%×p
-        // Kyant0：亮色 black 10%、暗色 white 10% —— 压出一块独立玻璃片
+        // 源码里指示器的 effects 只有 lens，没有 blur —— 它靠 RuntimeShader 的折射
+        // 把底下的内容"推"开，看起来才像一块玻璃片。这台机器的硬件画布不执行
+        // RenderEffect / RuntimeShader，只剩 CPU 网格折射，静止时会把底下的文字
+        // 拖成一片脏痕。所以静止时走 miuix GlassTabRow / SonyPods 无模糊时的回退：
+        // 一块纯色磨砂胶囊；按下（p > 0）再叠上折射层，保留"液体"的手感。
+        if (p > 0.05f) {
+            drawGlassBand(canvas, pillRect, pillRadius, 0f,
+                    Theme.dpf(getContext(), 10f) * p, Theme.dpf(getContext(), 14f) * p,
+                    sampleSoft != null ? sampleSoft : sample);
+        }
+        // 磨砂底色：亮色压一层黑（源码 black 10%），暗色压一层白（white 10%），
+        // 让胶囊从底栏里"浮"出来；按下时叠折射层再加一点反向蒙版
+        float base = 1f - p;
         pillSurfacePaint.setColor(pal.night
-                ? Theme.alpha(0xFFFFFFFF, 0.12f * (1f - p))
-                : Theme.alpha(0xFF0B1220, 0.075f * (1f - p)));
+                ? Theme.alpha(0xFFFFFFFF, 0.10f * base + 0.14f * p)
+                : Theme.alpha(0xFF000000, 0.075f * base + 0.05f * p));
         canvas.drawRect(pillRect, pillSurfacePaint);
         pillSurfacePaint.setColor(Theme.alpha(0xFF000000, 0.03f * p));
         canvas.drawRect(pillRect, pillSurfacePaint);
         canvas.restore();
 
-        // 边缘：暗边 + 白高光（同一套做法，白底上才看得出是玻璃片）
-        rimPaint.setStyle(Paint.Style.STROKE);
-        rimPaint.setStrokeWidth(Math.max(1f, density));
-        rimPaint.setColor(pal.night
-                ? Theme.alpha(0xFFFFFFFF, 0.12f)
-                : Theme.alpha(0xFF0B1220, 0.05f));
-        canvas.drawRoundRect(pillRect, pillRadius, pillRadius, rimPaint);
+        // highlight：BloomStroke，alpha = progress
         LiquidGlass.drawSdfHighlight(canvas, pillRect, pillRadius,
-                Math.max(1f, 0.6f * density), 0.55f + 0.45f * p, 45f);
+                Math.max(1f, 1f * density), 0.55f + 0.45f * p, 45f);
+        // innerShadow：radius 8dp × p、alpha 0.15 × p
         if (p > 0.02f) {
             LiquidGlass.drawInnerShadow(canvas, pillRect, pillRadius,
-                    8f * density * p, 8f * density * p, 0xFF000000, 0.15f * p);
+                    Theme.dpf(getContext(), 8f) * p, Theme.dpf(getContext(), 8f) * p,
+                    0xFF000000, 0.15f * p);
         }
         canvas.restore();
 
-        // 选中项的图标与文字：压在胶囊玻璃之上（位置跟胶囊走，但不吃胶囊的缩放）。
-        // 这样胶囊的 10% 压暗不会把图标吃掉，按下时图标独立放大到 1.2。
+        // 选中项：图标 + 文字压在胶囊玻璃之上（位置跟胶囊走，但吃 1.2 的放大）
         int nearest = clampIndex(Math.round(pos.value));
         float near = 1f - Math.min(1f, Math.abs(pos.value - nearest));
         if (near > 0.02f) {
-            float ls = 22f * density * (1f + 0.2f * clamp(press.value, 0f, 1f));
-            float lcx = pillRect.centerX();
-            float lcy = barRect.top + barH * 0.40f;
-            Icons.draw(canvas, ICONS[nearest], lcx - ls / 2f, lcy - ls / 2f, ls,
-                    Theme.alpha(pal.primary, near), 1.75f * density);
-            labelPaint.setColor(pal.primary);
-            labelPaint.setAlpha((int) (255 * near));
-            labelPaint.setTextSize(Theme.dp(getContext(), Theme.T_TAB));
-            canvas.drawText(LABELS[nearest], lcx, barRect.top + barH * 0.775f, labelPaint);
+            drawTab(canvas, nearest, pillRect.centerX(), 1f + 0.2f * clamp(press.value, 0f, 1f),
+                    Theme.alpha(accent, near), true);
         }
     }
 
     private void drawTabs(Canvas canvas) {
-        float baseIcon = 22f * density;
-        float iconCy = barRect.top + barH * 0.40f;
-        float labelBase = barRect.top + barH * 0.775f;
-        float pad = Theme.dp(getContext(), 4);
-        labelPaint.setTextSize(Theme.dp(getContext(), Theme.T_TAB));
-
-        // LocalLiquidBottomTabScale：lerp(1f, 1.2f, pressProgress)
+        float pad = Theme.dpf(getContext(), PAD);
         float iconScale = 1f + 0.2f * clamp(press.value, 0f, 1f);
 
         for (int i = 0; i < ICONS.length; i++) {
             float near = 1f - Math.min(1f, Math.abs(pos.value - i));
-            // 选中的那一项交给指示器画（要压在胶囊玻璃上），这里按 near 平滑淡出，
-            // 拖动到两格之间时两边都有内容，交接不会闪。
+            // 选中的那一项交给指示器画，这里按 near 平滑淡出
             float vis = clamp(1f - near * 2f, 0f, 1f);
             if (vis <= 0.01f) {
                 continue;
             }
-            int color = Theme.alpha(pal.title, 0.55f * vis);
-            float s = baseIcon * iconScale;
             float cx = barRect.left + pad + (i + 0.5f) * tabW;
+            drawTab(canvas, i, cx, iconScale, Theme.alpha(pal.title, vis), false);
+        }
+    }
 
-            Icons.draw(canvas, ICONS[i], cx - s / 2f, iconCy - s / 2f, s, color,
-                    1.75f * density);
-            labelPaint.setColor(pal.title);
-            labelPaint.setAlpha((int) (255 * (0.55f + 0.30f * near) * vis));
-            canvas.drawText(LABELS[i], cx, labelBase, labelPaint);
+    /**
+     * 一个 tab 的内容：图标 22dp 在上、文字 11sp 在下，两者作为一组垂直居中
+     * （源码是 Column + Arrangement.spacedBy(1dp, CenterVertically)）。
+     */
+    private void drawTab(Canvas canvas, int index, float cx, float scale, int color,
+                         boolean withLabel) {
+        float icon = Theme.dpf(getContext(), ICON_DP) * scale;
+        float labelSize = labelPaint.getTextSize();
+        float gap = Theme.dpf(getContext(), 1f);
+        float total = icon + gap + labelSize * 0.95f;
+        float top = barRect.centerY() - total / 2f;
+
+        Icons.draw(canvas, ICONS[index], cx - icon / 2f, top, icon, color, 0f);
+        if (withLabel || true) {
+            labelPaint.setColor(color);
+            float baseline = top + icon + gap - labelPaint.ascent();
+            canvas.drawText(LABELS[index], cx, baseline, labelPaint);
         }
     }
 
     // ---------------------------------------------------------------- 采样
 
     /**
-     * 采两样东西：页面内容（sample）和"只含强调色图标"的折射层（tabsLayer）。
-     * 两者同坐标系，指示器的透镜把后者一起折射，才会出现图标被吸进玻璃的效果。
+     * 采样页面内容。源码走 LayerBackdrop + RenderEffect；这台机器的硬件画布
+     * 会忽略 Paint/RenderNode 上的 RenderEffect（实测 40dp 也无变化），
+     * 所以这里用"低分辨率采样 → 双线性放大"做等效模糊，再叠一层盒式模糊压掉
+     * 采样时的锯齿，观感接近 8dp 高斯。
      */
     private void captureSample() {
         if (backdropSource == null || samplingFailed) {
             return;
         }
         try {
-            int pad = Math.round(Theme.dp(getContext(), SAMPLE_PAD));
+            int pad = Math.round(Theme.dpf(getContext(), SAMPLE_PAD));
             int[] barLoc = new int[2];
             getLocationInWindow(barLoc);
             int[] srcLoc = new int[2];
@@ -617,9 +533,9 @@ final class GlassBar extends View {
             w = Math.min(w, winW);
             h = Math.min(h, winH);
 
-            // 低分辨率采样：放大回原尺寸时本身就是一次柔和模糊，
-            // 不依赖 RenderEffect（那套在这台机器上不生效，实测过 40dp 也不糊）
-            float scale = 0.18f;
+            // 0.28 采样 → 放大回原尺寸自带一次柔和模糊，再叠 5px 盒式模糊，
+            // 等效半径接近源码的 blur(8dp)
+            final float scale = 0.28f;
             int ow = Math.max(1, Math.round(w * scale));
             int oh = Math.max(1, Math.round(h * scale));
             if (sample == null || sample.getWidth() != ow || sample.getHeight() != oh) {
@@ -636,13 +552,90 @@ final class GlassBar extends View {
                     left - srcLoc[0] + w, top - srcLoc[1] + h);
             backdropSource.draw(c);
 
+            boxBlur(sample, 6);
+
+            // 指示器那一层再糊一次（在副本上做，主样本保持清晰给玻璃体用）
+            if (sampleSoft == null || sampleSoft.getWidth() != ow || sampleSoft.getHeight() != oh) {
+                if (sampleSoft != null) {
+                    sampleSoft.recycle();
+                }
+                sampleSoft = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888);
+            }
+            new Canvas(sampleSoft).drawBitmap(sample, 0f, 0f, null);
+            boxBlur(sampleSoft, 6);
+            boxBlur(sampleSoft, 6);
+
             sampleX = left - barLoc[0];
             sampleY = top - barLoc[1];
             sampleScale = scale;
         } catch (Throwable t) {
             samplingFailed = true;
             sample = null;
-            tabsLayer = null;
+            sampleSoft = null;
         }
+    }
+
+    /**
+     * 小半径盒式模糊（可分离两趟）。小图上做，代价可以忽略；
+     * 目的是把文字边缘彻底化开，否则玻璃里会看到"脏斑"。
+     */
+    private static void boxBlur(Bitmap bmp, int radius) {
+        int w = bmp.getWidth();
+        int h = bmp.getHeight();
+        if (w < 3 || h < 3 || radius <= 0) {
+            return;
+        }
+        int[] px = new int[w * h];
+        bmp.getPixels(px, 0, w, 0, 0, w, h);
+        int[] tmp = new int[w * h];
+        int div = radius * 2 + 1;
+        // 横向
+        for (int y = 0; y < h; y++) {
+            int row = y * w;
+            int r = 0;
+            int g = 0;
+            int b = 0;
+            int a = 0;
+            for (int i = -radius; i <= radius; i++) {
+                int p = px[row + Math.max(0, Math.min(w - 1, i))];
+                a += (p >>> 24);
+                r += (p >> 16) & 0xFF;
+                g += (p >> 8) & 0xFF;
+                b += p & 0xFF;
+            }
+            for (int x = 0; x < w; x++) {
+                tmp[row + x] = ((a / div) << 24) | ((r / div) << 16) | ((g / div) << 8) | (b / div);
+                int out = px[row + Math.min(w - 1, x + radius + 1)];
+                int in = px[row + Math.max(0, x - radius)];
+                a += ((out >>> 24) - (in >>> 24));
+                r += (((out >> 16) & 0xFF) - ((in >> 16) & 0xFF));
+                g += (((out >> 8) & 0xFF) - ((in >> 8) & 0xFF));
+                b += ((out & 0xFF) - (in & 0xFF));
+            }
+        }
+        // 纵向
+        for (int x = 0; x < w; x++) {
+            int r = 0;
+            int g = 0;
+            int b = 0;
+            int a = 0;
+            for (int i = -radius; i <= radius; i++) {
+                int p = tmp[Math.max(0, Math.min(h - 1, i)) * w + x];
+                a += (p >>> 24);
+                r += (p >> 16) & 0xFF;
+                g += (p >> 8) & 0xFF;
+                b += p & 0xFF;
+            }
+            for (int y = 0; y < h; y++) {
+                px[y * w + x] = ((a / div) << 24) | ((r / div) << 16) | ((g / div) << 8) | (b / div);
+                int out = tmp[Math.min(h - 1, y + radius + 1) * w + x];
+                int in = tmp[Math.max(0, y - radius) * w + x];
+                a += ((out >>> 24) - (in >>> 24));
+                r += (((out >> 16) & 0xFF) - ((in >> 16) & 0xFF));
+                g += (((out >> 8) & 0xFF) - ((in >> 8) & 0xFF));
+                b += ((out & 0xFF) - (in & 0xFF));
+            }
+        }
+        bmp.setPixels(px, 0, w, 0, 0, w, h);
     }
 }

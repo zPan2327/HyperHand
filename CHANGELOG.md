@@ -2,6 +2,48 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.0.1] - 2026-11-09
+
+按 [Miuix](https://github.com/compose-miuix-ui/miuix) 的组件规格、[SonyPods](https://github.com/Mercury000/SonyPods) 的页面版式、
+[AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) 的液态玻璃结构，把界面整体重做一遍。
+只动界面，识别算法、钩子、参数键与广播协议完全不变。
+
+### Added
+
+- **折叠大标题栏**（`TopBar.java`）：照 miuix `TopAppBar` 的规格——大标题 title1 32sp Normal、左内缩 26dp，
+  副标题 body2 14sp；随内容滚动上移淡出，收起后 20sp Medium 的小标题垂直居中在 52dp 条里，
+  并渐显底色与一条 0.75dp 分隔线。关于页因为自带渐变英雄区，收起后只留小标题。
+
+### Changed
+
+- **颜色与字号逐条重对齐 miuix**：`onSurface` 改用纯黑/`#F2F2F2`（原来的 90% 黑偏灰），
+  行尾值与箭头统一为 `onSurfaceVariantActions`（0x66），行摘要与单位统一 body2 14sp。
+  深色模式的卡片、段落标题、次按钮底全部按 `darkColorScheme()` 取色。
+- **卡片不再画分隔线**：miuix 的 `BasicComponent` 之间本来就没有线，HyperOS 系统设置页也没有；
+  之前每行之间那条 0.75dp 线让整页显得比系统设置更"碎"。
+- **概览页改用 SonyPods 的状态网格**：左侧状态卡做成正方形（`aspectRatio(1f)`），
+  右侧两张数值卡各占一半、间距 12dp，与 SonyPods `StatusGrid` 的手机分支一致；
+  状态卡内只留标题与摘要，去掉了和右下角水印图标打架的时间戳行。
+- **系统信息卡改成 SonyPods `InfoCard` 的样式**：标签 17sp Medium 在上、值 14sp 在下，条目间距 24dp，
+  没有分隔线、没有右侧对齐——之前"标签左值右"的表格感在窄屏上会把长值挤到换行。
+- **关于页英雄区收窄**：图标下的留白按折叠标题栏的高度重算，卡片提前一屏出现。
+- **对话框按 miuix `WindowDialog` 重做**：32dp 圆角、inside 24dp、maxWidth 420dp，
+  标题 title4 18sp Medium，数值 34sp，按钮竖排且 primary 在上；
+  长文本对话框改成"内容短时按内容收缩、长时才滚动"（`MaxScrollView`），不再固定成一大块空白。
+- **保存胶囊上移**：浮在底栏之上 108dp，不再压住最后一行内容。
+
+### Fixed
+
+- **玻璃底栏的"脏痕"**：本机硬件画布不执行 `Paint/RenderNode` 上的 `RenderEffect`，
+  CPU 网格折射在静止时会把底下文字拖成模糊污渍。现在底栏本体走"0.28 降采样 + 可分离盒式模糊"，
+  指示器静止时退化成磨砂胶囊（对齐 miuix `GlassTabRow` / SonyPods 无模糊分支），按下才叠折射与色散。
+- **底栏图标与文字排版**：图标 22dp + 文字 11sp 作为一组整体垂直居中（对齐源码的
+  `Column + Arrangement.spacedBy(1dp, CenterVertically)`），之前图标贴顶、文字贴底。
+- **底栏左右边距**：从 14dp 改为 20dp，和 miuix 悬浮胶囊的默认收进量一致。
+- **底栏颜色**：改成源码里的强调色（亮 `#0088FF` / 暗 `#0091FF`）与 `#FAFAFA @ 40%` 底，
+  不再用全局 `primary`，深色模式下不会再是"深蓝压深灰"。
+- 移除页面左上角那条 4dp 宽的浅灰竖条（旧 `pageHeader` 的装饰条），它和 miuix / SonyPods 都没有对应物。
+
 ## [2.9.10] - 2026-11-06
 
 模块在 LSPosed 仓库里的显示名改成「HyperHand-媲美iPhone的单手模式增强」，同时把发布签名统一。

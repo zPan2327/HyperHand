@@ -55,15 +55,11 @@ final class AboutPage {
         return page.scroll;
     }
 
-    void setBottomInset(int px) {
-        page.setBottomInset(px);
-    }
-
     private void build() {
         buildHero();
 
         // ---------------------------------------------------------- 开发者
-        page.add(Ui.section(c, pal, "开发者", true));
+        page.add(Ui.section(c, pal, "开发者"));
         LinearLayout cardDev = Ui.card(c, pal);
         LinearLayout row = Ui.rowShell(c);
         Ui.rowRipple(row, pal);
@@ -94,7 +90,7 @@ final class AboutPage {
         page.add(cardDev);
 
         // ---------------------------------------------------------- 项目
-        page.add(Ui.section(c, pal, "项目", false));
+        page.add(Ui.section(c, pal, "项目"));
         LinearLayout cardProj = Ui.card(c, pal);
         Ui.navRow(c, cardProj, pal, -1, "源码", "GitHub 上的 HyperHand 仓库", "GitHub",
                 new Runnable() {
@@ -146,10 +142,13 @@ final class AboutPage {
         overlay.setBackgroundColor(pal.bg);
 
         Ui.Page dbg = Ui.page(c, pal);
-        dbg.add(Ui.pageHeader(c, pal, "调试", "隐藏页面 · 点击底部按钮关闭", null));
+        dbg.column.setPadding(Ui.pagePad(c), host.statusInset() + Theme.dp(c, 16),
+                Ui.pagePad(c), Theme.dp(c, 32));
+        TextView dbgTitle = Ui.text(c, "调试", Theme.T_TITLE, pal.title, Theme.semibold());
+        dbg.add(dbgTitle);
 
         // ---- 运行状态
-        dbg.add(Ui.section(c, pal, "运行状态", true));
+        dbg.add(Ui.section(c, pal, "运行状态"));
         LinearLayout status = Ui.card(c, pal);
         Cfg cfg = host.cfg();
         Ui.infoPair(c, status, pal, "扩展触发").setText(cfg.monitorEnabled ? "已开启" : "已关闭");
@@ -165,7 +164,7 @@ final class AboutPage {
         dbg.add(status, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---- 最近手势
-        dbg.add(Ui.section(c, pal, "最近手势", false));
+        dbg.add(Ui.section(c, pal, "最近手势"));
         LinearLayout log = Ui.card(c, pal);
         final TextView gestureText = Ui.block(c, pal, host.gestureLog());
         log.addView(gestureText);
@@ -179,7 +178,7 @@ final class AboutPage {
         dbg.add(log, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---- 快速操作
-        dbg.add(Ui.section(c, pal, "快速操作", false));
+        dbg.add(Ui.section(c, pal, "快速操作"));
         LinearLayout quick = Ui.card(c, pal);
         Ui.actionRow(c, quick, pal, "预览单手模式", "立刻缩小窗口，直接看背景效果", new Runnable() {
             @Override
@@ -244,7 +243,7 @@ final class AboutPage {
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        col.setPadding(Theme.dp(c, 20), Theme.dp(c, 150) + host.statusInset(), Theme.dp(c, 20), Theme.dp(c, 26));
+        col.setPadding(Theme.dp(c, 20), Theme.dp(c, 116) + host.statusInset(), Theme.dp(c, 20), Theme.dp(c, 26));
 
         AppIcon icon = new AppIcon(c, Theme.dp(c, 88), pal.primary);
         // 隐藏入口：连续点击 logo 5 次弹出调试页

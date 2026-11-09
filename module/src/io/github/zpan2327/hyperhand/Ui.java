@@ -33,12 +33,24 @@ import android.widget.TextView;
 import java.util.Locale;
 
 /**
- * HyperHand 的组件层。
+ * 组件层：全部按 compose-miuix-ui/miuix 的规格手写原生 View，
+ * 没有 AndroidX / Compose，构建链只要 javac + aapt2。
  *
- * 全部是原生 View，没有 AndroidX / Compose：卡片、行、开关、按钮、对话框
- * 都按 Miuix 的规格手写（16dp 圆角、56dp 行高、16dp 内边距、0.75dp 分隔线、
- * 17sp Medium 行标题 / 13sp 摘要），这样在只有 javac + aapt2 的构建链里
- * 也能得到系统的 HyperOS 观感。
+ * 对照的默认值：
+ * <pre>
+ * Card            cornerRadius 16dp，surfaceContainer 底（白 / #242424）
+ * BasicComponent  minHeight 56dp，insideMargin 16dp，
+ *                 标题 headline1 17sp Medium onSurface，
+ *                 摘要 body2 14sp onSurfaceVariantSummary
+ *                 行与行之间**不画分隔线**（miuix 与 HyperOS 设置页都没有）
+ * SmallTitle      subtitle 14sp Bold onBackgroundVariant，缩进 26dp（页面 12 + 14）
+ * 行尾值          body2 14sp onSurfaceVariantActions（0x66 黑）
+ * Switch          49 × 28dp，圆钮 20dp（关 4dp / 开 25dp）
+ * TextButton      cornerRadius 16dp，minHeight 40dp
+ * WindowDialog    cornerRadius 32dp，inside 24dp，maxWidth 420dp
+ * </pre>
+ *
+ * 页面节奏（12dp 页边距 + 12dp 卡片间距）来自 SonyPods 的 LazyColumn。
  */
 final class Ui {
 
@@ -60,20 +72,13 @@ final class Ui {
     // ---------------------------------------------------------------- 文本
 
     static TextView text(Context c, CharSequence s, float sp, int color, boolean medium) {
-        TextView t = new TextView(c);
-        t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        t.setTextColor(color);
-        t.setTypeface(medium ? Theme.medium() : Theme.regular());
-        t.setIncludeFontPadding(false);
-        return t;
+        return text(c, s, sp, color, medium ? Theme.medium() : Theme.regular());
     }
 
-    /** 显式字重版：SemiBold 数值 / Bold 段落标题用（Miuix 的字重分层）。 */
     static TextView text(Context c, CharSequence s, float sizeSp, int color, Typeface tf) {
         TextView t = new TextView(c);
         t.setText(s);
-        t.setTextSize(sizeSp);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp);
         t.setTextColor(color);
         t.setTypeface(tf);
         t.setIncludeFontPadding(false);
@@ -81,51 +86,22 @@ final class Ui {
     }
 
     static TextView title(Context c, Theme.Colors p, CharSequence s) {
-        return text(c, s, Theme.T_ROW, p.title, true);
+        return text(c, s, Theme.T_ROW, p.title, Theme.medium());
     }
 
     /**
-     * SmallTitle：miuix subtitle（14sp Bold）+ SmallTitleDefaults.InsideMargin(28dp, 8dp)。
-     * 页面本身已有 12dp 边距，这里补 16dp，视觉上正好与 miuix 的 28dp 缩进一致。
+     * SmallTitle：miuix subtitle（14sp Bold）+ SonyPods 的 insideMargin。
+     * 页面已有 12dp 边距，这里补 14dp，左边距落在 26dp —— 与 miuix 的 28dp 视觉一致。
      */
-    static TextView section(Context c, Theme.Colors p, String s, boolean first) {
+    static TextView section(Context c, Theme.Colors p, String s) {
         TextView t = text(c, s, Theme.T_SECTION, p.section, Theme.bold());
-        t.setLetterSpacing(0.02f);
-        t.setPadding(Theme.dp(c, 16), Theme.dp(c, first ? 16 : 8),
-                Theme.dp(c, 16), Theme.dp(c, 8));
+        t.setPadding(Theme.dp(c, 14), Theme.dp(c, 14), Theme.dp(c, 14), Theme.dp(c, 6));
         return t;
-    }
-
-    /** 页面大标题 + 副标题，可选右侧操作。 */
-    static LinearLayout pageHeader(Context c, Theme.Colors p, String head, String subtitle, View endAction) {
-        LinearLayout box = new LinearLayout(c);
-        box.setOrientation(LinearLayout.HORIZONTAL);
-        box.setGravity(Gravity.CENTER_VERTICAL);
-        int padH = Theme.dp(c, 12);
-        box.setPadding(padH, Theme.dp(c, 10), padH, Theme.dp(c, 2));
-
-        LinearLayout col = new LinearLayout(c);
-        col.setOrientation(LinearLayout.VERTICAL);
-        TextView t = text(c, head, Theme.T_DISPLAY, p.title, true);
-        t.setLetterSpacing(-0.01f);
-        col.addView(t);
-        if (subtitle != null && subtitle.length() > 0) {
-            TextView s = text(c, subtitle, Theme.T_SUM, p.summary, false);
-            s.setPadding(0, Theme.dp(c, 5), 0, 0);
-            col.addView(s);
-        }
-        box.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        if (endAction != null) {
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.leftMargin = Theme.dp(c, 8);
-            box.addView(endAction, lp);
-        }
-        return box;
     }
 
     // ---------------------------------------------------------------- 卡片
 
+    /** miuix Card：16dp squircle 底，无内边距（行自己带 16dp）。 */
     static LinearLayout card(Context c, Theme.Colors p) {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -134,18 +110,7 @@ final class Ui {
         return card;
     }
 
-    /** 可点击卡片：圆角底 + 按压蒙版 + 轻微缩放反馈。 */
-    static void clickableCard(View card, int radiusDp, int baseColor, Theme.Colors p, View.OnClickListener l) {
-        Context c = card.getContext();
-        android.graphics.drawable.Drawable bg = Theme.round(baseColor, Theme.dp(c, radiusDp));
-        card.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), bg,
-                Theme.round(Color.WHITE, Theme.dp(c, radiusDp))));
-        card.setClickable(true);
-        card.setOnClickListener(l);
-        pressScale(card);
-    }
-
-    /** 卡片之间的间距。 */
+    /** 卡片之间的间距：SonyPods 用 12dp。 */
     static LinearLayout.LayoutParams cardLp(Context c, int topGapDp) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -153,20 +118,25 @@ final class Ui {
         return lp;
     }
 
-    /** 往卡片里塞一行，自动在行与行之间画 0.75dp 分隔线（左侧内缩 16dp）。 */
+    /** 可点击卡片：圆角底 + 按压蒙版 + 轻微缩放反馈。 */
+    static void clickableCard(View card, int radiusDp, int baseColor, Theme.Colors p,
+                              View.OnClickListener l) {
+        Context c = card.getContext();
+        Drawable bg = Theme.round(baseColor, Theme.dp(c, radiusDp));
+        card.setBackground(new RippleDrawable(ColorStateList.valueOf(p.night ? 0x14FFFFFF : 0x0D000000),
+                bg, Theme.round(Color.WHITE, Theme.dp(c, radiusDp))));
+        card.setClickable(true);
+        card.setOnClickListener(l);
+        pressScale(card);
+    }
+
+    /** 往卡片里塞一行。miuix 的 BasicComponent 之间不画分隔线，这里也不画。 */
     static void addRow(Context c, LinearLayout card, Theme.Colors p, View row) {
-        if (card.getChildCount() > 0) {
-            View d = new View(c);
-            d.setBackgroundColor(p.divider);
-            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Theme.dp(c, 0.75f)));
-            dlp.leftMargin = Theme.dp(c, 16);
-            card.addView(d, dlp);
-        }
         card.addView(row, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
+    /** 行外壳：minHeight 56dp、左右 16dp、上下 10dp，内容垂直居中。 */
     static LinearLayout rowShell(Context c) {
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -178,18 +148,18 @@ final class Ui {
     }
 
     static void rowRipple(View row, Theme.Colors p) {
-        row.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), null,
-                new ColorDrawable(Color.WHITE)));
+        row.setBackground(new RippleDrawable(ColorStateList.valueOf(p.night ? 0x14FFFFFF : 0x0D000000),
+                null, new ColorDrawable(Color.WHITE)));
         row.setClickable(true);
     }
 
-    /** BasicComponent 的两行内容：标题 headline1 17sp Medium，摘要 body2 14sp。 */
+    /** BasicComponent 的两行内容：标题 17sp Medium + 摘要 14sp。 */
     static LinearLayout twoLine(Context c, Theme.Colors p, String title, String summary) {
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.addView(text(c, title, Theme.T_ROW, p.title, Theme.medium()));
         if (summary != null && summary.length() > 0) {
-            TextView s = text(c, summary, Theme.T_SUM, p.summary, false);
+            TextView s = text(c, summary, Theme.T_SUM, p.summary, Theme.regular());
             s.setPadding(0, Theme.dp(c, 3), 0, 0);
             s.setLineSpacing(Theme.dp(c, 2), 1f);
             col.addView(s);
@@ -197,7 +167,7 @@ final class Ui {
         return col;
     }
 
-    /** 行尾数值：数字 17sp Medium，单位 13sp 弱化。 */
+    /** 行尾数值：值 14sp + 单位 14sp，都用 onSurfaceVariantActions。 */
     static CharSequence valueSpan(Theme.Colors p, String value, String unit) {
         SpannableStringBuilder sb = new SpannableStringBuilder(value);
         if (unit != null && unit.length() > 0) {
@@ -205,27 +175,28 @@ final class Ui {
             sb.append(" ").append(unit);
             sb.setSpan(new AbsoluteSizeSpan(Math.round(Theme.T_SUM), true), start, sb.length(),
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            sb.setSpan(new ForegroundColorSpan(p.summary), start, sb.length(),
+            sb.setSpan(new ForegroundColorSpan(p.chevron), start, sb.length(),
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return sb;
     }
 
     static TextView valueText(Context c, Theme.Colors p, String value, String unit) {
-        TextView t = text(c, valueSpan(p, value, unit), Theme.T_ROW, p.title, Theme.semibold());
+        TextView t = text(c, valueSpan(p, value, unit), Theme.T_SUM, p.chevron, Theme.regular());
         t.setGravity(Gravity.END);
         return t;
     }
 
+    /** miuix ArrowRight：10×16dp 的细箭头，颜色 onSurfaceVariantActions。 */
     static Icons.IconView chevronView(Context c, Theme.Colors p) {
-        return Icons.view(c, Icons.CHEVRON, 17, p.chevron, 1.9f);
+        Icons.IconView v = Icons.view(c, Icons.CHEVRON, 14, p.chevron, 0f);
+        return v;
     }
 
-    /** 行右侧的箭头，带一点左边距。 */
     static void addChevron(Context c, LinearLayout row, Theme.Colors p) {
         Icons.IconView cv = chevronView(c, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                Theme.dp(c, 14), Theme.dp(c, 14));
         lp.leftMargin = Theme.dp(c, 6);
         row.addView(cv, lp);
     }
@@ -243,7 +214,7 @@ final class Ui {
         final SwitchView sw = new SwitchView(c, p);
         sw.setCheckedNoAnim(checked);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                Theme.dp(c, 49), Theme.dp(c, 28));
         slp.leftMargin = Theme.dp(c, 12);
         row.addView(sw, slp);
         row.setOnClickListener(new View.OnClickListener() {
@@ -292,6 +263,7 @@ final class Ui {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         llp.leftMargin = Theme.dp(c, 12);
         row.addView(label, llp);
+        addChevron(c, row, p);
 
         ValueRow vr = new ValueRow(row, label, p, unit, decimals);
         vr.value = value;
@@ -299,7 +271,6 @@ final class Ui {
         return vr;
     }
 
-    /** 单选行：右侧显示当前选项文字。 */
     static final class ChoiceRow {
         final LinearLayout row;
         final TextView label;
@@ -311,6 +282,7 @@ final class Ui {
         }
     }
 
+    /** 单选行：右侧显示当前选项文字。 */
     static ChoiceRow choiceRow(Context c, LinearLayout card, Theme.Colors p,
                                String title, String summary, String[] options, int selected,
                                final OnChoice open) {
@@ -320,7 +292,7 @@ final class Ui {
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         int idx = Math.max(0, Math.min(options.length - 1, selected));
-        final TextView label = text(c, options[idx], Theme.T_ROW, p.summary, false);
+        final TextView label = text(c, options[idx], Theme.T_SUM, p.chevron, Theme.regular());
         label.setGravity(Gravity.END);
         label.setMaxWidth(Math.round(Theme.screenWidth(c) * 0.42f));
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
@@ -344,22 +316,10 @@ final class Ui {
     /** 纯操作行：标题（+摘要）+ 箭头。 */
     static LinearLayout actionRow(Context c, LinearLayout card, Theme.Colors p,
                                   String title, String summary, final Runnable action) {
-        LinearLayout row = rowShell(c);
-        rowRipple(row, p);
-        row.addView(twoLine(c, p, title, summary),
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        addChevron(c, row, p);
-        row.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                action.run();
-            }
-        });
-        addRow(c, card, p, row);
-        return row;
+        return navRow(c, card, p, -1, title, summary, null, action);
     }
 
-    /** 带图标方块的操作行，用于"关于"页的源码 / 引用 / 许可。 */
+    /** 带可选图标方块 / 行尾文字的操作行，用于"关于"页的源码 / 引用 / 许可。 */
     static LinearLayout navRow(Context c, LinearLayout card, Theme.Colors p, int iconKind,
                                String title, String summary, String endText, final Runnable action) {
         LinearLayout row = rowShell(c);
@@ -376,7 +336,7 @@ final class Ui {
                     new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         }
         if (endText != null && endText.length() > 0) {
-            TextView end = text(c, endText, Theme.T_SUM, p.summary, false);
+            TextView end = text(c, endText, Theme.T_SUM, p.chevron, Theme.regular());
             LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             elp.leftMargin = Theme.dp(c, 8);
@@ -395,85 +355,51 @@ final class Ui {
         return row;
     }
 
-    /** 只读状态行：左侧标题，右侧结论。 */
-    static LinearLayout statusRow(Context c, LinearLayout card, Theme.Colors p,
-                                  String title, String value, int valueColor) {
-        LinearLayout row = rowShell(c);
-        row.setMinimumHeight(Theme.dp(c, 52));
-        row.addView(title(c, p, title),
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView v = text(c, value, Theme.T_BODY, valueColor, false);
-        v.setGravity(Gravity.END);
-        v.setLineSpacing(Theme.dp(c, 2), 1f);
-        v.setMaxLines(2);
-        v.setMaxWidth(Math.round(Theme.screenWidth(c) * 0.52f));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.leftMargin = Theme.dp(c, 12);
-        row.addView(v, lp);
-        addRow(c, card, p, row);
-        return row;
-    }
-
     /**
-     * miuix BasicComponent：单行、minHeight 56dp、insideMargin 16dp，
-     * 标题 17sp Medium 在左、值 14sp 摘要色在右（行间带分隔线）。
-     * 长值（如作用域）会右对齐换行，始终保持"标签—值"的单行结构。
-     */
-    static LinearLayout infoRow(Context c, LinearLayout card, Theme.Colors p, String label, String value) {
-        // 值过长（或本身多行）时改成「标题在上、值在下」，避免右对齐换行后错乱
-        if (value != null && (value.indexOf('\n') >= 0 || value.length() > 24)) {
-            LinearLayout col = new LinearLayout(c);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setPadding(Theme.dp(c, 16), Theme.dp(c, 12), Theme.dp(c, 16), Theme.dp(c, 12));
-            col.addView(text(c, label, Theme.T_ROW, p.title, Theme.medium()));
-            TextView v = text(c, value, Theme.T_SUM, p.summary, false);
-            v.setPadding(0, Theme.dp(c, 3), 0, 0);
-            v.setLineSpacing(Theme.dp(c, 2), 1f);
-            col.addView(v);
-            addRow(c, card, p, col);
-            return col;
-        }
-        LinearLayout row = rowShell(c);
-        row.addView(text(c, label, Theme.T_ROW, p.title, Theme.medium()));
-        TextView v = text(c, value, Theme.T_SUM, p.summary, false);
-        v.setGravity(Gravity.END);
-        v.setLineSpacing(Theme.dp(c, 2), 1f);
-        LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        vlp.leftMargin = Theme.dp(c, 12);
-        row.addView(v, vlp);
-        addRow(c, card, p, row);
-        return row;
-    }
-
-    /**
-     * SonyPods InfoText：标签 17sp Medium（onSurface）在上、
-     * 数值 14sp（onSurfaceVariantSummary）在下，条目间距 24dp、无分隔线。
-     * 返回数值 TextView 以便后续就地刷新。
+     * SonyPods InfoText：标签 headline1 17sp Medium 在上、
+     * 数值 body2 14sp 在下，条目间距 24dp、无分隔线。
+     * 返回数值 TextView 以便就地刷新。
      */
     static TextView infoPair(Context c, LinearLayout card, Theme.Colors p, String label) {
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(Theme.dp(c, 16), Theme.dp(c, 8), Theme.dp(c, 16), Theme.dp(c, 16));
-        col.addView(text(c, label, Theme.T_ROW, p.title, true));
-        TextView v = text(c, "", 14, p.summary, false);
+        col.setPadding(0, 0, 0, Theme.dp(c, 24));
+        col.addView(text(c, label, Theme.T_ROW, p.title, Theme.medium()));
+        TextView v = text(c, "", Theme.T_SUM, p.summary, Theme.regular());
         v.setPadding(0, Theme.dp(c, 2), 0, 0);
         v.setLineSpacing(Theme.dp(c, 2), 1f);
         col.addView(v);
-        v.setTag(col);
         card.addView(col, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return v;
+    }
+
+    /** SonyPods InfoCard 的一次性条目（末条 bottomPadding 传 0）。 */
+    static void infoText(Context c, LinearLayout card, Theme.Colors p, String label, String value) {
+        infoText(c, card, p, label, value, true);
+    }
+
+    static void infoText(Context c, LinearLayout card, Theme.Colors p, String label, String value,
+                         boolean gapAfter) {
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(0, 0, 0, Theme.dp(c, gapAfter ? 24 : 0));
+        col.addView(text(c, label, Theme.T_ROW, p.title, Theme.medium()));
+        TextView v = text(c, value == null ? "" : value, Theme.T_SUM, p.summary, Theme.regular());
+        v.setPadding(0, Theme.dp(c, 2), 0, 0);
+        v.setLineSpacing(Theme.dp(c, 2), 1f);
+        col.addView(v);
+        card.addView(col, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     /** 圆角图标底 + 线性图标。 */
     static FrameLayout iconTile(Context c, Theme.Colors p, int kind, int tint) {
         FrameLayout box = new FrameLayout(c);
         box.setBackground(Theme.round(Theme.alpha(tint, p.night ? 0.20f : 0.10f), Theme.dp(c, 10)));
-        Icons.IconView icon = Icons.view(c, kind, 18, tint, 1.8f);
+        Icons.IconView icon = Icons.view(c, kind, 18, tint, 0f);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                Theme.dp(c, 18), Theme.dp(c, 18));
         lp.gravity = Gravity.CENTER;
         box.addView(icon, lp);
         return box;
@@ -481,7 +407,7 @@ final class Ui {
 
     /** 多行说明块。 */
     static TextView block(Context c, Theme.Colors p, String s) {
-        TextView t = text(c, s, Theme.T_SUM, p.summary, false);
+        TextView t = text(c, s, Theme.T_SUM, p.summary, Theme.regular());
         t.setLineSpacing(Theme.dp(c, 4), 1f);
         t.setPadding(Theme.dp(c, 16), Theme.dp(c, 10), Theme.dp(c, 16), Theme.dp(c, 14));
         return t;
@@ -489,22 +415,22 @@ final class Ui {
 
     /** 卡片内的强调块（浅色底），用于校准提示这类信息。 */
     static TextView hintBlock(Context c, Theme.Colors p, String s, int accent) {
-        TextView t = text(c, s, Theme.T_SUM, p.summary, false);
+        TextView t = text(c, s, Theme.T_SUM, p.summary, Theme.regular());
         t.setLineSpacing(Theme.dp(c, 3), 1f);
         t.setPadding(Theme.dp(c, 12), Theme.dp(c, 10), Theme.dp(c, 12), Theme.dp(c, 10));
         t.setBackground(Theme.round(Theme.alpha(accent, p.night ? 0.16f : 0.07f), Theme.dp(c, 10)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(Theme.dp(c, 16), Theme.dp(c, 4), Theme.dp(c, 16), Theme.dp(c, 14));
+        lp.setMargins(Theme.dp(c, 16), Theme.dp(c, 2), Theme.dp(c, 16), Theme.dp(c, 14));
         t.setLayoutParams(lp);
         return t;
     }
 
     // ---------------------------------------------------------------- 按钮
 
-    /** 主按钮：primary 底 + onPrimary 文字，圆角 16dp、高 48dp。 */
+    /** miuix TextButton（primary）：primary 底 + onPrimary 字，16dp 圆角。 */
     static TextView primaryButton(Context c, Theme.Colors p, String s) {
-        TextView b = text(c, s, Theme.T_ROW, p.onPrimary, true);
+        TextView b = text(c, s, Theme.T_ROW, p.onPrimary, Theme.medium());
         b.setGravity(Gravity.CENTER);
         b.setClickable(true);
         b.setFocusable(true);
@@ -513,65 +439,27 @@ final class Ui {
         return b;
     }
 
-    /** 次按钮：surfaceContainerHighest 底。 */
+    /** miuix TextButton（普通）：secondaryVariant 底 + onSecondaryVariant 字。 */
     static TextView secondaryButton(Context c, Theme.Colors p, String s) {
-        TextView b = text(c, s, Theme.T_ROW, p.onFill, true);
+        TextView b = text(c, s, Theme.T_ROW, p.onFill, Theme.medium());
         b.setGravity(Gravity.CENTER);
         Drawable bg = Theme.round(p.fill, Theme.dp(c, Theme.CARD_RADIUS));
-        b.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), bg, null));
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(p.night ? 0x14FFFFFF : 0x0D000000),
+                bg, null));
         b.setClickable(true);
         b.setFocusable(true);
         return b;
     }
 
-    /** 胶囊按钮：页面标题右侧的小操作（刷新 / 保存）。 */
-    static TextView capsuleButton(Context c, Theme.Colors p, String s, boolean primary) {
-        TextView b = text(c, s, Theme.T_SUM, primary ? p.primary : p.onFill, true);
-        b.setGravity(Gravity.CENTER);
-        int padH = Theme.dp(c, 14);
-        b.setPadding(padH, Theme.dp(c, 8), padH, Theme.dp(c, 8));
-        Drawable bg = Theme.round(primary ? Theme.alpha(p.primary, p.night ? 0.22f : 0.10f) : p.fill,
-                Theme.dp(c, 999));
-        b.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), bg, null));
-        b.setClickable(true);
-        return b;
-    }
-
-    /** 图标按钮（圆形底，38dp 命中区）。 */
-    static FrameLayout iconButton(Context c, Theme.Colors p, int kind, final Runnable action) {
-        FrameLayout box = new FrameLayout(c);
-        Drawable bg = Theme.round(p.fill, Theme.dp(c, 999));
-        box.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), bg,
-                Theme.round(Color.WHITE, Theme.dp(c, 999))));
-        box.setClickable(true);
-        Icons.IconView icon = Icons.view(c, kind, 19, p.title, 1.9f);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.gravity = Gravity.CENTER;
-        box.addView(icon, lp);
-        int size = Theme.dp(c, 38);
-        box.setLayoutParams(new LinearLayout.LayoutParams(size, size));
-        if (action != null) {
-            box.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    action.run();
-                }
-            });
-        }
-        pressScale(box);
-        return box;
-    }
-
-    /** 无底色的图标按钮：SonyPods / KernelSU 标题栏右上角那种裸图标。 */
+    /** 无底色的图标按钮：标题栏右上角那种裸图标。 */
     static FrameLayout ghostIconButton(Context c, Theme.Colors p, int kind, final Runnable action) {
         FrameLayout box = new FrameLayout(c);
-        box.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), null,
-                Theme.round(Color.WHITE, Theme.dp(c, 999))));
+        box.setBackground(new RippleDrawable(ColorStateList.valueOf(p.night ? 0x14FFFFFF : 0x0D000000),
+                null, Theme.round(Color.WHITE, Theme.dp(c, 999))));
         box.setClickable(true);
-        Icons.IconView icon = Icons.view(c, kind, 22, p.title, 1.9f);
+        Icons.IconView icon = Icons.view(c, kind, 22, p.title, 0f);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                Theme.dp(c, 22), Theme.dp(c, 22));
         lp.gravity = Gravity.CENTER;
         box.addView(icon, lp);
         int size = Theme.dp(c, 40);
@@ -640,8 +528,9 @@ final class Ui {
             column.addView(v, lp);
         }
 
-        void setBottomInset(int px) {
-            column.setPadding(column.getPaddingLeft(), 0, column.getPaddingRight(), px);
+        /** 顶部留给折叠标题栏，底部留给悬浮底栏。 */
+        void setInsets(int top, int bottom) {
+            column.setPadding(column.getPaddingLeft(), top, column.getPaddingRight(), bottom);
         }
     }
 
@@ -688,10 +577,10 @@ final class Ui {
         private final int colorOn;
         private final int colorOff;
         private final int thumbColor = Color.WHITE;
-        private final int shadow = 0x26000000;
+        private final int shadow = 0x1F000000;
         /** 0..1 表示开关进度（位置与轨道色都用它）。 */
-        private final GlassBar.Spring track = new GlassBar.Spring(0f);
-        private final GlassBar.Spring press = new GlassBar.Spring(0f);
+        private final Spring track = new Spring(0f);
+        private final Spring press = new Spring(0f);
         private boolean checked;
         private OnCheckedChange listener;
         private long lastFrameAt;
@@ -833,8 +722,7 @@ final class Ui {
 
     // ---------------------------------------------------------------- 对话框
 
-    /** 对话框外壳：圆角 24、去掉标题栏、透明窗口、居中限宽。 */
-    /** miuix WindowDialog 规格：CornerRadius 32dp、insideMargin 24dp、outsideMargin 12dp、MaxWidth 420dp。 */
+    /** miuix WindowDialog 规格：cornerRadius 32dp、insideMargin 24dp、outsideMargin 12dp、maxWidth 420dp。 */
     private static LinearLayout dialogShell(Activity a, Dialog d, Theme.Colors p) {
         FrameLayout root = new FrameLayout(a);
         int pad = Theme.dp(a, 12);
@@ -857,37 +745,49 @@ final class Ui {
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             int maxW = Theme.dp(a, 420) + 2 * pad;
             w.setLayout(Math.min(screenW, maxW), ViewGroup.LayoutParams.WRAP_CONTENT);
-            w.setDimAmount(0.32f);
+            w.setDimAmount(0.3f);
         }
         return box;
     }
 
-    /**
-     * miuix 按钮排布：竖向堆叠的全宽按钮（TextButton 规格
-     * cornerRadius 16dp / minHeight 40dp / insideMargin 16×13），间距 10dp。
-     * 取消 = secondaryVariant 灰底，确定 = primary 强调底。
-     */
+    /** miuix 对话框标题：title4 18sp Medium，居中，上方 24dp。 */
+    private static TextView dialogTitle(Activity a, LinearLayout box, Theme.Colors p, String s,
+                                        boolean withBottomGap) {
+        TextView t = text(a, s, 18, p.title, Theme.medium());
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 24),
+                Theme.dp(a, withBottomGap ? 12 : 8));
+        box.addView(t);
+        return t;
+    }
+
+    /** 竖向堆叠的全宽按钮：primary 在上、普通在下，间距 10dp。 */
     private static void dialogButtons(Activity a, LinearLayout box, Theme.Colors p,
-                                      TextView left, TextView right) {
+                                      TextView secondary, TextView primary) {
         LinearLayout stack = new LinearLayout(a);
         stack.setOrientation(LinearLayout.VERTICAL);
         int m = Theme.dp(a, 24);
         int gap = Theme.dp(a, 10);
         stack.setPadding(m, Theme.dp(a, 8), m, m);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44));
-        stack.addView(right, lp);
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44));
-        lp2.topMargin = gap;
-        stack.addView(left, lp2);
+        if (primary != null) {
+            stack.addView(primary, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44)));
+        }
+        if (secondary != null) {
+            LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44));
+            if (primary != null) {
+                lp2.topMargin = gap;
+            }
+            stack.addView(secondary, lp2);
+        }
         box.addView(stack, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
-    /** 滑杆轨道：6dp 圆头、未选中用淡色，已选中用强调色。 */
+    /** 滑杆轨道：4dp 圆头、未选中用淡色，已选中用强调色。 */
     private static Drawable sliderTrack(Context c, Theme.Colors p) {
-        int h = Theme.dp(c, 6);
+        int h = Theme.dp(c, 4);
         Squircle.D bg = Theme.round(p.night ? 0x33FFFFFF : 0x1A000000, h / 2f);
         bg.setSize(1, h);
         Squircle.D fg = Theme.round(p.primary, h / 2f);
@@ -911,10 +811,10 @@ final class Ui {
         final android.widget.PopupWindow[] win = new android.widget.PopupWindow[1];
         for (int i = 0; i < items.length; i++) {
             final int idx = i;
-            TextView t = text(c, items[i], 15, p.title, false);
+            TextView t = text(c, items[i], Theme.T_ROW, p.title, Theme.regular());
             t.setPadding(Theme.dp(c, 18), Theme.dp(c, 13), Theme.dp(c, 18), Theme.dp(c, 13));
-            t.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), null,
-                    new ColorDrawable(Color.TRANSPARENT)));
+            t.setBackground(new RippleDrawable(ColorStateList.valueOf(
+                    p.night ? 0x14FFFFFF : 0x0D000000), null, new ColorDrawable(Color.TRANSPARENT)));
             t.setClickable(true);
             t.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -935,7 +835,6 @@ final class Ui {
         w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         w.setOutsideTouchable(true);
         win[0] = w;
-        // 位置夹在屏幕内：之前固定 -168dp 偏移会让菜单在靠右的按钮下面溢出屏幕
         int menuW = Theme.dp(c, 228);
         int screenW = c.getResources().getDisplayMetrics().widthPixels;
         int margin = Theme.dp(c, 12);
@@ -947,20 +846,21 @@ final class Ui {
         w.showAtLocation(anchor, Gravity.NO_GRAVITY, x, y);
     }
 
-    /** miuix TextButton：16dp 圆角实底。color=p.primary 时为强调按钮（primary 底 + 白字）。 */
-    private static TextView dialogTextButton(Activity a, Theme.Colors p, String s, int color, boolean bold) {
+    /** miuix TextButton：16dp 圆角实底。强调按钮 = primary 底 + 白字。 */
+    private static TextView dialogTextButton(Activity a, Theme.Colors p, String s,
+                                             int color, boolean bold) {
         boolean primary = color == p.primary;
-        TextView t = text(a, s, Theme.T_ROW,
-                primary ? (p.night ? 0xFF000000 : 0xFFFFFFFF) : color, bold);
+        TextView t = text(a, s, Theme.T_ROW, primary ? p.onPrimary : p.onFill, Theme.medium());
         t.setGravity(Gravity.CENTER);
-        int bg = primary ? p.primary : (p.night ? 0x14FFFFFF : 0x0F000000);
-        t.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple),
+        int bg = primary ? p.primary : p.fill;
+        t.setBackground(new RippleDrawable(ColorStateList.valueOf(
+                primary ? 0x33FFFFFF : (p.night ? 0x14FFFFFF : 0x0D000000)),
                 Theme.round(bg, Theme.dp(a, 16)), null));
         t.setClickable(true);
         return t;
     }
 
-    /** Miuix 风格数字对话框：标题 / 大号数值 + 单位 / 滑杆 / 底部两个按钮。 */
+    /** 数字对话框：标题 / 大号数值 + 单位 / 滑杆 / 两个按钮。 */
     static void numberDialog(final Activity a, final Theme.Colors p, String title, final String unit,
                              final float min, final float max, final float step,
                              final int decimals, float current, final OnNumber cb) {
@@ -968,19 +868,17 @@ final class Ui {
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
         LinearLayout box = dialogShell(a, d, p);
 
-        TextView t = text(a, title, 18, p.title, Theme.medium());
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 12));
-        box.addView(t);
+        dialogTitle(a, box, p, title, false);
 
-        final TextView big = text(a, "", 30, p.title, true);
+        final TextView big = text(a, "", 34, p.title, Theme.medium());
         big.setGravity(Gravity.CENTER);
-        big.setPadding(Theme.dp(a, 16), Theme.dp(a, 8), Theme.dp(a, 16), 0);
+        big.setPadding(Theme.dp(a, 16), Theme.dp(a, 4), Theme.dp(a, 16), 0);
         box.addView(big);
 
-        TextView u = text(a, unit == null || unit.length() == 0 ? " " : unit, Theme.T_SUM, p.summary, false);
+        TextView u = text(a, unit == null || unit.length() == 0 ? " " : unit,
+                Theme.T_SUM, p.summary, Theme.regular());
         u.setGravity(Gravity.CENTER);
-        u.setPadding(Theme.dp(a, 16), Theme.dp(a, 2), Theme.dp(a, 16), Theme.dp(a, 6));
+        u.setPadding(Theme.dp(a, 16), Theme.dp(a, 2), Theme.dp(a, 16), Theme.dp(a, 4));
         box.addView(u);
 
         final int steps = Math.max(1, Math.round((max - min) / step));
@@ -990,7 +888,7 @@ final class Ui {
         sb.setSplitTrack(false);
         sb.setProgressDrawable(sliderTrack(a, p));
         // 圆钮：白色外圈 + 强调色内芯，放在白色卡片上也有轮廓
-        int outer = Theme.dp(a, 24);
+        int outer = Theme.dp(a, 26);
         GradientDrawable ring = new GradientDrawable();
         ring.setShape(GradientDrawable.OVAL);
         ring.setColor(p.card);
@@ -1000,10 +898,10 @@ final class Ui {
         core.setColor(p.primary);
         core.setSize(outer, outer);
         LayerDrawable thumb = new LayerDrawable(new Drawable[] {ring, core});
-        thumb.setLayerInset(1, Theme.dp(a, 4), Theme.dp(a, 4), Theme.dp(a, 4), Theme.dp(a, 4));
+        thumb.setLayerInset(1, Theme.dp(a, 5), Theme.dp(a, 5), Theme.dp(a, 5), Theme.dp(a, 5));
         sb.setThumb(thumb);
         sb.setThumbOffset(0);
-        sb.setPadding(Theme.dp(a, 22), Theme.dp(a, 14), Theme.dp(a, 22), Theme.dp(a, 14));
+        sb.setPadding(Theme.dp(a, 24), Theme.dp(a, 16), Theme.dp(a, 24), Theme.dp(a, 8));
         box.addView(sb, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 48)));
 
@@ -1046,19 +944,17 @@ final class Ui {
     }
 
     /** 单选对话框：标题 + 选项列表（选中项高亮 + 勾）。 */
-    static void singleChoiceDialog(final Activity a, final Theme.Colors p, String title, String summary,
-                                   final String[] options, int selected, final OnChoice cb) {
+    static void singleChoiceDialog(final Activity a, final Theme.Colors p, String title,
+                                   String summary, final String[] options, int selected,
+                                   final OnChoice cb) {
         final Dialog d = new Dialog(a);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
         LinearLayout box = dialogShell(a, d, p);
 
-        TextView t = text(a, title, 18, p.title, Theme.medium());
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 12));
-        box.addView(t);
+        dialogTitle(a, box, p, title, true);
 
         if (summary != null && summary.length() > 0) {
-            TextView s = text(a, summary, 14, p.summary, false);
+            TextView s = text(a, summary, Theme.T_SUM, p.summary, Theme.regular());
             s.setGravity(Gravity.CENTER);
             s.setLineSpacing(Theme.dp(a, 2), 1f);
             s.setPadding(Theme.dp(a, 24), 0, Theme.dp(a, 24), Theme.dp(a, 12));
@@ -1067,17 +963,22 @@ final class Ui {
 
         for (int i = 0; i < options.length; i++) {
             final int idx = i;
-            LinearLayout row = rowShell(a);
+            LinearLayout row = new LinearLayout(a);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
             row.setMinimumHeight(Theme.dp(a, 52));
-            row.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), null,
-                    new ColorDrawable(Color.TRANSPARENT)));
+            row.setPadding(Theme.dp(a, 24), Theme.dp(a, 8), Theme.dp(a, 24), Theme.dp(a, 8));
+            row.setBackground(new RippleDrawable(ColorStateList.valueOf(
+                    p.night ? 0x14FFFFFF : 0x0D000000), null, new ColorDrawable(Color.TRANSPARENT)));
             row.setClickable(true);
             TextView label = text(a, options[i], Theme.T_ROW,
-                    i == selected ? p.primary : p.title, i == selected);
+                    i == selected ? p.primary : p.title, Theme.regular());
             row.addView(label, new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             if (i == selected) {
-                row.addView(Icons.view(a, Icons.CHECK, 17, p.primary, 2f));
+                Icons.IconView check = Icons.view(a, Icons.CHECK, 18, p.primary, 0f);
+                row.addView(check, new LinearLayout.LayoutParams(
+                        Theme.dp(a, 18), Theme.dp(a, 18)));
             }
             row.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -1086,14 +987,6 @@ final class Ui {
                     d.dismiss();
                 }
             });
-            if (i > 0) {
-                View div = new View(a);
-                div.setBackgroundColor(p.divider);
-                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Theme.dp(a, 0.75f)));
-                dlp.leftMargin = Theme.dp(a, 16);
-                box.addView(div, dlp);
-            }
             box.addView(row, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
@@ -1105,14 +998,7 @@ final class Ui {
                 d.dismiss();
             }
         });
-        LinearLayout stack = new LinearLayout(a);
-        stack.setOrientation(LinearLayout.VERTICAL);
-        int m = Theme.dp(a, 24);
-        stack.setPadding(m, Theme.dp(a, 8), m, m);
-        stack.addView(cancel, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44)));
-        box.addView(stack, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        dialogButtons(a, box, p, cancel, null);
         d.show();
     }
 
@@ -1123,12 +1009,9 @@ final class Ui {
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
         LinearLayout box = dialogShell(a, d, p);
 
-        TextView t = text(a, title, 18, p.title, Theme.medium());
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 12));
-        box.addView(t);
+        dialogTitle(a, box, p, title, true);
 
-        TextView s = text(a, summary, 14, p.summary, false);
+        TextView s = text(a, summary, Theme.T_SUM, p.summary, Theme.regular());
         s.setGravity(Gravity.CENTER);
         s.setLineSpacing(Theme.dp(a, 3), 1f);
         s.setPadding(Theme.dp(a, 24), 0, Theme.dp(a, 24), Theme.dp(a, 16));
@@ -1153,27 +1036,40 @@ final class Ui {
         d.show();
     }
 
+    /** 高度上限可设的 ScrollView：内容短时按内容收缩，长时才滚动。 */
+    static final class MaxScrollView extends ScrollView {
+        private int maxHeight;
+
+        MaxScrollView(android.content.Context c, int maxHeight) {
+            super(c);
+            this.maxHeight = maxHeight;
+        }
+
+        @Override
+        protected void onMeasure(int w, int h) {
+            int capped = MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.AT_MOST);
+            super.onMeasure(w, capped);
+        }
+    }
+
     /** 长文本对话框（引用 / 许可 / 使用说明），内容可滚动。 */
     static void infoDialog(final Activity a, final Theme.Colors p, String title, String body) {
         final Dialog d = new Dialog(a);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
         LinearLayout box = dialogShell(a, d, p);
 
-        TextView t = text(a, title, 18, p.title, Theme.medium());
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 12));
-        box.addView(t);
+        dialogTitle(a, box, p, title, true);
 
-        ScrollView sc = new ScrollView(a);
+        int maxH = Math.min(Theme.dp(a, 380),
+                (int) (a.getResources().getDisplayMetrics().heightPixels * 0.56f));
+        ScrollView sc = new MaxScrollView(a, maxH);
         sc.setVerticalScrollBarEnabled(false);
-        TextView bodyView = text(a, body, Theme.T_SUM, p.summary, false);
+        TextView bodyView = text(a, body, Theme.T_SUM, p.summary, Theme.regular());
         bodyView.setLineSpacing(Theme.dp(a, 4), 1f);
-        bodyView.setPadding(Theme.dp(a, 20), 0, Theme.dp(a, 20), Theme.dp(a, 16));
+        bodyView.setPadding(Theme.dp(a, 24), 0, Theme.dp(a, 24), Theme.dp(a, 16));
         sc.addView(bodyView);
-        LinearLayout.LayoutParams scLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Math.min(Theme.dp(a, 340),
-                (int) (a.getResources().getDisplayMetrics().heightPixels * 0.5f)));
-        box.addView(sc, scLp);
+        box.addView(sc, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView ok = dialogTextButton(a, p, "知道了", p.primary, true);
         ok.setOnClickListener(new View.OnClickListener() {
@@ -1182,14 +1078,54 @@ final class Ui {
                 d.dismiss();
             }
         });
-        LinearLayout stack = new LinearLayout(a);
-        stack.setOrientation(LinearLayout.VERTICAL);
-        int m = Theme.dp(a, 24);
-        stack.setPadding(m, Theme.dp(a, 8), m, m);
-        stack.addView(ok, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44)));
-        box.addView(stack, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        dialogButtons(a, box, p, null, ok);
         d.show();
+    }
+
+    /** 通用弹簧：半隐式欧拉 + 子步长，避免大 stiffness 下数值爆炸。 */
+    static final class Spring {
+        float value;
+        float target;
+        float velocity;
+        float stiffness = 900f;
+        float damping = 49f;
+
+        Spring(float v) {
+            value = v;
+            target = v;
+        }
+
+        void set(float stiffness, float ratio) {
+            this.stiffness = stiffness;
+            this.damping = 2f * ratio * (float) Math.sqrt(stiffness);
+        }
+
+        void to(float t) {
+            target = t;
+        }
+
+        void snap(float v) {
+            value = v;
+            target = v;
+            velocity = 0f;
+        }
+
+        boolean settled() {
+            return Math.abs(target - value) < 0.0008f && Math.abs(velocity) < 0.008f;
+        }
+
+        void step(float dt) {
+            int n = Math.max(1, (int) Math.ceil(dt / (1f / 240f)));
+            float h = dt / n;
+            for (int i = 0; i < n; i++) {
+                float a = -stiffness * (value - target) - damping * velocity;
+                velocity += a * h;
+                value += velocity * h;
+            }
+            if (Math.abs(target - value) < 0.0008f && Math.abs(velocity) < 0.008f) {
+                value = target;
+                velocity = 0f;
+            }
+        }
     }
 }

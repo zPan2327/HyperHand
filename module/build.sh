@@ -27,14 +27,28 @@ fi
 BT_VERSION="${BUILD_TOOLS_VERSION:-36.0.0}"
 PLATFORM_VERSION="${PLATFORM_VERSION:-35}"
 KEYSTORE_PASS="${KEYSTORE_PASS:-onehand123}"
-VERSION_NAME="${VERSION_NAME:-3.0.2}"
-# 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
+VERSION_NAME="${VERSION_NAME:-3.0.2-beta.1}"
+# 未显式指定 versionCode 时由 versionName 推导：
+#   正式版 1.0.1                     -> 10001
+#   预发布 3.0.2-beta.1              -> 29903
+#
+# 预发布版落在「目标正式版」下方 100 格的区间里（30002 - 100 + 1），
+# 这样三条约束同时成立：
+#   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
+# 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉，最多容纳 100 个 beta。
 VERSION_CODE="${VERSION_CODE:-}"
 if [ -z "$VERSION_CODE" ]; then
-  if [[ "$VERSION_NAME" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-    VERSION_CODE=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
+  if [[ "$VERSION_NAME" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-beta\.([0-9]+))?$ ]]; then
+    BASE=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
+    if [ -n "${BASH_REMATCH[4]}" ]; then
+      N=$(( 10#${BASH_REMATCH[5]} ))
+      VERSION_CODE=$(( BASE - 100 + N ))
+    else
+      VERSION_CODE=$BASE
+    fi
   else
-    VERSION_CODE=1
+    echo "无法从 '$VERSION_NAME' 推导 versionCode，请显式设置 VERSION_CODE" >&2
+    exit 1
   fi
 fi
 

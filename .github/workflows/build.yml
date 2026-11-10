@@ -130,19 +130,31 @@ jobs:
           path: module/out/HyperHand.apk
           if-no-files-found: error
 
+      # 打 v*-beta.* 标签只发预发布版：GitHub Release 标成 prerelease，
+      # 且不写 latest —— 正式版（v2.9.10 等）在 Releases 页面上仍是最新可用版本，
+      # 不会被一个测试构建顶掉。
       - name: Attach APK to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: module/out/HyperHand.apk
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'beta') }}
+          make_latest: ${{ contains(github.ref_name, 'beta') && 'false' || 'true' }}
 
       # 同步到官方模块仓库：repo 名必须等于包名，release tag 必须是 VersionCode-VersionName。
       # 需要先在仓库 Secrets 里配置 MODULE_REPO_TOKEN（对 Xposed-Modules-Repo/io.github.zpan2327.hyperhand
       # 有写权限的 PAT），否则这一步跳过。
+      #
+      # 预发布版（版本名含 beta）绝不推模块仓库：那是正式的分发通道，
+      # 一旦推进去，所有用户都会被提示"有更新"。
       - name: Publish to Xposed-Modules-Repo
-        # 打 tag 时自动同步；也允许手动 Run workflow 补发（创建模块仓库后用它把 2.0.0 补进去）
-        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.MODULE_REPO_TOKEN != ''
+        # 打正式 tag 时自动同步；也允许手动 Run workflow 补发。
+        if: >-
+          (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+          && env.MODULE_REPO_TOKEN != ''
+          && !contains(github.ref_name, 'beta')
+          && !contains(inputs.version, 'beta')
         # 模块仓库还没创建/还没批准时，这一步 404 属于预期，不要因此把整个构建标红
         continue-on-error: true
         uses: softprops/action-gh-release@v2

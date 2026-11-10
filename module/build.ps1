@@ -30,14 +30,26 @@ $sdk = Find-Sdk
 $btVersion = if ($env:BUILD_TOOLS_VERSION) { $env:BUILD_TOOLS_VERSION } else { '36.0.0' }
 $platformVersion = if ($env:PLATFORM_VERSION) { $env:PLATFORM_VERSION } else { '35' }
 $keystorePass = if ($env:KEYSTORE_PASS) { $env:KEYSTORE_PASS } else { 'onehand123' }
-$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '3.0.2' }
-# 未显式指定 versionCode 时由 versionName 推导：1.0.1 -> 10001
+$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '3.0.2-beta.1' }
+# 未显式指定 versionCode 时由 versionName 推导：
+#   正式版 1.0.1        -> 10001
+#   预发布 3.0.2-beta.1 -> 29903
+#
+# 预发布版落在「目标正式版」下方 100 格的区间里（30002 - 100 + N），
+# 这样三条约束同时成立：
+#   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
+# 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉，最多容纳 100 个 beta。
 $versionCode = $env:VERSION_CODE
 if (-not $versionCode) {
-    if ($versionName -match '^(\d+)\.(\d+)\.(\d+)$') {
-        $versionCode = [string]([int]$Matches[1] * 10000 + [int]$Matches[2] * 100 + [int]$Matches[3])
+    if ($versionName -match '^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$') {
+        $base = [int]$Matches[1] * 10000 + [int]$Matches[2] * 100 + [int]$Matches[3]
+        if ($Matches[4]) {
+            $versionCode = [string]($base - 100 + [int]$Matches[4])
+        } else {
+            $versionCode = [string]$base
+        }
     } else {
-        $versionCode = '1'
+        throw "无法从 '$versionName' 推导 versionCode，请显式设置 VERSION_CODE"
     }
 }
 

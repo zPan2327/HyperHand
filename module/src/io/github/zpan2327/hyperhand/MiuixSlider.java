@@ -96,19 +96,27 @@ final class MiuixSlider extends View {
 
     @Override
     protected void onMeasure(int w, int h) {
-        setMeasuredDimension(MeasureSpec.getSize(w), Theme.dp(getContext(), 28));
+        // 高度交给布局：调用方给的是「轨道 28dp + 上下 padding」，
+        // 这里再写死 28dp 会把轨道压成一条线。
+        int height = MeasureSpec.getMode(h) == MeasureSpec.UNSPECIFIED
+                ? Theme.dp(getContext(), 28)
+                : MeasureSpec.getSize(h);
+        setMeasuredDimension(MeasureSpec.getSize(w), Math.max(height, Theme.dp(getContext(), 28)));
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
-        float barH = getHeight();
-        float barW = getWidth();
+        // 左右留出 padding，轨道才不会贴着卡片边
+        float left = getPaddingLeft();
+        float top = getPaddingTop();
+        float barW = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
+        float barH = Math.max(1f, getHeight() - getPaddingTop() - getPaddingBottom());
         float r = barH / 2f;
         float available = Math.max(0f, barW - 2f * r);
         float frac = (value - min) / (max - min);
-        float cx = r + frac * available;
+        float cx = left + r + frac * available;
 
-        track.set(0, 0, barW, barH);
+        track.set(left, top, left + barW, top + barH);
 
         // 轨道背景（sliderBackground）
         paint.setStyle(Paint.Style.FILL);
@@ -125,13 +133,13 @@ final class MiuixSlider extends View {
         paint.setColor(pal.primary);
         paint.setStrokeWidth(barH);
         paint.setStrokeCap(Paint.Cap.ROUND);
-        canvas.drawLine(r, barH / 2f, Math.max(r, cx), barH / 2f, paint);
+        canvas.drawLine(left + r, top + barH / 2f, Math.max(left + r, cx), top + barH / 2f, paint);
 
-        // 圆钮：onPrimary，半径 = r × 0.72 × 缩放
+        // 圆钮：miuix 用 onPrimary（深色模式下也是白的），压在强调色轨道上才看得清
         float thumbR = r * 0.72f * thumbScale.value;
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(pal.night ? 0xFF101010 : 0xFFFFFFFF);
-        canvas.drawCircle(cx, barH / 2f, thumbR, paint);
+        paint.setColor(0xFFFFFFFF);
+        canvas.drawCircle(cx, top + barH / 2f, thumbR, paint);
     }
 
     // ---------------------------------------------------------------- 手势
@@ -170,9 +178,13 @@ final class MiuixSlider extends View {
     }
 
     private void applyTouch(float x, boolean force) {
-        float r = getHeight() / 2f;
-        float available = Math.max(1f, getWidth() - 2f * r);
-        float frac = Math.max(0f, Math.min(1f, (x - r) / available));
+        // 与 onDraw 用同一套几何：扣掉 padding 之后的可用区间
+        float left = getPaddingLeft();
+        float barH = Math.max(1f, getHeight() - getPaddingTop() - getPaddingBottom());
+        float barW = Math.max(1f, getWidth() - getPaddingLeft() - getPaddingRight());
+        float r = barH / 2f;
+        float available = Math.max(1f, barW - 2f * r);
+        float frac = Math.max(0f, Math.min(1f, (x - left - r) / available));
         float raw = min + frac * (max - min);
         float next = clampToStep(raw);
         if (next == value && !force) {
@@ -180,7 +192,6 @@ final class MiuixSlider extends View {
         }
         value = next;
         invalidate();
-        // 到达两端给边界触感，中间每格给 MESH_LIGHT
         if (listener != null) {
             listener.onValue(value);
         }

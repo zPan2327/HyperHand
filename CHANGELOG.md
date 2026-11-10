@@ -2,6 +2,45 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.0.2] - 2026-11-10
+
+这一版是「液态玻璃」重写：直接反编译手机上的 `io.github.hyperisland`，
+把它的折射实现搬过来替换原来的近似做法。界面版式不变。
+
+### Fixed
+
+- **液态玻璃此前只有模糊、没有折射**：Skia 的 AGSL 编译器会把辅助函数<b>内联</b>进 `main`，
+  `sdRoundedBox` / `gradRoundedBox` 与 `main` 里同名的局部变量（`q`、`distance`…）
+  内联后落在同一作用域，报 `redefinition`，整颗 shader 编译失败后静默退化成"只模糊"。
+  现在所有局部变量都加了唯一前缀，并修正了 `uOrigin` 的语义（形状左上角相对采样区左上角）。
+- 演示模式下 `pal.barBg` / `pal.bg` 是全透明，`setColor()` 之后再 `setAlpha()` 会画出
+  <b>黑带</b>（折叠标题栏变黑、`Theme.alpha(0x00000000, .55f)` 算成半透明黑）；
+  涉及 `TopBar` 的底色渐变与 `MiuixBg` 的底部收边。
+- 关于页英雄区在 420dp 处有一道硬边：`MiuixBg` 在演示模式下改用 `DST_OUT` 自淡出。
+
+### Changed
+
+- **折射用真 AGSL**（`LiquidGlass`）：移植 `LiquidGlassDrawable.REFRACTION_SHADER` 与
+  `LiquidGlassEdgeHighlight.SDR_EDGE_SHADER`。半径矩形 SDF + `circleMap` 位移 + RGB 分离采样
+  （色散），边缘高光由 SDF 梯度当法线、和光照方向点乘得出。管线顺序也照原实现：
+  <b>先模糊，再折射</b>——反了会把文字撕成彩条。
+- **底栏拖动像"推一颗水珠"**：指示器的折射带宽与位移随按下/拖动速度放大，
+  `lensBand` 与色散同步拉满；形变直接作用在形状矩形上（不套 canvas 变换，
+  否则 AGSL 的设备坐标会和 `uOrigin` 错位）。
+- **折叠标题栏改用渐进式模糊**（`ProgressiveBlur.Top` 语义）：顶部全额模糊、
+  向下衰减到 0，取代原来的整体上移淡出；收起后底色 0.86 透明度，模糊仍可见。
+
+### Added
+
+- **miuix Slider**（`MiuixSlider`）：设置页的数值行（最小下滑距离、贴底判定距离、起效速度…）
+  在行下直接挂一条滑杆，按 `SliderDefaults` 取 28dp 轨道、圆头、knob = 0.72r、
+  按下 1.127 缩放、拖动时轨道叠 black 4.4%；每格给 `MESH_LIGHT` 触感。点行仍可弹窗精确输入。
+- **澎湃 OS 线性马达触感**（`Haptics`）：从 `/system_ext/framework/miui-framework.jar`
+  反编译出 `miui.view.MiuiHapticFeedbackConstants` 的效果 id
+  （`FLAG_MIUI_HAPTIC | n`：TAP_LIGHT / SWITCH / SCROLL_EDGE / MESH_LIGHT / FLICK_LIGHT…），
+  经 `miuix.util.HapticFeedbackCompat` 反射下发。开关、按钮、翻页、滚动到边界、
+  滑杆每一格、弹出菜单各用不同效果，替换原来用 `VibrationEffect` 合成波形的做法。
+
 ## [3.0.1] - 2026-11-09
 
 按 [Miuix](https://github.com/compose-miuix-ui/miuix) 的组件规格、[SonyPods](https://github.com/Mercury000/SonyPods) 的页面版式、

@@ -322,8 +322,9 @@ final class Ui {
                 return null;
             }
             final MiuixSlider s = new MiuixSlider(context, pal, min, max, step, value);
-            s.setPadding(Theme.dp(context, insetDp), Theme.dp(context, 6),
-                    Theme.dp(context, insetDp), Theme.dp(context, 6));
+            int padV = Theme.dp(context, 6);
+            s.setPadding(Theme.dp(context, insetDp), padV,
+                    Theme.dp(context, insetDp), padV);
             s.setOnValue(new MiuixSlider.OnValue() {
                 @Override
                 public void onValue(float v) {
@@ -335,8 +336,9 @@ final class Ui {
                     }
                 }
             });
+            // 高度 = 轨道 28dp + 上下各 6dp，否则 padding 会吃掉轨道高度
             card.addView(s, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(context, 28)));
+                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(context, 28 + 12)));
             return s;
         }
     }
@@ -1008,47 +1010,22 @@ final class Ui {
         u.setPadding(Theme.dp(a, 16), Theme.dp(a, 2), Theme.dp(a, 16), Theme.dp(a, 4));
         box.addView(u);
 
-        final int steps = Math.max(1, Math.round((max - min) / step));
-        SeekBar sb = new SeekBar(a);
-        sb.setMax(steps);
-        sb.setProgress(Math.round((current - min) / step));
-        sb.setSplitTrack(false);
-        sb.setProgressDrawable(sliderTrack(a, p));
-        // 圆钮：白色外圈 + 强调色内芯，放在白色卡片上也有轮廓
-        int outer = Theme.dp(a, 26);
-        GradientDrawable ring = new GradientDrawable();
-        ring.setShape(GradientDrawable.OVAL);
-        ring.setColor(p.card);
-        ring.setSize(outer, outer);
-        GradientDrawable core = new GradientDrawable();
-        core.setShape(GradientDrawable.OVAL);
-        core.setColor(p.primary);
-        core.setSize(outer, outer);
-        LayerDrawable thumb = new LayerDrawable(new Drawable[] {ring, core});
-        thumb.setLayerInset(1, Theme.dp(a, 5), Theme.dp(a, 5), Theme.dp(a, 5), Theme.dp(a, 5));
-        sb.setThumb(thumb);
-        sb.setThumbOffset(0);
-        sb.setPadding(Theme.dp(a, 24), Theme.dp(a, 16), Theme.dp(a, 24), Theme.dp(a, 8));
-        box.addView(sb, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 48)));
-
         final float[] result = {current};
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        // 对话框里也用 miuix Slider，和设置页行内那条是同一个组件
+        final MiuixSlider sb = new MiuixSlider(a, p, min, max, step, current);
+        sb.setOnValue(new MiuixSlider.OnValue() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                result[0] = Math.min(max, min + progress * step);
-                big.setText(fmt(result[0], decimals));
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
+            public void onValue(float v) {
+                result[0] = v;
+                big.setText(fmt(v, decimals));
             }
         });
-        result[0] = Math.min(max, min + sb.getProgress() * step);
+        int padH = Theme.dp(a, 24);
+        sb.setPadding(padH, Theme.dp(a, 14), padH, Theme.dp(a, 6));
+        // 高度 = 轨道 28dp + 上下 padding，轨道才是完整的 28dp
+        box.addView(sb, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 28 + 20)));
+        result[0] = sb.value();
         big.setText(fmt(result[0], decimals));
 
         TextView cancel = dialogTextButton(a, p, "取消", p.summary, false);

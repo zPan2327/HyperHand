@@ -1,7 +1,6 @@
 package io.github.zpan2327.hyperhand;
 
 import android.app.ActionBar;
-import android.app.Activity;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
@@ -17,6 +16,10 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.ComponentActivity;
+
+import io.github.zpan2327.hyperhand.glass.HyperGlassBarView;
+
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -30,7 +33,13 @@ import java.util.Locale;
  *
  * 业务逻辑（保存广播、重启作用域、调试动作）与 2.9 / 3.0 完全一致。
  */
-public class MainActivity extends Activity {
+/**
+ * <p>继承 {@link ComponentActivity} 而不是裸 {@link android.app.Activity}：液态玻璃底栏是 Compose
+ * 画的（{@code HyperGlassBarView} 是 {@code AbstractComposeView}），Compose 要求 ViewTree 上挂了
+ * LifecycleOwner / SavedStateRegistryOwner，只有 ComponentActivity 会替你装好这两个 owner。
+ * 其余行为（ActionBar 隐藏、WindowInsets、onBackPressed 覆写）都与原来一致。
+ */
+public class MainActivity extends ComponentActivity {
 
     static final int TAB_OVERVIEW = 0;
     static final int TAB_SETTINGS = 1;
@@ -43,7 +52,7 @@ public class MainActivity extends Activity {
     private FrameLayout root;
     private PagePager pager;
     private TopBar topBar;
-    private GlassBar nav;
+    private HyperGlassBarView nav;
     private TextView savePill;
     private FrameLayout.LayoutParams navLp;
 
@@ -165,6 +174,7 @@ public class MainActivity extends Activity {
             public void onPageScrolled(float position) {
                 // 拖动中：指示器跟手；标题栏按偏移淡入淡出
                 nav.setPagePosition(position);
+                nav.onContentScrolled();
             }
         });
         contentHost.addView(pager, new FrameLayout.LayoutParams(
@@ -175,7 +185,9 @@ public class MainActivity extends Activity {
         root.addView(topBar, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        nav = new GlassBar(this, pal);
+        nav = new HyperGlassBarView(this);
+        // 强调色沿用应用的 accent（原 GlassBar 里写死的 0xFF0088FF 与这里并非同一个值）。
+        nav.setAccentColor(pal.primary);
         navLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         navLp.gravity = Gravity.BOTTOM;
@@ -183,7 +195,7 @@ public class MainActivity extends Activity {
         navLp.rightMargin = Theme.dp(this, 20);
         navLp.bottomMargin = Theme.dp(this, 12);
         root.addView(nav, navLp);
-        nav.setOnTabSelected(new GlassBar.OnTabSelected() {
+        nav.setOnTabSelected(new HyperGlassBarView.OnTabSelected() {
             @Override
             public void onSelected(int index) {
                 selectTab(index, true);
@@ -262,6 +274,11 @@ public class MainActivity extends Activity {
                     public void onScrollChange(View v, int x, int y, int ox, int oy) {
                         if (pageIndex == current && topBar != null) {
                             topBar.setScroll(y);
+                        }
+                        // 玻璃要"实时"透出背后的内容：页面滚动不会让底栏自己重绘，
+                        // 不主动重画就会停在滚动前那一帧上（旧 GlassBar 也有这个毛病）。
+                        if (nav != null) {
+                            nav.onContentScrolled();
                         }
                         // 滚动到顶/底的边界反馈：只在"刚碰到"那一下触发，不连震
                         if (Math.abs(y - oy) < Theme.dp(MainActivity.this, 2)) {

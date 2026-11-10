@@ -217,7 +217,11 @@ final class MiuixBg extends View {
         float h = Math.max(getHeight(), 1);
         float t = (SystemClock.uptimeMillis() - startAt) / 1000f;
 
-        if (gpu != null) {
+        // RuntimeShader 只能在硬件画布上用。液态玻璃底栏会把这个页面 draw 进一张软件
+        // Bitmap 当作采样源（和截图/长图导出是同一条路径），那种画布上 drawRect(shader)
+        // 会直接抛 "Software rendering doesn't support RuntimeShader"，所以这里必须先判断。
+        // 软渲染下走原本的降级渐变，视觉差别在 4dp 模糊 + 40% 白蒙层之后看不出来。
+        if (gpu != null && canvas.isHardwareAccelerated()) {
             // 配色按周期在 3 组之间循环：c2 -> c1 -> c2 -> c3
             float stage = (t / period) % 4f;
             int base = (int) stage;

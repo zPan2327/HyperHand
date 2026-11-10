@@ -39,6 +39,10 @@ jobs:
       # 不再使用 android-actions/setup-android：GitHub 托管的 ubuntu 镜像已内置
       # Android SDK（ANDROID_HOME=/usr/local/lib/android/sdk），自带 build-tools 与
       # platforms，那一步反而常因 cmdline-tools 下载地址变化而失败。
+      # Gradle 缓存：底栏带上了 Compose + miuix，冷构建要拉两百多兆依赖。
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Resolve Android SDK
         run: |
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -50,6 +54,18 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           echo "SDK=$SDK"
           ls "$SDK/build-tools"
+          ls "$SDK/platforms"
+
+      # compileSdk 是 37（Compose 1.12 的要求），镜像里不一定预装。
+      - name: Ensure SDK platform 37
+        run: |
+          SDK="$ANDROID_HOME"
+          if [ ! -f "$SDK/platforms/android-37/android.jar" ]; then
+            SDKMANAGER="$(ls "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | tail -1)"
+            [ -n "$SDKMANAGER" ] || { echo "找不到 sdkmanager" >&2; exit 1; }
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            yes | "$SDKMANAGER" "platforms;android-37" > /dev/null
+          fi
           ls "$SDK/platforms"
 
       # 可选：仓库 Secrets 里配置 ANDROID_KEYSTORE_B64（hyperhand.keystore 的 base64）
@@ -73,22 +89,9 @@ jobs:
         run: |
           set -euo pipefail
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-
-          # build-tools：优先用 36.0.0，缺失则退到镜像里最新的一版
-          BT="${BUILD_TOOLS_VERSION:-36.0.0}"
-          if [ ! -d "$SDK/build-tools/$BT" ]; then
-            BT="$(ls "$SDK/build-tools" | sort -V | tail -1)"
-          fi
-
-          # platform：优先 android-35，缺失则退到最新的正式版
-          PLATFORM="${PLATFORM_VERSION:-35}"
-          if [ ! -f "$SDK/platforms/android-$PLATFORM/android.jar" ]; then
-            PLATFORM="$(ls "$SDK/platforms" | sed -n 's/^android-\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)"
-          fi
-
           # 版本号来源优先级：显式传入 > tag 名 > 手动补发输入。
           # 发布场景（tag / 手动补发）必须能确定版本号；普通 main / PR 构建没有版本语义，
-          # 交给 module/build.sh 的默认值，别把日常 CI 拦下来。
+          # 交给 build.gradle.kts 的默认值，别把日常 CI 拦下来。
           VERSION_NAME="${VERSION_NAME:-}"
           if [ -z "$VERSION_NAME" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
             VERSION_NAME="${GITHUB_REF_NAME#v}"
@@ -101,17 +104,15 @@ jobs:
             exit 1
           fi
 
-          echo "sdk=$SDK build-tools=$BT platform=$PLATFORM version=${VERSION_NAME:-<build.sh 默认值>}"
+          echo "version=${VERSION_NAME:-<gradle 默认值>}"
 
-          chmod +x module/build.sh
-          # 空值不导出，让 build.sh 用自己脚本里的默认版本
+          chmod +x gradlew module/build.sh
+          # 空值不导出，让 build.gradle.kts 用自己脚本里的默认版本
           if [ -n "$VERSION_NAME" ]; then export VERSION_NAME; fi
-          BUILD_TOOLS_VERSION="$BT" \
-          PLATFORM_VERSION="$PLATFORM" \
-          ./module/build.sh
+          ./gradlew --console=plain :module:assembleHyperHand
 
           APK=module/out/HyperHand.apk
-          BADGING="$("$SDK/build-tools/$BT/aapt2" dump badging "$APK")"
+          BADGING="$("$SDK"/build-tools/*/aapt2 dump badging "$APK" | head -1)"
           VC="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)"
           VN="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)"
           echo "built $APK versionCode=$VC versionName=$VN"

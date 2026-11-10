@@ -1,177 +1,38 @@
 # =============================================================================
-# HyperHand 构建脚本（Windows / PowerShell 7+）
+# HyperHand 构建入口（Windows / PowerShell 7+）
+#
+# 构建现在由 Gradle 驱动（见 module/build.gradle.kts 与 glass/build.gradle.kts）。
+# 这个脚本保留原来的文件名、环境变量和产物路径。
 #
 # 用法：
 #   pwsh -File module/build.ps1
 #
-# 可通过环境变量覆盖：
-#   ANDROID_HOME / ANDROID_SDK_ROOT   Android SDK 路径
-#   JAVA_HOME                         JDK 17 路径
-#   BUILD_TOOLS_VERSION               build-tools 版本，默认 36.0.0
-#   PLATFORM_VERSION                  platforms/android-XX，默认 35
-#   KEYSTORE_PASS                     签名口令，默认 onehand123
+# 环境变量（与原脚本同名，语义一致）：
+#   VERSION_NAME       版本名，缺省 3.0.2-beta.1
+#   VERSION_CODE       版本号；未给时由 VERSION_NAME 推导
+#                      正式版 1.0.1 -> 10001 ／ 预发布 3.0.2-beta.1 -> 29903
+#   KEYSTORE_PASS      签名口令，默认 onehand123
+#   ANDROID_HOME / ANDROID_SDK_ROOT   Android SDK 路径（也可写在 local.properties）
+#   JAVA_HOME          JDK 17 路径
+#   GRADLE             指定 gradle 可执行文件；缺省用仓库里的 gradlew.bat
 # =============================================================================
 $ErrorActionPreference = 'Stop'
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
-function Find-Sdk {
-    $candidates = @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT,
-        (Join-Path $env:LOCALAPPDATA 'Android\Sdk'),
-        (Join-Path $env:USERPROFILE 'Android\Sdk'))
-    foreach ($c in $candidates) {
-        if ($c -and (Test-Path $c)) { return $c }
-    }
-    throw '未找到 Android SDK，请设置 ANDROID_HOME'
+$gradleBin = if ($env:GRADLE) { $env:GRADLE } else { Join-Path $root 'gradlew.bat' }
+if (-not (Test-Path $gradleBin)) {
+    throw "找不到 gradle：$gradleBin（可用 `$env:GRADLE 指定）"
 }
 
-$sdk = Find-Sdk
-$btVersion = if ($env:BUILD_TOOLS_VERSION) { $env:BUILD_TOOLS_VERSION } else { '36.0.0' }
-$platformVersion = if ($env:PLATFORM_VERSION) { $env:PLATFORM_VERSION } else { '35' }
-$keystorePass = if ($env:KEYSTORE_PASS) { $env:KEYSTORE_PASS } else { 'onehand123' }
-$versionName = if ($env:VERSION_NAME) { $env:VERSION_NAME } else { '3.0.2-beta.1' }
-# 未显式指定 versionCode 时由 versionName 推导：
-#   正式版 1.0.1        -> 10001
-#   预发布 3.0.2-beta.1 -> 29903
-#
-# 预发布版落在「目标正式版」下方 100 格的区间里（30002 - 100 + N），
-# 这样三条约束同时成立：
-#   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
-# 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉，最多容纳 100 个 beta。
-$versionCode = $env:VERSION_CODE
-if (-not $versionCode) {
-    if ($versionName -match '^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$') {
-        $base = [int]$Matches[1] * 10000 + [int]$Matches[2] * 100 + [int]$Matches[3]
-        if ($Matches[4]) {
-            $versionCode = [string]($base - 100 + [int]$Matches[4])
-        } else {
-            $versionCode = [string]$base
-        }
-    } else {
-        throw "无法从 '$versionName' 推导 versionCode，请显式设置 VERSION_CODE"
-    }
-}
+Write-Host '==> gradle :module:assembleHyperHand'
+& $gradleBin --console=plain :module:assembleHyperHand @args
+if ($LASTEXITCODE -ne 0) { throw "gradle 构建失败（exit $LASTEXITCODE）" }
 
-$buildTools = Join-Path $sdk "build-tools\$btVersion"
-$androidJar = Join-Path $sdk "platforms\android-$platformVersion\android.jar"
-if (-not (Test-Path $buildTools)) { throw "缺少 build-tools: $buildTools" }
-if (-not (Test-Path $androidJar)) { throw "缺少 android.jar: $androidJar" }
+$apk = Join-Path $root 'module\out\HyperHand.apk'
+if (-not (Test-Path $apk)) { throw "构建结束但没找到产物：$apk" }
 
-if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin\javac.exe'))) {
-    $jdkHome = $env:JAVA_HOME
-} else {
-    $jdkHome = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot'
-    if (-not (Test-Path (Join-Path $jdkHome 'bin\javac.exe'))) {
-        $jdkHome = $null
-    }
-}
-$javac = if ($jdkHome) { Join-Path $jdkHome 'bin\javac.exe' } else { 'javac' }
-$keytool = if ($jdkHome) { Join-Path $jdkHome 'bin\keytool.exe' } else { 'keytool' }
-if ($jdkHome) {
-    $env:JAVA_HOME = $jdkHome
-    $env:PATH = (Join-Path $jdkHome 'bin') + ';' + $env:PATH
-}
-
-$xposedApi = Join-Path $root 'lib\api-102.jar'
-if (-not (Test-Path $xposedApi)) { throw "缺少 Xposed API: $xposedApi" }
-
-$outDir = Join-Path $root 'build'
-$classesDir = Join-Path $outDir 'classes'
-$dexDir = Join-Path $outDir 'dex'
-$outApk = Join-Path $root 'out\HyperHand.apk'
-
-foreach ($d in @($outDir, $classesDir, $dexDir, (Split-Path -Parent $outApk))) {
-    if (Test-Path $d) { Remove-Item $d -Recurse -Force }
-    New-Item -ItemType Directory -Force $d | Out-Null
-}
-
-Write-Host '==> javac'
-$srcs = Get-ChildItem -Path (Join-Path $root 'src') -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-& $javac '--release' '11' '-encoding' 'UTF-8' '-nowarn' '-classpath' "$androidJar;$xposedApi" '-d' $classesDir @srcs
-if ($LASTEXITCODE -ne 0) { throw 'javac failed' }
-
-Write-Host '==> d8'
-# 类文件数量一多，直接把所有路径拼进命令行会撞上 Windows 8191 字符上限
-# （"输入行太长"），所以先打成一个 jar 再交给 d8。
-$jarTool = if ($jdkHome) { Join-Path $jdkHome 'bin\jar.exe' } else { 'jar' }
-$classJar = Join-Path $outDir 'classes.jar'
-& $jarTool 'cf' $classJar '-C' $classesDir '.'
-if ($LASTEXITCODE -ne 0) { throw 'jar failed' }
-& (Join-Path $buildTools 'd8.bat') '--release' '--min-api' '31' '--lib' $androidJar '--output' $dexDir $classJar
-if ($LASTEXITCODE -ne 0) { throw 'd8 failed' }
-if (-not (Test-Path (Join-Path $dexDir 'classes.dex'))) { throw 'classes.dex not produced' }
-
-Write-Host '==> aapt2 compile (res)'
-$resDir = Join-Path $root 'res'
-$resZip = Join-Path $outDir 'res.zip'
-$linkInputs = @()
-if (Test-Path $resDir) {
-    & (Join-Path $buildTools 'aapt2.exe') 'compile' '--dir' $resDir '-o' $resZip
-    if ($LASTEXITCODE -ne 0) { throw 'aapt2 compile failed' }
-    $linkInputs += $resZip
-}
-
-Write-Host '==> aapt2 link'
-$unsigned = Join-Path $outDir 'unsigned.apk'
-$linkArgs = @(
-    'link', '-o', $unsigned,
-    '--manifest', (Join-Path $root 'AndroidManifest.xml'),
-    '-I', $androidJar,
-    '--min-sdk-version', '31', '--target-sdk-version', '36',
-    '--version-code', "$versionCode", '--version-name', $versionName
-) + $linkInputs
-& (Join-Path $buildTools 'aapt2.exe') @linkArgs
-if ($LASTEXITCODE -ne 0) { throw 'aapt2 link failed' }
-
-Write-Host '==> add classes.dex'
-Add-Type -AssemblyName System.IO.Compression
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::Open($unsigned, [System.IO.Compression.ZipArchiveMode]::Update)
-try {
-    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-        $zip, (Join-Path $dexDir 'classes.dex'), 'classes.dex',
-        [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-    # libxposed 现代 API 的模块清单（入口 / 作用域 / module.prop）放在 APK 根的 META-INF 下
-    $metaRoot = Join-Path $root 'META-INF'
-    if (Test-Path $metaRoot) {
-        Get-ChildItem -Path $metaRoot -Recurse -File | ForEach-Object {
-            $rel = $_.FullName.Substring($root.Length + 1).Replace('\', '/')
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                $zip, $_.FullName, $rel,
-                [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-        }
-    }
-} finally {
-    $zip.Dispose()
-}
-
-Write-Host '==> zipalign'
-$aligned = Join-Path $outDir 'aligned.apk'
-& (Join-Path $buildTools 'zipalign.exe') '-f' '4' $unsigned $aligned
-if ($LASTEXITCODE -ne 0) { throw 'zipalign failed' }
-
-Write-Host '==> keystore'
-# 签名密钥放在 build 之外（且已 gitignore）：换机器时请自带同一个 keystore，
-# 否则签名变化会导 adb install -r 失败 / 与已安装版本不兼容。
-$signingDir = Join-Path $root 'signing'
-if (-not (Test-Path $signingDir)) { New-Item -ItemType Directory -Force $signingDir | Out-Null }
-$ks = Join-Path $signingDir 'hyperhand.keystore'
-if (-not (Test-Path $ks)) {
-    Write-Host '    未发现 keystore，自动生成一个新的'
-    & $keytool '-genkeypair' '-keystore' $ks '-alias' 'hyperhand' '-keyalg' 'RSA' '-keysize' '2048' `
-        '-validity' '10000' '-storepass' $keystorePass '-keypass' $keystorePass `
-        '-dname' 'CN=HyperHand, OU=dev, O=dev, L=CN, S=CN, C=CN'
-    if ($LASTEXITCODE -ne 0) { throw 'keytool failed' }
-}
-
-Write-Host '==> apksigner'
-& (Join-Path $buildTools 'apksigner.bat') 'sign' '--ks' $ks `
-    '--ks-pass' "pass:$keystorePass" '--key-pass' "pass:$keystorePass" `
-    '--out' $outApk $aligned
-if ($LASTEXITCODE -ne 0) { throw 'apksigner failed' }
-
-& (Join-Path $buildTools 'apksigner.bat') 'verify' '--print-certs' $outApk
-
-$f = Get-Item $outApk
-Write-Host "`nOK -> $($f.FullName)  ($($f.Length) bytes)"
+$size = (Get-Item $apk).Length
+Write-Host ''
+Write-Host "OK -> $apk  ($size bytes)"

@@ -1,161 +1,42 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HyperHand 构建脚本（Linux / macOS）
+# HyperHand 构建入口（Linux / macOS）
 #
-# 用法：./module/build.sh
+# 构建现在由 Gradle 驱动（见 module/build.gradle.kts 与 glass/build.gradle.kts）。
+# 这个脚本保留原来的文件名、环境变量和产物路径，免得 README、CI、肌肉记忆全部失效。
 #
-# 可通过环境变量覆盖：
-#   ANDROID_HOME / ANDROID_SDK_ROOT   Android SDK 路径
-#   JAVA_HOME                         JDK 17 路径
-#   BUILD_TOOLS_VERSION               build-tools 版本，默认 36.0.0
-#   PLATFORM_VERSION                  platforms/android-XX，默认 35
-#   KEYSTORE_PASS                     签名口令，默认 onehand123
+# 用法：./module/build.sh [额外的 gradle 参数]
+#
+# 环境变量（与原脚本同名，语义一致）：
+#   VERSION_NAME       版本名，缺省 3.0.2-beta.1
+#   VERSION_CODE       版本号；未给时由 VERSION_NAME 推导
+#                      正式版 1.0.1 -> 10001 ／ 预发布 3.0.2-beta.1 -> 29903
+#   KEYSTORE_PASS      签名口令，默认 onehand123
+#   ANDROID_HOME / ANDROID_SDK_ROOT   Android SDK 路径（也可写在 local.properties）
+#   JAVA_HOME          JDK 17 路径
+#   GRADLE             指定 gradle 可执行文件；缺省用仓库里的 ./gradlew
+#                      （内网/离线环境若 wrapper 下不到发行版，可以指向本地 gradle）
 # =============================================================================
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
-  for c in "$HOME/Android/Sdk" "$HOME/Library/Android/sdk"; do
-    if [ -d "$c" ]; then SDK="$c"; break; fi
-  done
-fi
-[ -n "$SDK" ] && [ -d "$SDK" ] || { echo "未找到 Android SDK，请设置 ANDROID_HOME" >&2; exit 1; }
-
-BT_VERSION="${BUILD_TOOLS_VERSION:-36.0.0}"
-PLATFORM_VERSION="${PLATFORM_VERSION:-35}"
-KEYSTORE_PASS="${KEYSTORE_PASS:-onehand123}"
-VERSION_NAME="${VERSION_NAME:-3.0.2-beta.1}"
-# 未显式指定 versionCode 时由 versionName 推导：
-#   正式版 1.0.1                     -> 10001
-#   预发布 3.0.2-beta.1              -> 29903
-#
-# 预发布版落在「目标正式版」下方 100 格的区间里（30002 - 100 + 1），
-# 这样三条约束同时成立：
-#   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
-# 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉，最多容纳 100 个 beta。
-VERSION_CODE="${VERSION_CODE:-}"
-if [ -z "$VERSION_CODE" ]; then
-  if [[ "$VERSION_NAME" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-beta\.([0-9]+))?$ ]]; then
-    BASE=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
-    if [ -n "${BASH_REMATCH[4]}" ]; then
-      N=$(( 10#${BASH_REMATCH[5]} ))
-      VERSION_CODE=$(( BASE - 100 + N ))
-    else
-      VERSION_CODE=$BASE
-    fi
-  else
-    echo "无法从 '$VERSION_NAME' 推导 versionCode，请显式设置 VERSION_CODE" >&2
+GRADLE_BIN="${GRADLE:-$ROOT/gradlew}"
+if [ ! -x "$GRADLE_BIN" ]; then
+  chmod +x "$GRADLE_BIN" 2>/dev/null || {
+    echo "找不到 gradle：$GRADLE_BIN（可用 GRADLE=/path/to/gradle 指定）" >&2
     exit 1
-  fi
+  }
 fi
 
-BT="$SDK/build-tools/$BT_VERSION"
-ANDROID_JAR="$SDK/platforms/android-$PLATFORM_VERSION/android.jar"
-[ -d "$BT" ] || { echo "缺少 build-tools: $BT" >&2; exit 1; }
-[ -f "$ANDROID_JAR" ] || { echo "缺少 android.jar: $ANDROID_JAR" >&2; exit 1; }
+echo "==> gradle :module:assembleHyperHand"
+# 版本号通过环境变量传给 Gradle：build.gradle.kts 里读 VERSION_NAME / VERSION_CODE，
+# 空值不导出，让 Gradle 用自己脚本里的默认值。
+"$GRADLE_BIN" --console=plain :module:assembleHyperHand "$@"
 
-# build-tools 里同一工具在不同平台的后缀不一样（Linux 无后缀 / Windows 是 .bat 或 .exe），
-# 这里按"存在即用"的顺序探测，避免写死平台。
-pick_tool() {
-  for suff in "" ".bat" ".cmd" ".exe"; do
-    if [ -f "$BT/$1$suff" ]; then printf '%s' "$BT/$1$suff"; return 0; fi
-  done
-  printf '%s' "$BT/$1"
-}
-D8="$(pick_tool d8)"
-AAPT2="$(pick_tool aapt2)"
-ZIPALIGN="$(pick_tool zipalign)"
-APKSIGNER="$(pick_tool apksigner)"
-
-JAVAC="javac"; KEYTOOL="keytool"; JAR="jar"
-if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/javac" ]; then
-  JAVAC="$JAVA_HOME/bin/javac"
-  KEYTOOL="$JAVA_HOME/bin/keytool"
-  JAR="$JAVA_HOME/bin/jar"
-  export PATH="$JAVA_HOME/bin:$PATH"
-fi
-
-XPOSED_API="$ROOT/lib/api-102.jar"
-[ -f "$XPOSED_API" ] || { echo "缺少 Xposed API: $XPOSED_API" >&2; exit 1; }
-
-OUT_DIR="$ROOT/build"
-CLASSES_DIR="$OUT_DIR/classes"
-DEX_DIR="$OUT_DIR/dex"
-OUT_APK="$ROOT/out/HyperHand.apk"
-
-rm -rf "$OUT_DIR"
-mkdir -p "$CLASSES_DIR" "$DEX_DIR" "$(dirname "$OUT_APK")"
-
-# javac 的 -classpath 在 Windows 上用 ";"、类 Unix 上用 ":" 分隔，
-# 这里统一把两个 jar 拷进同一个目录、用 wildcard 引用，跨平台都不会踩分隔符的坑。
-LIB_DIR="$OUT_DIR/libs"
-mkdir -p "$LIB_DIR"
-cp "$ANDROID_JAR" "$LIB_DIR/android.jar"
-cp "$XPOSED_API" "$LIB_DIR/api-102.jar"
-
-echo "==> javac"
-mapfile -t SRCS < <(find "$ROOT/src" -name '*.java')
-# 注意：在 $OUT_DIR 里用相对路径 "libs/*" 引用 classpath。
-# git-bash/Cygwin 下绝对 POSIX 路径 + 通配符会被自动路径转换破坏，相对路径没这个问题。
-( cd "$OUT_DIR" && "$JAVAC" --release 11 -encoding UTF-8 -nowarn \
-    -classpath "libs/*" -d classes "${SRCS[@]}" )
-
-echo "==> d8"
-# 与 build.ps1 一致：类多时命令行会超长，先打 jar 再交给 d8
-"$JAR" cf "$OUT_DIR/classes.jar" -C "$CLASSES_DIR" .
-"$D8" --release --min-api 31 --lib "$ANDROID_JAR" --output "$DEX_DIR" "$OUT_DIR/classes.jar"
-[ -f "$DEX_DIR/classes.dex" ] || { echo "classes.dex 未生成" >&2; exit 1; }
-
-echo "==> aapt2 compile (res)"
-RES_ZIP="$OUT_DIR/res.zip"
-LINK_INPUTS=()
-if [ -d "$ROOT/res" ]; then
-  "$AAPT2" compile --dir "$ROOT/res" -o "$RES_ZIP"
-  LINK_INPUTS+=("$RES_ZIP")
-fi
-
-echo "==> aapt2 link"
-UNSIGNED="$OUT_DIR/unsigned.apk"
-"$AAPT2" link -o "$UNSIGNED" \
-  --manifest "$ROOT/AndroidManifest.xml" \
-  -I "$ANDROID_JAR" \
-  --min-sdk-version 31 --target-sdk-version 36 \
-  --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
-  "${LINK_INPUTS[@]}"
-
-echo "==> add classes.dex + META-INF"
-# 用 JDK 自带的 jar 写入 dex / 模块清单：git-bash / 精简容器里通常没有 zip 命令。
-# libxposed 现代 API 的入口（java_init.list）、作用域（scope.list）、module.prop
-# 必须位于 APK 根的 META-INF/xposed 下，否则框架认不出模块。
-cp "$DEX_DIR/classes.dex" "$OUT_DIR/classes.dex"
-rm -rf "$OUT_DIR/META-INF"
-cp -r "$ROOT/META-INF" "$OUT_DIR/META-INF"
-( cd "$OUT_DIR" && "$JAR" uf "$UNSIGNED" classes.dex META-INF )
-
-echo "==> zipalign"
-ALIGNED="$OUT_DIR/aligned.apk"
-"$ZIPALIGN" -f 4 "$UNSIGNED" "$ALIGNED"
-
-echo "==> keystore"
-SIGNING_DIR="$ROOT/signing"
-mkdir -p "$SIGNING_DIR"
-KS="$SIGNING_DIR/hyperhand.keystore"
-if [ ! -f "$KS" ]; then
-  echo "    未发现 keystore，自动生成一个新的"
-  "$KEYTOOL" -genkeypair -keystore "$KS" -alias hyperhand -keyalg RSA -keysize 2048 \
-    -validity 10000 -storepass "$KEYSTORE_PASS" -keypass "$KEYSTORE_PASS" \
-    -dname 'CN=HyperHand, OU=dev, O=dev, L=CN, S=CN, C=CN'
-fi
-
-echo "==> apksigner"
-"$APKSIGNER" sign --ks "$KS" \
-  --ks-pass "pass:$KEYSTORE_PASS" --key-pass "pass:$KEYSTORE_PASS" \
-  --out "$OUT_APK" "$ALIGNED"
-
-"$APKSIGNER" verify --print-certs "$OUT_APK"
+APK="$ROOT/module/out/HyperHand.apk"
+[ -f "$APK" ] || { echo "构建结束但没找到产物：$APK" >&2; exit 1; }
 
 echo
-echo "OK -> $OUT_APK  ($(wc -c < "$OUT_APK") bytes)"
+echo "OK -> $APK  ($(wc -c < "$APK") bytes)"

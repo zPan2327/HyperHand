@@ -282,7 +282,12 @@ adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_
 
 ## 构建
 
-依赖：JDK 17、Android SDK（`build-tools;36.0.0`、`platforms;android-35`）。
+依赖：JDK 17、Android SDK（`compileSdk 37`）。构建由 Gradle 驱动，两个模块：
+
+| 模块 | 内容 |
+|---|---|
+| `:module` | 模块本体（纯 Java）+ `src/main/res` / `META-INF/xposed` |
+| `:glass` | 液态玻璃底栏（Kotlin / Compose），从 [LiquidDemo](https://github.com/zPan2327/LiquidDemo) 迁入 |
 
 **Windows**
 
@@ -296,9 +301,10 @@ pwsh -File module/build.ps1
 ./module/build.sh
 ```
 
-脚本通过环境变量定位 SDK：`ANDROID_HOME` / `ANDROID_SDK_ROOT`，JDK 用 `JAVA_HOME`。
+上面两个脚本只是薄壳，内部转调 `./gradlew :module:assembleHyperHand`；直接跑 Gradle 也可以。
+SDK 路径用 `ANDROID_HOME` / `ANDROID_SDK_ROOT`（或写进 `local.properties`），JDK 用 `JAVA_HOME`。
 签名密钥固定放在 `module/signing/hyperhand.keystore`（已 gitignore，首次构建自动生成）—— 保留它才能持续用 `adb install -r` 覆盖升级。
-产物：`module/out/HyperHand.apk`（先 `aapt2 compile` 编译 `module/res/`，再 `aapt2 link` 并附带 `.flat` 资源）。
+产物：`module/out/HyperHand.apk`。`minSdk` 是 **33**（miuix-blur 的硬性要求，比原来的 31 高一档，实际只放弃 Android 12）。
 
 CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI 产物和本地构建同签名，在仓库 **Settings → Secrets and variables → Actions** 里加一个 `ANDROID_KEYSTORE_B64`，值为本地 keystore 的 base64：
 
@@ -317,22 +323,26 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 │   ├── 单手模式增强.md      # 完整技术文档：调查结论 / 调用链 / 方案比较 / 实测日志 / 回滚
 │   ├── 设计稿对照.md        # 设置界面的 Miuix / HyperOS token 对照
 │   └── screenshots/         # 界面的浅色 / 深色 / 对话框截图
+├── glass/src/main/kotlin/       # 液态玻璃底栏（Kotlin / Compose）
+│   ├── io/github/zpan2327/liquidglass/   #   渲染实现（AGSL 折射 / 模糊 / 增艳 / 阻尼拖拽）
+│   └── io/github/zpan2327/hyperhand/glass/  #  包成 Android View 的桥接
 ├── module/
-│   ├── AndroidManifest.xml
-│   ├── META-INF/xposed/        # libxposed 现代 API 的模块声明
+│   ├── src/main/AndroidManifest.xml
+│   ├── src/main/resources/META-INF/xposed/   # libxposed 现代 API 的模块声明
 │   │   ├── java_init.list      #   入口类：io.github.zpan2327.hyperhand.HyperHand
 │   │   ├── scope.list          #   静态作用域：systemui + miui.home
 │   │   └── module.prop         #   minApiVersion / targetApiVersion / staticScope
-│   ├── res/values/strings.xml  # 模块名与简介（android:label / android:description）
-│   ├── src/io/github/zpan2327/hyperhand/
+│   ├── src/main/res/values/strings.xml  # 模块名与简介（android:label / android:description）
+│   ├── src/main/java/io/github/zpan2327/hyperhand/
 │   │   ├── HyperHand.java      # 钩子主体（SystemUI 前置闸门 + 触发 + 结果发布 / 桌面侧闸门）
 │   │   ├── Recognizer.java     # 手势识别核心：历史采样 / 分窗速度 / 双路径评分
 │   │   ├── Hooks.java          # libxposed API 102 的兼容层（findClass / hookAll / call）
 │   │   ├── Cfg.java            # 参数读写 + 模式预设 + 旧配置迁移
 │   │   ├── MainActivity.java   # 参数调节界面（分组 / 高级折叠 / 手势调试）
 │   │   └── Ui.java             # Miuix 风格组件：卡片 / 行 / 开关 / 按钮 / 数值与单选对话框
-│   ├── lib/api-102.jar         # 编译期 libxposed API stub（compileOnly）
-│   ├── build.ps1 / build.sh
+│   ├── libs/api-102.jar        # 编译期 libxposed API stub（compileOnly）
+│   ├── build.gradle.kts
+│   ├── build.ps1 / build.sh    # Gradle 薄壳，保留原文件名与产物路径
 │   └── out/                    # 构建产物（gitignore）
 └── .github/workflows/build.yml # CI：构建 + 上传 artifact + 同步官方模块仓库
 ```

@@ -13,7 +13,12 @@ import android.view.View;
 import android.view.ViewConfiguration;
 
 /**
- * 悬浮式液态玻璃底栏。
+ * 悬浮式液态玻璃底栏（旧实现）。
+ *
+ * <p><b>已不再被 MainActivity 使用</b>：底栏换成了 Compose 版
+ * {@code io.github.zpan2327.hyperhand.glass.HyperGlassBarView}（从 LiquidDemo 迁入，
+ * AGSL 折射 + 模糊 + 增艳 + 阻尼拖拽 + 重力高光）。这个类保留下来作对照与回滚，
+ * 它目前是死代码，不影响运行。
  *
  * <p>版式照 SonyPods/AndroidLiquidGlass：{@code 64dp} 高的胶囊，最多
  * {@code 每格 76dp × 3 + 8dp} 宽、居中悬浮；指示器是 {@code 56dp} 的胶囊。

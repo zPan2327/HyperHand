@@ -31,7 +31,7 @@ import android.graphics.drawable.GradientDrawable;
  * contentPadding 与 verticalArrangement.spacedBy。
  *
  * 这里只放"值"，不放控件 —— 控件在 {@link Ui}，折叠标题栏在 {@link TopBar}，
- * 悬浮底栏在 {@link GlassBar}。
+ * 悬浮底栏是 Compose 画的 {@code HyperGlassBarView}（{@link GlassBar} 是它的旧实现，保留作对照）。
  */
 final class Theme {
 

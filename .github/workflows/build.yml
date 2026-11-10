@@ -56,16 +56,37 @@ jobs:
           ls "$SDK/build-tools"
           ls "$SDK/platforms"
 
-      # compileSdk 是 37（Compose 1.12 的要求），镜像里不一定预装。
+      # compileSdk 是 37（miuix 0.9.4 的 AAR 声明 minCompileSdk=37）。这个平台在 SDK 仓库里的
+      # 包名是 "platforms;android-37.0"、落地目录是 platforms/android-37.0，不是 android-37：
+      # 写错包名 sdkmanager 会直接退出 1，写错目录则明明装好了还会重装。
       - name: Ensure SDK platform 37
         run: |
+          set -x
           SDK="$ANDROID_HOME"
-          if [ ! -f "$SDK/platforms/android-37/android.jar" ]; then
+          PLATFORM_JAR=""
+          for dir in android-37.0 android-37; do
+            if [ -f "$SDK/platforms/$dir/android.jar" ]; then
+              PLATFORM_JAR="$SDK/platforms/$dir/android.jar"
+              break
+            fi
+          done
+          if [ -z "$PLATFORM_JAR" ]; then
             SDKMANAGER="$(ls "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | tail -1)"
             [ -n "$SDKMANAGER" ] || { echo "找不到 sdkmanager" >&2; exit 1; }
-            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-            yes | "$SDKMANAGER" "platforms;android-37" > /dev/null
+            yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses > /dev/null 2>&1 || true
+            for pkg in "platforms;android-37.0" "platforms;android-37"; do
+              echo "尝试安装 $pkg"
+              if yes | "$SDKMANAGER" --sdk_root="$SDK" "$pkg"; then break; fi
+            done
+            for dir in android-37.0 android-37; do
+              if [ -f "$SDK/platforms/$dir/android.jar" ]; then
+                PLATFORM_JAR="$SDK/platforms/$dir/android.jar"
+                break
+              fi
+            done
+            [ -n "$PLATFORM_JAR" ] || { echo "platform 37 安装失败" >&2; exit 1; }
           fi
+          echo "使用 $PLATFORM_JAR"
           ls "$SDK/platforms"
 
       # 可选：仓库 Secrets 里配置 ANDROID_KEYSTORE_B64（hyperhand.keystore 的 base64）

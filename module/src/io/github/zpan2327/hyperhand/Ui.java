@@ -151,6 +151,57 @@ final class Ui {
         row.setBackground(new RippleDrawable(ColorStateList.valueOf(p.night ? 0x14FFFFFF : 0x0D000000),
                 null, new ColorDrawable(Color.WHITE)));
         row.setClickable(true);
+        tapFeedback(row, true);
+    }
+
+    /**
+     * 给可点控件挂一层"轻触"触觉反馈。
+     *
+     * 用 OnTouchListener 而不是 OnClickListener：行/按钮的业务回调是各自
+     * {@code setOnClickListener} 设置的，包一层会互相覆盖。这里返回 false，
+     * 完全不参与事件分发，只在 ACTION_UP 且确实落在控件内时震一下。
+     *
+     * @param light true = 最轻的一档（列表行、tab），false = 实一点的按钮触感
+     */
+    static void tapFeedback(final View v, final boolean light) {
+        v.setOnTouchListener(new View.OnTouchListener() {
+            private boolean inside;
+
+            @Override
+            public boolean onTouch(View view, android.view.MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case android.view.MotionEvent.ACTION_DOWN:
+                        inside = true;
+                        break;
+                    case android.view.MotionEvent.ACTION_MOVE:
+                        inside = e.getX() >= 0 && e.getY() >= 0
+                                && e.getX() <= view.getWidth() && e.getY() <= view.getHeight();
+                        break;
+                    case android.view.MotionEvent.ACTION_UP:
+                        if (inside) {
+                            ctxHaptic(view, light);
+                        }
+                        inside = false;
+                        break;
+                    case android.view.MotionEvent.ACTION_CANCEL:
+                        inside = false;
+                        break;
+                    default:
+                        break;
+                }
+                // 不消费：点击、长按、滚动都不受影响
+                return false;
+            }
+        });
+    }
+
+    private static void ctxHaptic(View v, boolean light) {
+        Haptics h = Haptics.get(v.getContext());
+        if (light) {
+            h.tick();
+        } else {
+            h.click();
+        }
     }
 
     /** BasicComponent 的两行内容：标题 17sp Medium + 摘要 14sp。 */
@@ -235,24 +286,81 @@ final class Ui {
         final int decimals;
         float value;
 
-        ValueRow(LinearLayout row, TextView label, Theme.Colors pal, String unit, int decimals) {
+        /** 行内滑杆（miuix SliderPreference 的 bottomAction）。懒创建。 */
+        private MiuixSlider slider;
+        private final Context context;
+        private final float min;
+        private final float max;
+        private final float step;
+        private final Runnable onChange;
+
+        ValueRow(LinearLayout row, TextView label, Theme.Colors pal, String unit, int decimals,
+                 Context c, float min, float max, float step, Runnable onChange) {
             this.row = row;
             this.label = label;
             this.pal = pal;
             this.unit = unit;
             this.decimals = decimals;
+            this.context = c;
+            this.min = min;
+            this.max = max;
+            this.step = step;
+            this.onChange = onChange;
         }
 
         void set(float v) {
             value = v;
             label.setText(valueSpan(pal, fmt(v, decimals), unit));
+            if (slider != null) {
+                slider.setValue(v);
+            }
+        }
+
+        /** 在行下面挂一条 miuix 滑杆：点行展开/收起，拖动实时改值。 */
+        MiuixSlider attachSlider(LinearLayout card, int insetDp) {
+            if (card == null) {
+                return null;
+            }
+            final MiuixSlider s = new MiuixSlider(context, pal, min, max, step, value);
+            s.setPadding(Theme.dp(context, insetDp), Theme.dp(context, 6),
+                    Theme.dp(context, insetDp), Theme.dp(context, 6));
+            s.setOnValue(new MiuixSlider.OnValue() {
+                @Override
+                public void onValue(float v) {
+                    value = v;
+                    label.setText(valueSpan(pal, fmt(v, decimals), unit));
+                    Haptics.get(context).step();
+                    if (onChange != null) {
+                        onChange.run();
+                    }
+                }
+            });
+            card.addView(s, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(context, 28)));
+            return s;
         }
     }
 
-    /** 数值行：右侧显示当前值，点击弹出滑杆对话框。 */
+    /** 数值行：右侧显示当前值，点行弹出滑杆对话框。 */
     static ValueRow valueRow(Context c, LinearLayout card, Theme.Colors p,
                              String title, String summary, String unit,
                              float value, int decimals) {
+        return valueRow(c, card, p, title, summary, unit, value, decimals, 0);
+    }
+
+    /** 带范围与步长的数值行（行内滑杆需要它们）。 */
+    static ValueRow valueRow(Context c, LinearLayout card, Theme.Colors p,
+                             String title, String summary, String unit,
+                             float value, int decimals, final int sliderInset) {
+        return valueRow(c, card, p, title, summary, unit, value, decimals,
+                value, value, 1f, sliderInset, null);
+    }
+
+    static ValueRow valueRow(Context c, LinearLayout card, Theme.Colors p,
+                             String title, String summary, String unit,
+                             float value, int decimals,
+                             float min, float max, float step,
+                             final int sliderInset, Runnable onChange) {
         LinearLayout row = rowShell(c);
         rowRipple(row, p);
         row.addView(twoLine(c, p, title, summary),
@@ -265,7 +373,8 @@ final class Ui {
         row.addView(label, llp);
         addChevron(c, row, p);
 
-        ValueRow vr = new ValueRow(row, label, p, unit, decimals);
+        ValueRow vr = new ValueRow(row, label, p, unit, decimals,
+                c, min, max, step, onChange);
         vr.value = value;
         addRow(c, card, p, row);
         return vr;
@@ -436,6 +545,7 @@ final class Ui {
         b.setFocusable(true);
         b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF),
                 Theme.round(p.primary, Theme.dp(c, Theme.CARD_RADIUS)), null));
+        tapFeedback(b, false);
         return b;
     }
 
@@ -448,6 +558,7 @@ final class Ui {
                 bg, null));
         b.setClickable(true);
         b.setFocusable(true);
+        tapFeedback(b, false);
         return b;
     }
 
@@ -476,17 +587,31 @@ final class Ui {
         return box;
     }
 
-    /** 按下时缩到 0.965 再弹回，替代 Miuix 的 tilt 反馈。 */
+    /** 按下时缩到 0.965 再弹回，替代 Miuix 的 tilt 反馈；同时给一次按钮级触感。 */
     static void pressScale(final View v) {
         v.setOnTouchListener(new View.OnTouchListener() {
+            private boolean inside;
+
             @Override
             public boolean onTouch(View view, android.view.MotionEvent e) {
                 switch (e.getActionMasked()) {
                     case android.view.MotionEvent.ACTION_DOWN:
+                        inside = true;
                         animateScale(view, 0.965f, 90);
                         break;
+                    case android.view.MotionEvent.ACTION_MOVE:
+                        inside = e.getX() >= 0 && e.getY() >= 0
+                                && e.getX() <= view.getWidth() && e.getY() <= view.getHeight();
+                        break;
                     case android.view.MotionEvent.ACTION_UP:
+                        if (inside) {
+                            Haptics.get(view.getContext()).clickPrimary();
+                        }
+                        inside = false;
+                        animateScale(view, 1f, 170);
+                        break;
                     case android.view.MotionEvent.ACTION_CANCEL:
+                        inside = false;
                         animateScale(view, 1f, 170);
                         break;
                     default:
@@ -656,6 +781,8 @@ final class Ui {
             if (animate) {
                 track.to(v ? 1f : 0f);
                 kick();
+                // 澎湃 OS 的 SWITCH 效果：线马达上是一记短促的"嗒"，不是转子嗡鸣
+                Haptics.get(getContext()).toggle();
             } else {
                 track.value = v ? 1f : 0f;
                 track.target = track.value;

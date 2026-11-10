@@ -5,6 +5,10 @@
     <!-- libxposed 现代 API（102）不再使用 xposedmodule / xposedminversion 这些 meta-data：
          模块名取 android:label，简介取 android:description，
          入口在 META-INF/xposed/java_init.list，作用域在 META-INF/xposed/scope.list。 -->
+    <!-- 触觉反馈：需要 VIBRATE 才能自己控制波形；不申请则只能依赖 View 的
+         performHapticFeedback（强度不可控，也无法按场景区分）。 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:label="@string/app_name"
         android:description="@string/app_description"

@@ -241,7 +241,19 @@ final class MiuixBg extends View {
             drawFallback(canvas, w, h, t);
         }
 
-        // 底部渐隐回页面底色，卡片才不会直接压在一刀切的色块上
+        // 底部渐隐回页面底色，卡片才不会直接压在一刀切的色块上。
+        if (Theme.demoBg) {
+            // 演示模式没有"页面底色"可回 —— 用 DST_OUT 把这层自己淡成透明，
+            // 露出页面的彩色渐变。用 Theme.alpha(0x00000000, .55f) 会算成半透明黑，
+            // 在 42% 高度切出一条脏带。
+            Paint cut = new Paint(Paint.ANTI_ALIAS_FLAG);
+            cut.setShader(new LinearGradient(0, h * 0.42f, 0, h,
+                    new int[] {0x00000000, 0xFF000000}, null, Shader.TileMode.CLAMP));
+            cut.setXfermode(new android.graphics.PorterDuffXfermode(
+                    android.graphics.PorterDuff.Mode.DST_OUT));
+            canvas.drawRect(0, h * 0.42f, w, h, cut);
+            return;
+        }
         fade.setShader(new LinearGradient(0, h * 0.42f, 0, h,
                 new int[] {0x00000000, Theme.alpha(fadeColor(), 0.55f),
                         Theme.alpha(fadeColor(), 0.92f), fadeColor()},
@@ -250,6 +262,11 @@ final class MiuixBg extends View {
     }
 
     private int fadeColor() {
+        // 演示模式（彩色渐变背景）下淡出到全透明，否则那块不透明的面色会
+        // 在 420dp 处切出一条硬边，把页面的渐变盖掉。
+        if (Theme.demoBg) {
+            return 0x00000000;
+        }
         return night ? 0xFF000000 : 0xFFF7F7F7;
     }
 

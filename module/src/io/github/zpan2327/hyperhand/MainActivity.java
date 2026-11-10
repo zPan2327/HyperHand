@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
 
     private FrameLayout contentHost;
     private FrameLayout root;
+    private PagePager pager;
     private TopBar topBar;
     private GlassBar nav;
     private TextView savePill;
@@ -63,6 +64,8 @@ public class MainActivity extends Activity {
             bar.hide();
         }
 
+        // 截图/调试用：--es bg grad 换成彩色渐变底，用来看玻璃的折射与通透
+        Theme.demoBg = getIntent() != null && "grad".equals(getIntent().getStringExtra("bg"));
         pal = Theme.colors(this);
         try {
             cur = Cfg.get(this);
@@ -83,6 +86,8 @@ public class MainActivity extends Activity {
         }
 
         setContentView(buildShell());
+        // 触感需要 View 宿主走 View#performHapticFeedback（MIUI 的 DecorView 认 flag）
+        Haptics.get(this).attach(root);
         int start = TAB_OVERVIEW;
         String tab = getIntent() == null ? null : getIntent().getStringExtra("tab");
         if ("settings".equals(tab)) {
@@ -135,12 +140,35 @@ public class MainActivity extends Activity {
         pages[TAB_OVERVIEW] = overviewPage.view();
         pages[TAB_SETTINGS] = settingsPage.view();
         pages[TAB_ABOUT] = aboutPage.view();
+
+        // 三页平级：横向容器同时承载，靠左右滑动或点底栏切换。
+        // 三页常驻（不销毁重建），滚动位置与未保存的编辑都留住。
+        pager = new PagePager(this);
         for (int i = 0; i < pages.length; i++) {
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-            pages[i].setVisibility(i == TAB_OVERVIEW ? View.VISIBLE : View.GONE);
-            contentHost.addView(pages[i], lp);
+            pager.addView(pages[i], new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
+        pager.setPageCount(pages.length);
+        pager.setOnPageChange(new PagePager.OnPageChange() {
+            @Override
+            public void onPageSelected(int position) {
+                if (position != current) {
+                    current = position;
+                    nav.select(position, true);
+                    applyTopBar(position);
+                    refreshPage(position);
+                    contentHost.postInvalidateOnAnimation();
+                }
+            }
+
+            @Override
+            public void onPageScrolled(float position) {
+                // 拖动中：指示器跟手；标题栏按偏移淡入淡出
+                nav.setPagePosition(position);
+            }
+        });
+        contentHost.addView(pager, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // 折叠大标题栏：浮在内容之上，随当前页的滚动位置折叠
         topBar = new TopBar(this, pal);
@@ -201,6 +229,7 @@ public class MainActivity extends Activity {
 
                 applyInsets();
                 nav.setBackdropSource(contentHost);
+                topBar.setBackdropSource(contentHost);
                 return insets;
             }
         });
@@ -225,12 +254,30 @@ public class MainActivity extends Activity {
                     child.setPadding(child.getPaddingLeft(), padTop,
                             child.getPaddingRight(), bottom);
                 }
+                final android.widget.ScrollView scroll = sv;
+                final int pageIndex = i;
+                final int[] lastEdge = {0};   // -1 顶 / 0 无 / 1 底
                 sv.setOnScrollChangeListener(new View.OnScrollChangeListener() {
                     @Override
                     public void onScrollChange(View v, int x, int y, int ox, int oy) {
-                        if (v.getVisibility() == View.VISIBLE && topBar != null) {
+                        if (pageIndex == current && topBar != null) {
                             topBar.setScroll(y);
                         }
+                        // 滚动到顶/底的边界反馈：只在"刚碰到"那一下触发，不连震
+                        if (Math.abs(y - oy) < Theme.dp(MainActivity.this, 2)) {
+                            return;
+                        }
+                        boolean down = y > oy;
+                        int edge = 0;
+                        if (down && !scroll.canScrollVertically(1) && y > 0) {
+                            edge = 1;
+                        } else if (!down && !scroll.canScrollVertically(-1)) {
+                            edge = -1;
+                        }
+                        if (edge != 0 && edge != lastEdge[0]) {
+                            Haptics.get(MainActivity.this).edge();
+                        }
+                        lastEdge[0] = edge;
                     }
                 });
             }
@@ -243,55 +290,27 @@ public class MainActivity extends Activity {
         if (index < 0 || index > 2) {
             return;
         }
-        if (index == current && pages[index].getVisibility() == View.VISIBLE && animate) {
+        if (index == current && animate) {
             nav.select(index, true);
             return;
         }
-        int dir = index > current ? 1 : -1;
-        if (!animate) {
-            dir = 1;
-        }
-        View in = pages[index];
-        View out = pages[current];
-        in.animate().cancel();
-        out.animate().cancel();
-
-        if (!animate || in == out) {
-            for (int i = 0; i < pages.length; i++) {
-                pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
-                pages[i].setAlpha(1f);
-                pages[i].setTranslationX(0f);
-            }
-        } else {
-            in.setVisibility(View.VISIBLE);
-            in.setAlpha(0f);
-            in.setTranslationX(dir * Theme.dp(this, 24));
-            in.animate().alpha(1f).translationX(0f).setDuration(280)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
-                    .start();
-            out.setVisibility(View.VISIBLE);
-            final View outgoing = out;
-            out.animate().alpha(0f).translationX(-dir * Theme.dp(this, 24)).setDuration(180)
-                    .withEndAction(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (outgoing != pages[current]) {
-                                outgoing.setVisibility(View.GONE);
-                            }
-                        }
-                    }).start();
-        }
-
         current = index;
         nav.select(index, true);
+        if (pager != null && pager.currentPage() != index) {
+            pager.setCurrentPage(index, animate);
+        }
         applyTopBar(index);
+        refreshPage(index);
+        contentHost.postInvalidateOnAnimation();
+    }
 
+    /** 切到某一页时刷新它的数据（三页常驻，不重建）。 */
+    private void refreshPage(int index) {
         if (index == TAB_OVERVIEW) {
             overviewPage.refresh();
         } else if (index == TAB_SETTINGS) {
             settingsPage.refreshGestureLog();
         }
-        contentHost.postInvalidateOnAnimation();
     }
 
     /** 每一页的标题 / 副标题 / 右上角动作。 */

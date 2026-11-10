@@ -9,6 +9,7 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 
 /**
  * 视觉 token 层：颜色、字号、字重、间距。
@@ -155,6 +156,12 @@ final class Theme {
             p.barBg = 0xF2F7F7F7;
             p.barLine = 0x14000000;
         }
+        if (demoBg) {
+            // 渐变背景演示：卡片与页面都半透明，让颜色透上来
+            p.bg = 0x00000000;
+            p.card = p.night ? 0x99101014 : 0xB8FFFFFF;
+            p.barBg = 0x00000000;
+        }
         return p;
     }
 
@@ -257,9 +264,23 @@ final class Theme {
         return new Squircle.D(color, radius).stroke(strokeColor, strokeWidth);
     }
 
+    /**
+     * 调试用：把页面底色换成彩色渐变（`am start --es bg grad`）。
+     * 纯 #F7F7F7 底下玻璃没有东西可折射，看不出通透与厚度；
+     * 换成渐变才能在真机上判断液态玻璃到底做到什么程度。
+     */
+    static boolean demoBg;
+
     /** 页面底色：miuix 的 surface 是纯色，玻璃底栏才有"透过去"的对象。 */
     static Drawable pageBackground(Colors p) {
-        return round(p.bg, 0f);
+        if (!demoBg) {
+            return round(p.bg, 0f);
+        }
+        // 上到下：蓝 → 紫 → 粉 → 橙 → 青，整屏都有颜色，底部也不例外
+        int[] colors = p.night
+                ? new int[] {0xFF12203F, 0xFF3A1350, 0xFF571332, 0xFF0E2C42, 0xFF13203F}
+                : new int[] {0xFFA8C8FF, 0xFFC9A8F0, 0xFFF3B6D2, 0xFFFFC9A8, 0xFF8FE3E8};
+        return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, colors);
     }
 
     /** 无阴影的柔和投影（硬件层也能画）：多层递减透明度的圆角矩形。 */

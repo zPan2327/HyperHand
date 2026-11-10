@@ -381,7 +381,17 @@ final class SettingsPage {
     private Ui.ValueRow numberRow(LinearLayout card, final String title, String summary,
                                   final String unit, float value, final int dec,
                                   final float min, final float max, final float step) {
-        final Ui.ValueRow row = Ui.valueRow(c, card, pal, title, summary, unit, value, dec);
+        // miuix SliderPreference：标题 + 数值在行上，行下面直接挂一条滑杆（bottomAction），
+        // 拖动即时改值；点行仍然弹对话框，方便精确输入。
+        final boolean[] dragging = {false};
+        final Ui.ValueRow row = Ui.valueRow(c, card, pal, title, summary, unit, value, dec,
+                min, max, step, Theme.ROW_PAD_H, new Runnable() {
+                    @Override
+                    public void run() {
+                        markDirty();
+                    }
+                });
+        row.attachSlider(card, Theme.ROW_PAD_H);
         row.row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -401,6 +411,8 @@ final class SettingsPage {
     /** 即时生效的数值行（动画时长）。 */
     private void realTime(final Ui.ValueRow row, final String title, final String unit,
                           final float min, final float max, final float step, final int dec) {
+        row.attachSlider(row.row.getParent() instanceof LinearLayout
+                ? (LinearLayout) row.row.getParent() : null, Theme.ROW_PAD_H);
         row.row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

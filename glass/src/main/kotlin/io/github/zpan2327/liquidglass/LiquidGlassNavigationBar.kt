@@ -229,13 +229,6 @@ internal fun IosLiquidGlassNavigationBar(
      * drawBackdrop 的 lambda 参数变化，绘制节点被重建，才会真正重新采样背板。
      */
     redrawSignal: Int = 0,
-    /**
-     * 折射强度倍率（1 = LiquidDemo 原样：折射带 24dp、位移 24dp、按压色散 0.5）。
-     *
-     * 底栏叠在纯色列表页上时，24dp 的位移会把文字撕得很明显、按压时出现彩色重影，
-     * 所以宿主可以按自己的页面内容调低。
-     */
-    refractionScale: Float = 1f,
 ) {
     // The app theme follows themeMode, not just the system setting — resolve dark from the
     // active color scheme so the glass tints match the page behind the bar.
@@ -474,8 +467,8 @@ internal fun IosLiquidGlassNavigationBar(
                                             4.dp.toPx(),
                                         )
                                         lens(
-                                            refractionHeight = 24.dp.toPx() * refractionScale,
-                                            refractionAmount = 24.dp.toPx() * refractionScale,
+                                            refractionHeight = 24.dp.toPx(),
+                                            refractionAmount = 24.dp.toPx(),
                                         )
                                     },
                                     highlight = { baseHighlight.value.copy(alpha = 0.75f) },
@@ -525,11 +518,23 @@ internal fun IosLiquidGlassNavigationBar(
                                 backdrop = backdrop,
                                 shape = { pillShape },
                                 effects = {
+                                    // 这一层是「隐藏的图标层」，它被 layerBackdrop 录进 tabsBackdrop，
+                                    // 指示器再把 tabsBackdrop 叠在页面背板上当参照物。录层只在节点重画时
+                                    // 才刷新（LayerBackdropNode.draw -> recordLayer），而节点平时不会因为
+                                    // 页面滚动而失效，所以拖动过一次底栏之后，选中项的背景就定格在那一刻。
+                                    // 捕获宿主的滚动信号，让这一层跟着滚动一起重建。
+                                    @Suppress("UNUSED_EXPRESSION")
+                                    redrawSignal
+                                    // 按压时 lens 会放大到折射 14dp + 色散，圆角处取样的越界量比
+                                    // 自动算出来的 24dp 更大；Compose 的 LayerBackdrop 有整窗内容
+                                    // 兜底，这里的背板只有本层，越界就会采样到透明（角落出现黑楔形）。
+                                    // 所以和容器一样，把采样余量抬到 40dp。
+                                    padding = maxOf(padding, 40.dp.toPx())
                                     vibrancy()
                                     blur(4.dp.toPx(), 4.dp.toPx())
                                     lens(
-                                        refractionHeight = 24.dp.toPx() * refractionScale,
-                                        refractionAmount = 24.dp.toPx() * refractionScale,
+                                        refractionHeight = 24.dp.toPx(),
+                                        refractionAmount = 24.dp.toPx(),
                                     )
                                 },
                                 onDrawSurface = { drawRect(containerColor) },
@@ -558,12 +563,19 @@ internal fun IosLiquidGlassNavigationBar(
                                 backdrop = combinedBackdrop,
                                 shape = { pillShape },
                                 effects = {
+                                    // 指示器也要跟着宿主的滚动信号重建绘制节点，否则页面滚动时
+                                    // 只有底栏本体在重新采样，选中项那块玻璃会僵在上一帧。
+                                    @Suppress("UNUSED_EXPRESSION")
+                                    redrawSignal
+                                    // 同上：按压折射 + 色散在圆角处会取样到圆角外，背板只有本层，
+                                    // 必须留足余量，否则角落出现黑楔形。
+                                    padding = maxOf(padding, 40.dp.toPx())
                                     val progress = dampedDrag.pressProgress
                                     lens(
-                                        refractionHeight = 10.dp.toPx() * progress * refractionScale,
-                                        refractionAmount = 14.dp.toPx() * progress * refractionScale,
+                                        refractionHeight = 10.dp.toPx() * progress,
+                                        refractionAmount = 14.dp.toPx() * progress,
                                         depthEffect = true,
-                                        chromaticAberration = 0.5f * refractionScale,
+                                        chromaticAberration = 0.5f,
                                     )
                                 },
                                 highlight = { pillHighlight.value.copy(alpha = dampedDrag.pressProgress) },

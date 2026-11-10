@@ -321,6 +321,7 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 ├── LICENSE
 ├── docs/
 │   ├── 单手模式增强.md      # 完整技术文档：调查结论 / 调用链 / 方案比较 / 实测日志 / 回滚
+│   ├── 液态玻璃底栏.md      # Compose 底栏的接入结构 + 迁移踩坑与改法
 │   ├── 设计稿对照.md        # 设置界面的 Miuix / HyperOS token 对照
 │   └── screenshots/         # 界面的浅色 / 深色 / 对话框截图
 ├── glass/src/main/kotlin/       # 液态玻璃底栏（Kotlin / Compose）
@@ -399,6 +400,33 @@ LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://gith
 
 **Q：会不会影响上滑回桌面、最近任务、返回手势？**
 不会。监视通道只观察不消费，且模块不修改任何窗口的 touchable region。
+
+### 液态玻璃底栏
+
+底栏从 3.0.2-beta.2 起由 Compose 组件绘制（渲染实现来自
+[LiquidDemo](https://github.com/zPan2327/LiquidDemo)，复刻自 miuix / AndroidLiquidGlass）。
+完整的问题清单与改法见 [docs/液态玻璃底栏.md](docs/液态玻璃底栏.md)，这里只列最常被问到的：
+
+**Q：页面滚动时玻璃不动，或者「先滑一下底栏、再滚页面」，选中项的背景就定格了？**
+两个不同原因：① 普通 `View` 滚动不会让 Compose 的绘制节点失效，需要 `redrawSignal` 逐帧 +1；
+② 指示器采样用的录制层只在「录制源节点重画」时才重新录，所以信号必须同时接给
+**容器、隐藏图标行、指示器**三处。3.0.2-beta.2 已修。
+
+**Q：玻璃里的内容比实际位置偏上，折射出来的总是上面那一行？**
+采样坐标把「层左上角」当成了原点。miuix 在调用 `drawBackdrop` 前做了 `translate(padding / ds)`，
+原点其实是**胶囊左上角**。少算一个 padding（40dp ≈ 110px）就会整体上移。已修。
+
+**Q：按下时胶囊圆角冒出黑色楔形？**
+折射 + 色散越出了采样层。`LayerBackdrop` 背后是整窗内容，自定义 `ViewBackdrop` 只有本层，
+越界即透明（黑）。把 `effects` 的 `padding` 抬到 40dp 即可。已修。
+
+**Q：底栏有点卡？**
+`ViewBackdrop` 每帧要把页面重画进 Bitmap。已改成只截采样层、半分辨率、容器与指示器共用一张位图；
+模拟器滚动 jank 85.7%（真机有硬件 GPU，不背这个锅）。页面里若有大量自绘/视频控件，还会更贵。
+
+**Q：为什么底栏要换成 Compose？**
+原来 Java 手写的近似实现没有真折射（只有模糊 + 手搓的 SDF 位移），且 AGSL 在这套工程里维护成本高。
+现在是 miuix 的成品管线：真 AGSL 折射、色散、重力高光、阻尼拖拽。
 
 ## 已知限制
 

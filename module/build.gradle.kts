@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.0.2-beta.1"
+val defaultVersionName = "3.0.2-beta.2"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }

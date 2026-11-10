@@ -155,8 +155,6 @@ class HyperGlassBarView @JvmOverloads constructor(
                 // ComposeView 的绘制会被自己的边界裁掉，没有余量时胶囊顶边会被削平成一条直线。
                 modifier = Modifier.padding(top = OverhangRoom),
                 redrawSignal = tick,
-                // LiquidDemo 的 24dp 折射放在纯色列表页上太抢眼：文字被撕开、按压时彩色重影明显。
-                refractionScale = 0.4f,
             )
         }
     }

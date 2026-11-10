@@ -2,6 +2,45 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.0.2-beta.2] - 2026-11-10
+
+> 测试版，只发 GitHub Releases 的 prerelease 通道。versionCode 29904，可直接覆盖安装
+> 3.0.2-beta.1（29903）/ 2.9.10（20910）。
+
+底栏从 Java 手写近似，换成 [LiquidDemo](https://github.com/zPan2327/LiquidDemo) 的 Compose 组件
+（后者复刻自 [miuix](https://github.com/compose-miuix-ui/miuix) 与
+[AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)）。界面版式、参数一律不变，
+只把「假折射」换成真 AGSL：24dp 圆角矩形 SDF 透镜、按压色散 0.5、跟随重力的镜面高光、阻尼拖拽指示器。
+
+### Changed
+
+- **构建迁到 Gradle**（AGP 9.4.1 + Gradle 9.7.1 + Compose BOM 2026.09.00，compileSdk 37）。
+  旧的 `aapt2 + javac + d8` 手工链合并不了 `androidx.customview` 的 R 资源，
+  `AbstractComposeView` 会 `NoClassDefFoundError: customview.R$id`。`module/build.sh` /
+  `build.ps1` 保留成薄壳，产物路径仍是 `module/out/HyperHand.apk`。
+- `MainActivity` 继承 `ComponentActivity`（Compose 需要 `ViewTreeLifecycleOwner`）。
+- 原 Java `GlassBar` 保留作对照，`Theme` 里改为注入 `HyperGlassBarView`。
+
+### Fixed
+
+- **玻璃参照位置偏上 110px**：`Backdrop.drawBackdrop()` 的 `size` 是「(胶囊 + 2×padding) / downscaleFactor」
+  的采样层尺寸，而绘制坐标原点是**胶囊左上角**（miuix 调用前做了 `translate(padding / ds)`）。
+- **只采样到胶囊中间一条**：把 `size` 当成胶囊宽度（434 vs 649），右侧近 200px 没有采样，
+  只剩 40% 白蒙层，看起来「边缘更透明」。
+- **选中项不实时刷新**：`layerBackdrop` 只在录制源节点重画时才 `recordLayer()`。拖动底栏一次后
+  动画收敛，再滚页面就定格；`redrawSignal` 现在同时接给容器、隐藏图标行、指示器。
+- **按压时圆角黑楔**：折射 + 色散越出采样层，`ViewBackdrop` 越界即透明。`effects` 的 `padding` 抬到 40dp。
+- **胶囊顶边被削平 / 底栏位置偏高**：加 14dp 顶部余量给按下放大与投影；用 `bottomPadding = 7dp`
+  避免与宿主 margin 叠加 inset。
+- **关于页崩溃**：`MiuixBg` 的 `RuntimeShader` 在软件 Canvas（`ViewBackdrop` 的采样位图）上会抛，
+  加了硬件加速守卫；采样失败只丢这一帧的玻璃。
+- **滚动掉帧**：只截采样层、按 `1/downscaleFactor` 采样、容器与指示器共享一张位图并在下一帧失效。
+
+### Docs
+
+- 新增 [docs/液态玻璃底栏.md](docs/液态玻璃底栏.md)：接入结构与 10 条迁移踩坑（现象 / 根因 / 改法）。
+- README 的常见问题补了 5 条玻璃相关问答。
+
 ## [3.0.2-beta.1] - 2026-11-10
 
 > **这是测试版，不是正式版。** 正式版仍是 [2.9.10]。测试版只发在 GitHub Releases

@@ -133,7 +133,11 @@ jobs:
           ./gradlew --console=plain :module:assembleHyperHand
 
           APK=module/out/HyperHand.apk
-          BADGING="$("$SDK"/build-tools/*/aapt2 dump badging "$APK" | head -1)"
+          # 镜像里可能装了好几个 build-tools，通配符会展开成多个路径，
+          # 第二个 aapt2 路径会被当成子命令（error: unknown subcommand ... → 退出码 255）。
+          # 只挑一个，并且不要 `| head -1`（pipefail 下 aapt2 会被 SIGPIPE 判失败）。
+          BT="$(ls "$SDK/build-tools" | sort -V | tail -1)"
+          BADGING="$("$SDK/build-tools/$BT/aapt2" dump badging "$APK")"
           VC="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)"
           VN="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)"
           echo "built $APK versionCode=$VC versionName=$VN"

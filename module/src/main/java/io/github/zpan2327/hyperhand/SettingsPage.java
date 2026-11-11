@@ -9,7 +9,7 @@ import android.widget.TextView;
 
 /**
  * 「设置」页：项目现有的全部参数，按"模块 / 识别 / 触发区 / 外观 / 动效 /
- * 模糊区手势 / 互斥 / 高级 / 调试"重新分组。
+ * 模糊区手势 / 互斥 / 高级"重新分组（调试模块已移除，见关于页隐藏入口）。
  *
  * 交互与 2.9 完全一致：所有值先在本地改，点「保存并立即生效」后通过广播
  * 交给 SystemUI 进程写入 Settings.Global；动画曲线与时长例外，改完即时下发。
@@ -23,7 +23,6 @@ final class SettingsPage {
 
     private Ui.SwitchView swEnabled;
     private Ui.SwitchView swMonitor;
-    private Ui.SwitchView swDebug;
     private Ui.SwitchView swShadeGuard;
     private Ui.SwitchView swClaimZone;
     private Ui.SwitchView swSlow;
@@ -61,7 +60,6 @@ final class SettingsPage {
 
     private LinearLayout advancedBox;
     private TextView animInfo;
-    private TextView gestureLog;
     private TextView downGap;
     private TextView restartBtn;
     private TextView saveBtn;
@@ -73,7 +71,6 @@ final class SettingsPage {
         this.pal = host.pal;
         this.page = Ui.page(c, pal);
         build();
-        refreshGestureLog();
     }
 
     View view() {
@@ -281,37 +278,6 @@ final class SettingsPage {
             }
         });
 
-        // ---------------------------------------------------------- 调试
-        page.add(Ui.section(c, pal, "调试"));
-        LinearLayout cardDebug = Ui.card(c, pal);
-        swDebug = Ui.switchRow(c, cardDebug, pal, "调试日志",
-                "用 logcat -s HyperHand 观察判定过程，并记录最近手势", cur.debug);
-        dirty(swDebug);
-        Ui.choiceRow(c, cardDebug, pal, "最近手势",
-                "读取系统里记录的上一次判定结果", new String[] {"刷新"}, 0,
-                new Ui.OnChoice() {
-                    @Override
-                    public void onChoice(int index) {
-                        refreshGestureLog();
-                        host.toast("已刷新");
-                    }
-                });
-        Ui.actionRow(c, cardDebug, pal, "预览遮罩", "立刻进入一次单手模式，直接看背景效果", new Runnable() {
-            @Override
-            public void run() {
-                host.previewOneHanded();
-            }
-        });
-        Ui.actionRow(c, cardDebug, pal, "退出单手模式", "立刻退出，恢复正常窗口", new Runnable() {
-            @Override
-            public void run() {
-                host.stopOneHanded();
-            }
-        });
-        gestureLog = Ui.block(c, pal, "还没有记录。开启调试日志后，在屏幕底部下滑一次再看这里。");
-        Ui.addRow(c, cardDebug, pal, gestureLog);
-        page.add(cardDebug, Ui.cardLp(c, Theme.CARD_GAP));
-
         // ---------------------------------------------------------- 底部操作
         LinearLayout actions = new LinearLayout(c);
         actions.setOrientation(LinearLayout.VERTICAL);
@@ -468,7 +434,6 @@ final class SettingsPage {
     private void applyDefaults() {
         switchWithoutMark(swEnabled, true);
         switchWithoutMark(swMonitor, true);
-        switchWithoutMark(swDebug, true);
         switchWithoutMark(swShadeGuard, true);
         switchWithoutMark(swClaimZone, true);
         switchWithoutMark(swSlow, true);
@@ -517,7 +482,8 @@ final class SettingsPage {
     void applyTo(Intent i) {
         i.putExtra(Cfg.K_ENABLED, swEnabled.isChecked() ? "1" : "0");
         i.putExtra(Cfg.K_MONITOR_ENABLED, swMonitor.isChecked() ? "1" : "0");
-        i.putExtra(Cfg.K_DEBUG, swDebug.isChecked() ? "1" : "0");
+        // 调试模块已从设置主界面移除（关于页连点 logo 5 次唤起），这里直通现值
+        i.putExtra(Cfg.K_DEBUG, host.cfg().debug ? "1" : "0");
         i.putExtra(Cfg.K_SHADE_GUARD, swShadeGuard.isChecked() ? "1" : "0");
         i.putExtra(Cfg.K_CLAIM_ZONE, swClaimZone.isChecked() ? "1" : "0");
         i.putExtra(Cfg.K_SLOW_ENABLED, swSlow.isChecked() ? "1" : "0");
@@ -608,25 +574,6 @@ final class SettingsPage {
                 + "用来判断上面的触发区高度该调大还是调小。";
     }
 
-    void refreshGestureLog() {
-        if (gestureLog == null) {
-            return;
-        }
-        try {
-            String s = android.provider.Settings.Global.getString(
-                    host.getContentResolver(), Cfg.K_LAST_GESTURE);
-            if (s == null || s.trim().length() == 0) {
-                gestureLog.setText("还没有记录。开启调试日志后，在屏幕底部下滑一次再看这里。");
-            } else {
-                gestureLog.setText(s);
-            }
-        } catch (Throwable t) {
-            gestureLog.setText("读取失败：" + t);
-        }
-        if (downGap != null) {
-            downGap.setText(downGapText());
-        }
-    }
 
     void setRestarting(boolean restarting) {
         if (restartBtn != null) {

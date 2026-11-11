@@ -129,7 +129,6 @@ public class MainActivity extends ComponentActivity {
             overviewPage.refresh();
         }
         if (settingsPage != null) {
-            settingsPage.refreshGestureLog();
             settingsPage.refreshAnimInfo();
         }
     }
@@ -383,7 +382,7 @@ public class MainActivity extends ComponentActivity {
         if (index == TAB_OVERVIEW) {
             overviewPage.refresh();
         } else if (index == TAB_SETTINGS) {
-            settingsPage.refreshGestureLog();
+            settingsPage.refreshAnimInfo();
         }
     }
 
@@ -719,6 +718,18 @@ public class MainActivity extends ComponentActivity {
         if (settingsPage != null) {
             settingsPage.refreshAnimInfo();
         }
+    }
+
+    /**
+     * 隐藏调试弹窗里的「调试日志」开关：只写 K_DEBUG 一项。
+     * 接收端按 hasExtra 合并（见 HyperHand 的 ACTION_SET 处理），单键广播不影响其它配置。
+     */
+    void toggleDebug(boolean on) {
+        Intent i = new Intent(HyperHand.ACTION_SET);
+        i.setPackage("com.android.systemui");
+        i.putExtra(Cfg.K_DEBUG, on ? "1" : "0");
+        sendBroadcast(i);
+        reloadCfg();
     }
 
     void previewOneHanded() {

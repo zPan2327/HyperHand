@@ -99,11 +99,11 @@ final class ProgressiveBlur {
     /** 采样区外扩，给 shader 的模糊半径留像素，避免边缘被 CLAMP 拉出硬边。 */
     private static final int SAMPLE_PAD_DP = 12;
     /**
-     * SonyPods 用 {@code surfaceColor @ 0.66f}；这里略低一些，让「背后的模糊内容」更可见
-     * （上一轮用户反馈顶栏像糊了一层死色），且混色随 strength 渐进到底边为 0，
-     * 不会形成一块不透明色带。
+     * SonyPods {@code BarBlur.kt} 的 {@code TOP_BAR_SURFACE_ALPHA = 0.66f}，原样取用。
+     * 上一版降到 0.45（想让背后内容更透），结果雾罩比参考明显偏淡 ——
+     * 「顶部渐进式模糊与参考不符」的主要来源。
      */
-    private static final float SURFACE_ALPHA = 0.45f;
+    private static final float SURFACE_ALPHA = 0.66f;
 
     /**
      * 变半径高斯模糊。
@@ -143,7 +143,14 @@ final class ProgressiveBlur {
             + "  float2 uv = (fragCoord - uOrigin) / uSize;\n"
             + "  float t = clamp(uv.y, 0.0, 1.0);\n"
             + "  float u = clamp((t - uStart) / max(uEnd - uStart, 0.001), 0.0, 1.0);\n"
-            + "  float strength = 1.0 - pow(u, uCurve);\n"
+            // miuix Shaders.kt 的两段 ramp，逐行对齐：
+            //   intensity = 1 - pow(smoothstep(u), curve)         —— 模糊强度\n"
+            //   rampWeight = smoothstep(1 - pow(smoothstep(u), curve)) —— 混色强度\n"
+            // 上一版用 1 - pow(u, curve)（漏掉 smoothstep），衰减形状和参考对不上。\n"
+            + "  float su = u * u * (3.0 - 2.0 * u);\n"
+            + "  float strength = 1.0 - pow(su, uCurve);\n"
+            + "  float rw = 1.0 - pow(su, uCurve);\n"
+            + "  rw = rw * rw * (3.0 - 2.0 * rw);\n"
             + "  float r = uMaxRadius * strength;\n"
             + "  if (r < 0.35) {\n"
             + "    half4 sharp = tap(fragCoord);\n"      // 底边清晰区：直接取像素，零采样开销
@@ -168,7 +175,7 @@ final class ProgressiveBlur {
             + "  }\n"
             + "  half4 c = half4(acc / wsum);\n"
             + "  c.rgb = mix(c.rgb, half3(uBlendColor.rgb),\n"
-            + "              half(uBlendColor.a * strength));\n"
+            + "              half(uBlendColor.a * rw));\n"
             + "  float a = clamp(uReveal, 0.0, 1.0);\n"
             + "  return half4(c.rgb * half(a), half(a));\n"
             + "}\n";
@@ -283,10 +290,10 @@ final class ProgressiveBlur {
                         sample.getHeight() / Math.max(1f, dstH));
                 shader.setFloatUniform("uOrigin", left, top);
                 shader.setFloatUniform("uSize", right - left, bottom - top);
-                // uMaxRadius 是「采样盘半径」，对应的高斯 σ ≈ r/2。16dp @440dpi = 44px
-                // 直接当 r 用就是 σ=22px、模糊直径 130px，比顶栏还高，整条全糊成一片雾。
-                // 乘 0.5 → r=22px、σ≈11px，保留住形状轮廓但看不清文字，才是顶栏该有的手感。
-                shader.setFloatUniform("uMaxRadius", Theme.dpf(c, blurRadiusDp) * 0.5f);
+                // miuix 的 blurRadius（dp）直接乘 density 当核半径用：它的高斯
+                // σ = radius*0.5+0.5；本 shader 的 Vogel 盘 σ = r/2，所以 r 直接取
+                // blurRadiusPx 就是同档模糊。上一版 *0.5 只有一半强度，参考更糊。
+                shader.setFloatUniform("uMaxRadius", Theme.dpf(c, blurRadiusDp));
                 shader.setFloatUniform("uStart", gradient.startFraction);
                 shader.setFloatUniform("uEnd", gradient.endFraction);
                 shader.setFloatUniform("uCurve", gradient.curve);
@@ -328,7 +335,7 @@ final class ProgressiveBlur {
         canvas.restoreToCount(layer);
 
         scrimPaint.setShader(new LinearGradient(0, top, 0, bottom,
-                new int[] {Theme.alpha(surface, SURFACE_ALPHA * 0.6f * reveal),
+                new int[] {Theme.alpha(surface, SURFACE_ALPHA * reveal),
                         Theme.alpha(surface, 0f)},
                 null, Shader.TileMode.CLAMP));
         canvas.drawRect(left, top, right, bottom, scrimPaint);

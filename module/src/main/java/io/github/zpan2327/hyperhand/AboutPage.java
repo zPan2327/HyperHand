@@ -345,7 +345,7 @@ final class AboutPage {
 
     /**
      * 隐藏调试页：连续点击 logo 5 次弹出。
-     * 打包原「概览」页的运行状态 / 最近手势 / 快速操作三个区块。
+     * 打包原「设置 → 调试」与「概览」页的调试开关 / 运行状态 / 最近手势 / 快速操作。
      * 和其它弹出式子窗口一样走 MiuixDialog，不再用 root overlay
      * （Dialog 卡片是不透明的，不会像旧注释担心的那样透出下层页面）。
      */
@@ -360,6 +360,19 @@ final class AboutPage {
         TextView dbgTitle = Ui.text(c, "运行状态 / 手势 / 快速操作",
                 Theme.T_SUM, pal.summary, false);
         dbg.add(dbgTitle);
+
+        // ---- 调试开关（原「设置 → 调试」搬到这里，设置主界面不再展示）
+        dbg.add(Ui.section(c, pal, "调试开关"));
+        LinearLayout swCard = Ui.card(c, pal);
+        Ui.SwitchView swDbg = Ui.switchRow(c, swCard, pal, "调试日志",
+                "用 logcat -s HyperHand 观察判定过程，并记录最近手势", host.cfg().debug);
+        swDbg.setOnCheckedChange(new Ui.SwitchView.OnCheckedChange() {
+            @Override
+            public void onCheckedChanged(boolean checked) {
+                host.toggleDebug(checked);
+            }
+        });
+        dbg.add(swCard, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---- 运行状态
         dbg.add(Ui.section(c, pal, "运行状态"));
@@ -475,7 +488,9 @@ final class AboutPage {
         col.addView(heroIcon, new LinearLayout.LayoutParams(
                 Theme.dp(c, 88), Theme.dp(c, 88)));
 
-        GlassText name = new GlassText(c, "HyperHand", Theme.dpf(c, 34), pal.title);
+        // 字号对齐参考字标的帽高：about_wordmark.xml（193x40dp，SegUI Bold 轮廓）
+        // 的大写字母高约 28.5dp —— Roboto Bold 帽高 0.711em，取 40dp 正好同高。
+        GlassText name = new GlassText(c, "HyperHand", Theme.dpf(c, 40), pal.title);
         wordGlass = new GlassNode(pal.night, Theme.dpf(c, 30), Theme.dp(c, 20));
         name.setGlass(wordGlass);
         heroWord = name;
@@ -623,10 +638,9 @@ final class AboutPage {
 
     // ---------------------------------------------------------------- 图标
 
-    /** 应用图标：圆角方块 + 玻璃（RenderNode + RenderEffect）+ 白色手掌。 */
+    /** 应用图标：圆角方块 + 玻璃（RenderNode + RenderEffect）+ 手掌镂空。 */
     static final class AppIcon extends View {
         private final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint glyph = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path shape = new Path();
         private final float size;
         private final int accent;
@@ -638,7 +652,6 @@ final class AboutPage {
             super(c);
             this.size = sizePx;
             this.accent = accent;
-            glyph.setColor(Color.WHITE);
         }
 
         void setGlass(GlassNode g) {
@@ -665,39 +678,34 @@ final class AboutPage {
             float r = s * 0.27f;
             RectF box = new RectF(0, 0, s, s);
 
+            // 参考 about_logo_mark.png 的结构：圆角方块是「磨砂玻璃」，手掌图形是
+            // **镂空**（DstIn 蒙版上的透明洞）—— 图形区域透出下层背景，而不是
+            // 叠一层白色描边。上一版把白手掌画在玻璃之上，正是「logo 显示错误」的
+            // 一个来源（方块灰、图形死白，和参考的深紫方块 + 浅色镂空对不上）。
+            float inset = s * 0.22f;
+            float gs = s - inset * 2;
+            Path hand = Icons.glyph(Icons.HAND, inset, inset, gs);
             shape.reset();
             shape.addRoundRect(box, r, r, Path.Direction.CW);
+            // 圆角方块减去手掌轮廓 —— 图形是镂空洞，透出下层背景
+            shape.op(hand, Path.Op.DIFFERENCE);
 
-            // 软件画布下 RenderNode 画不到正确位置（见 GlassNode#draw），必须退回纯色，
-            // 否则液态底栏采样这张图时会采到糊在原点的副本。
+            canvas.save();
+            canvas.clipPath(shape);
             if (glass != null && glass.usable() && canvas.isHardwareAccelerated()) {
-                // 参考实现：图形本身是「磨砂玻璃」—— 圆角矩形当蒙版，里面填的是
-                // 背后那块背景的模糊采样（RenderEffect 链在 GPU 上算完）。
-                canvas.save();
-                canvas.clipPath(shape);
+                // 图形本身是「磨砂玻璃」—— 圆角矩形当蒙版，里面填的是背后那块背景
+                // 的模糊采样 + miuix 混色链（见 GlassNode）。
                 canvas.translate(-glass.pad(), -glass.pad());
                 glass.draw(canvas);
-                canvas.restore();
             } else {
                 int base = tint != 0 ? tint : accent;
                 bg.setShader(new LinearGradient(0, 0, s, s,
                         new int[] {Theme.blend(base, 0xFFFFFFFF, 0.22f), base,
                                 Theme.blend(base, 0xFF000000, 0.18f)},
                         new float[] {0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
-                canvas.drawRoundRect(box, r, r, bg);
+                canvas.drawRect(0, 0, s, s, bg);
             }
-
-            // 顶部高光，玻璃边缘的那点反光
-            Paint sheen = new Paint(Paint.ANTI_ALIAS_FLAG);
-            sheen.setShader(new LinearGradient(0, 0, 0, s * 0.6f,
-                    new int[] {0x26FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
-            canvas.drawRoundRect(box, r, r, sheen);
-
-            float inset = s * 0.22f;
-            float gs = s - inset * 2;
-            // 掌心比方块本身淡一点：参考的图形里线条 alpha 更低，露出更多背景。
-            Icons.draw(canvas, Icons.HAND, inset, inset, gs, 0xE6FFFFFF,
-                    Math.max(2f, s * 0.055f));
+            canvas.restore();
         }
     }
 

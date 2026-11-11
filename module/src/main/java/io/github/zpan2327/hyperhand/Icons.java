@@ -91,6 +91,26 @@ final class Icons {
         }
     }
 
+    /**
+     * 返回一个新的、已变换到 {@code (left, top, size)} 目标框的路径副本 ——
+     * 供「图形当蒙版挖洞」这类需要 Path 本身（而不是画出来）的场景使用。
+     * 变换与 {@link #draw} 的 Canvas 操作完全一致。
+     */
+    static Path glyph(int kind, float left, float top, float size) {
+        Path out = new Path(path(kind, size));
+        float s = size / VB;
+        // 显式写出映射：x' = s·x + left，y' = s·(y + VB) + top
+        // （等价于 draw() 的 translate(left,top) → scale(s) → translate(0,VB)）
+        android.graphics.Matrix m = new android.graphics.Matrix();
+        m.setValues(new float[] {
+                s, 0f, left,
+                0f, s, top + s * VB,
+                0f, 0f, 1f,
+        });
+        out.transform(m);
+        return out;
+    }
+
     /** SVG path data → Path（viewBox 原始坐标）。支持 M/L/H/V/C/S/Q/T/Z，绝对与相对。 */
     private static Path parse(String d) {
         Path path = new Path();

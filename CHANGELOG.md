@@ -2,6 +2,36 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+- **关于页 logo / 应用名显示错误**：玻璃混色链里第三层 Lab 被「明度归一 LIFT」
+  近似替代，把方块压成灰紫、字标发浅。现逐行移植 miuix `Shaders.kt` 的
+  `mi_blend_color_burn / color_dodge / blendLinearLight / labColor`（含预乘语义与
+  `L' = (n−m)·L + 100·m` 明度映射），浅/深色两套 BlendColorEntry 与 SonyPods
+  `aboutArtworkBlendColors` 完全一致；logo 手掌图形改为**镂空蒙版**（透出背景，
+  与参考 about_logo_mark.png 同构），不再叠白色描边；字标 34dp → 40dp
+  （帽高 28.5dp 对齐参考字标）。
+- **顶部渐进式模糊与参考不符**：雾罩强度 0.45 → 0.66（SonyPods
+  `TOP_BAR_SURFACE_ALPHA`）；强度曲线补上 smoothstep（`1−pow(smoothstep(u), curve)`），
+  叠色渐变改用 miuix 的 `rampWeight`；模糊半径去掉 0.5 折减，与 miuix
+  `σ = radius·0.5` 同档。
+- **对话窗口样式 1:1 对齐 SonyPods 概览右上角按钮弹出的窗口**：MiuixDialog 从
+  WindowDialog 规格（288dp/28dp 圆角/竖排按钮）改到 OverlayDialog 规格
+  （420dp 上限、圆角 32dp、外 12dp、内 24dp、标题 18sp、说明 16sp、蒙层
+  黑 α0.3/0.6），双按钮横排等宽间距 8dp（左 secondary / 右 primary，17sp）。
+
+### 变更
+- **调试模块隐藏**：设置页不再展示「调试」分组；仅可通过**关于页连续点击
+  logo 五次**（800ms 连点窗口）唤起调试窗口（含调试日志开关 / 运行状态 /
+  最近手势 / 快速操作）。设置页保存配置时调试日志值直通，不会被重置。
+
+### 文档
+- 新增 `docs/UI与交互规范.md`：UI 与交互的权威约定（对话窗口、渐进模糊、
+  关于页 hero、调试入口、性能约束、文件映射）。
+- 新增 `docs/miuix-components.md`：miuix 组件目录（11 模块 / 117 组件条目，
+  含子组件层级、样式数值、交互逻辑，及 HyperHand View 侧对齐速查表）。
+
 ## [3.0.3-beta.1] - 2026-11-11 - miuix UI 一致性改造
 
 界面层仍是 `:module` 的纯 Java 原生 View（按 [miuix](https://github.com/compose-miuix-ui/miuix)

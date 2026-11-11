@@ -85,7 +85,21 @@ class HyperGlassBarView @JvmOverloads constructor(
      * 页面横滑过程中的连续位置（0..2），指示器直接跟手——原 `GlassBar.setPagePosition` 的语义。
      */
     fun setPagePosition(position: Float) {
-        pagePosition = position
+        if (pagePosition != position) {
+            pagePosition = position
+        }
+    }
+
+    /**
+     * 收回跟手位置，指示器改由自身弹簧追 [currentIndex]。
+     *
+     * 代码触发的切页（点底栏、外部 intent 切页）必须走这里：那种滚动是 280ms 的一大段，
+     * 每帧位移能到半格，让指示器逐帧跟它就会看到「飞一下、卡几帧、再跳一下」。
+     */
+    fun clearPagePosition() {
+        if (pagePosition != null) {
+            pagePosition = null
+        }
     }
 
     fun setSelectedIndex(index: Int) {

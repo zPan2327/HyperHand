@@ -7,6 +7,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
@@ -15,6 +16,7 @@ import android.graphics.Shader;
 import android.net.Uri;
 import android.os.Build;
 import android.util.DisplayMetrics;
+import android.text.TextPaint;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -43,21 +45,220 @@ final class AboutPage {
     private final Context c;
     private final Ui.Page page;
 
+    /** 关于页的根容器：OS3 背景在最底、滚动内容居中、固定 hero 在最上层。 */
+    private final Root root;
+    private final MiuixBg wash;
+    private final FrameLayout heroLayer;
+    private LinearLayout heroCol;
+    private View spacer;
+    private View tail;
+    private GlassNode iconGlass;
+    private GlassNode wordGlass;
+    private View heroIcon;
+    private View heroWord;
+    private View heroVersion;
+    /** hero 占掉的滚动预算（px）：滚完这段，背景和 hero 正好全部淡出。 */
+    private int heroBudget;
+    private float progress;
+    /** 玻璃重录的帧计数；配合隔帧更新（见 onTint）。 */
+    private int glassTick;
+
+    /**
+     * 根容器。
+     *
+     * 对外要能被 {@code MainActivity.scrollOf()} 认出内部滚动容器 —— 顶栏折叠、insets、
+     * Rubber Band 都挂在那个 ScrollView 上，不能因为外面套了一层就失联。
+     */
+    static final class Root extends FrameLayout {
+        final android.widget.ScrollView scroll;
+
+        Root(Context c, android.widget.ScrollView scroll) {
+            super(c);
+            this.scroll = scroll;
+        }
+    }
+
     AboutPage(MainActivity host) {
         this.host = host;
         this.c = host;
         this.pal = host.pal;
         this.page = Ui.page(c, pal);
+
+        root = new Root(c, page.scroll);
+        root.setClipChildren(false);
+        // 渐变淡出之后底下必须还有一层「页面底色」，不能是透明的：
+        // 1) 背景看着就是「渐变 → 纯白」的样子，中途不会露出窗口底色；
+        // 2) 液态底栏采样的是这块区域，透明的话采不到颜色，胶囊会发黑。
+        root.setBackground(Theme.pageBackground(pal));
+
+        // 1) 全屏 OS3 流动背景。它是 View 而不是 Drawable，所以直接铺在最底层；
+        //    滚动内容用透明底，渐变才不会被 ScrollView 自己的页面底色盖住。
+        wash = new MiuixBg(c, pal);
+        root.addView(wash, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        page.scroll.setBackground(null);
+
+        // 2) 滚动内容
+        root.addView(page.scroll, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // 视口高度要等布局完才知道，而尾部补白依赖它（见 fillTail）。
+        page.scroll.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int l, int t, int r, int b,
+                                       int ol, int ot, int or, int ob) {
+                if (b - t != ob - ot) {
+                    computeBudget();
+                }
+            }
+        });
+
+        // 3) 固定 hero：盖在内容之上，但只有 logo 会消费触摸，
+        //    整层淡出后不再挡卡片（见 applyScroll）。
+        heroLayer = new FrameLayout(c);
+        heroLayer.setClipChildren(false);
+        root.addView(heroLayer, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         build();
+
+        // 参考实现：icon 和字标都是 textureBlur（textureBlur 采样的是背后那一层渐变），
+        // 所以它们的颜色会跟着背景一起变。这里让背景每帧把当前取色推过来。
+        wash.setOnTint(new MiuixBg.OnTint() {
+            @Override
+            public void onTint(int color) {
+                // hero 淡出后没人看得见，别再录了
+                if (progress > 0.55f) {
+                    return;
+                }
+                // 主体路径：把背后那块背景重录进 RenderNode，模糊与调色在 GPU 上完成。
+                // 参考实现里这一步是零成本的（textureBlur 直接从背景图层采样），
+                // 我们要显式重录一次，每帧两遍全屏着色器正是滚动时最大的一笔开销。
+                // 背景是 5 秒一周期的缓慢流动，30fps 的更新速度肉眼看不出差别，于是隔帧录。
+                if ((++glassTick & 1) == 0) {
+                    captureGlass(heroIcon, iconGlass);
+                    captureGlass(heroWord, wordGlass);
+                }
+                // 退路：渲染节点不可用时退回纯色填充
+                if (heroIcon instanceof AppIcon) {
+                    ((AppIcon) heroIcon).setTint(color);
+                }
+                if (heroWord instanceof GlassText) {
+                    ((GlassText) heroWord).setTint(color);
+                }
+            }
+        });
     }
 
+    /** 把 {@code v} 及其下方 {@link GlassNode#pad()} 一圈的背景录进它的 RenderNode。 */
+    private void captureGlass(View v, GlassNode g) {
+        if (v == null || g == null || !g.usable() || v.getWidth() <= 0 || v.getHeight() <= 0) {
+            return;
+        }
+        int x = offsetInRoot(v, true) - g.pad();
+        int y = offsetInRoot(v, false) - g.pad();
+        int pad = g.pad();
+        g.capture(wash, x, y, v.getWidth() + pad * 2, v.getHeight() + pad * 2);
+        v.invalidate();
+    }
+
+    /** 视图在根容器（也就是背景所在的坐标系）里的左/上偏移。 */
+    private int offsetInRoot(View v, boolean horizontal) {
+        int acc = 0;
+        View cur = v;
+        while (cur != null && cur != root) {
+            acc += horizontal ? cur.getLeft() : cur.getTop();
+            android.view.ViewParent p = cur.getParent();
+            cur = p instanceof View ? (View) p : null;
+        }
+        return acc;
+    }
+
+    /** 返回整页容器（背景 + 内容 + hero），不再是裸的 ScrollView。 */
     View view() {
-        return page.scroll;
+        return root;
+    }
+
+    /** MainActivity 的滚动回调转进来，驱动背景与 hero 的淡出。 */
+    void onScrolled(int y) {
+        if (heroBudget <= 0) {
+            return;
+        }
+        float p = Math.max(0f, Math.min(1f, (float) y / heroBudget));
+        if (Math.abs(p - progress) < 0.0005f) {
+            return;
+        }
+        progress = p;
+        float bgAlpha = 1f - p;
+        wash.setAlpha(bgAlpha);
+        // 参考实现里背景完全淡出后会把动画任务一并取消（alpha <= 0 就 cancel），
+        // 否则滚到底还得每帧重跑一遍全屏着色器。回来一点再恢复。
+        if (bgAlpha <= 0f) {
+            wash.stop();
+        } else {
+            wash.start();
+        }
+        applyHeroFade();
+    }
+
+    /**
+     * 逐元素淡出（照 SonyPods 的顺序：版本最先、字标其次、图标最后）。
+     * 每个元素有自己的窗口，所以看起来是「一块一块化掉」而不是整体变淡。
+     */
+    private void applyHeroFade() {
+        fade(heroVersion, 0.05f, 0.20f);
+        fade(heroWord, 0.20f, 0.35f);
+        fade(heroIcon, 0.35f, 0.50f);
+    }
+
+    private void fade(View v, float from, float to) {
+        if (v == null) {
+            return;
+        }
+        float t = Math.max(0f, Math.min(1f, (progress - from) / (to - from)));
+        v.setAlpha(1f - t);
+        float s = 1f - t * 0.05f;
+        v.setScaleX(s);
+        v.setScaleY(s);
+        // 完全淡出后不再吃触摸，免得透明层压着下面的卡片。
+        v.setEnabled(t < 1f);
+    }
+
+    /**
+     * hero 顶部留白 = 状态栏 + 144dp。
+     *
+     * SonyPods 的式子：padding(top = contentTopPadding + HERO_EXTRA_TOP + 52dp)，
+     * 其中 contentTopPadding 对 SmallTopAppBar 而言就是「状态栏 + 52dp」，
+     * HERO_EXTRA_TOP = 40dp，于是 52 + 40 + 52 = 144dp。
+     *
+     * 注意必须能重复调用：构建页面时 window insets 还没下发（statusInset 还是 0），
+     * 只在这里算一次的话 hero 会整体高出状态栏那么多。
+     */
+    private void applyHeroTop() {
+        if (heroCol == null) {
+            return;
+        }
+        heroCol.setPadding(Theme.dp(c, 20), host.statusInset() + Theme.dp(c, 144),
+                Theme.dp(c, 20), 0);
+    }
+
+    /** insets 下发 / 变化后由宿主调用：重算 hero 顶距与滚动预算。 */
+    void onInsets() {
+        applyHeroTop();
+        computeBudget();
+    }
+
+    /** 当前滚动进度（0=完全展开，1=hero 与背景全部消失）。 */
+    float progress() {
+        return progress;
     }
 
     private void build() {
-        buildHero();
+        // 顶部留出与固定 hero 等高的空白，撑出滚动预算；高度在 hero 量完后回填。
+        spacer = new View(c);
+        page.add(spacer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0));
 
+        buildHero();
         // ---------------------------------------------------------- 开发者
         page.add(Ui.section(c, pal, "开发者"));
         LinearLayout cardDev = Ui.card(c, pal);
@@ -90,7 +291,7 @@ final class AboutPage {
         page.add(cardDev);
 
         // ---------------------------------------------------------- 项目
-        page.add(Ui.section(c, pal, "项目"));
+        // 参考版式里开发者卡片下面直接就是这张卡片，没有「项目」小标题。
         LinearLayout cardProj = Ui.card(c, pal);
         Ui.navRow(c, cardProj, pal, -1, "源码", "GitHub 上的 HyperHand 仓库", "GitHub",
                 new Runnable() {
@@ -128,6 +329,16 @@ final class AboutPage {
         foot.setLineSpacing(Theme.dp(c, 3), 1f);
         foot.setPadding(0, Theme.dp(c, 24), 0, 0);
         page.add(foot);
+
+        // 尾部补足：让「可滚动距离」至少等于 hero 预算。
+        //
+        // 参考实现里第一屏的内容块是 Box + fillParentMaxHeight，天然把内容撑满一个
+        // 视口，所以滚到底时 scrollProgress 正好到 1。我们这里是普通的顺序布局，
+        // 卡片少的时候内容比「预算 + 视口」短，滚到底 progress 才 0.3 左右 ——
+        // 背景和 logo 都淡不干净。高度在 computeBudget 里回填。
+        tail = new View(c);
+        page.add(tail, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0));
     }
 
     // ---------------------------------------------------------------- 调试页（隐藏）
@@ -135,16 +346,19 @@ final class AboutPage {
     /**
      * 隐藏调试页：连续点击 logo 5 次弹出。
      * 打包原「概览」页的运行状态 / 最近手势 / 快速操作三个区块。
-     * 用 root overlay 实现（Dialog 在 MIUI 上会透出下层页面）。
+     * 和其它弹出式子窗口一样走 MiuixDialog，不再用 root overlay
+     * （Dialog 卡片是不透明的，不会像旧注释担心的那样透出下层页面）。
      */
     private void showDebugPage() {
-        FrameLayout overlay = new FrameLayout(c);
-        overlay.setBackgroundColor(pal.bg);
+        final MiuixDialog d = new MiuixDialog(host, pal);
+        d.title("调试");
 
         Ui.Page dbg = Ui.page(c, pal);
-        dbg.column.setPadding(Ui.pagePad(c), host.statusInset() + Theme.dp(c, 16),
-                Ui.pagePad(c), Theme.dp(c, 32));
-        TextView dbgTitle = Ui.text(c, "调试", Theme.T_TITLE, pal.title, Theme.semibold());
+        dbg.scroll.setBackground(Theme.round(pal.night ? 0xFF242424 : 0xFFFFFFFF, 0f));
+        dbg.column.setPadding(MiuixDialog.pad(c), Theme.dp(c, 8),
+                MiuixDialog.pad(c), Theme.dp(c, 16));
+        TextView dbgTitle = Ui.text(c, "运行状态 / 手势 / 快速操作",
+                Theme.T_SUM, pal.summary, false);
         dbg.add(dbgTitle);
 
         // ---- 运行状态
@@ -200,20 +414,16 @@ final class AboutPage {
         });
         dbg.add(quick, Ui.cardLp(c, Theme.CARD_GAP));
 
-        TextView close = Ui.text(c, "关闭", Theme.T_ROW, pal.primary, true);
-        close.setGravity(Gravity.CENTER);
-        close.setPadding(0, Theme.dp(c, 16), 0, Theme.dp(c, 8));
-        close.setOnClickListener(new View.OnClickListener() {
+        int maxH = Math.min(Theme.dp(c, 340),
+                (int) (c.getResources().getDisplayMetrics().heightPixels * 0.50f));
+        d.content(dbg.scroll, maxH);
+        d.button("关闭", false, new MiuixDialog.OnClick() {
             @Override
-            public void onClick(View v) {
-                host.hideOverlay(overlay);
+            public void onClick(MiuixDialog dlg) {
+                dlg.dismiss();
             }
         });
-        dbg.add(close);
-
-        overlay.addView(dbg.scroll, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        host.showOverlay(overlay);
+        d.show();
     }
 
     private static int safe(int curve) {
@@ -226,29 +436,28 @@ final class AboutPage {
 
     // ---------------------------------------------------------------- 顶部
 
+    /**
+     * 固定 hero（不随内容滚动）：logo / 名称 / 版本。
+     *
+     * SonyPods 的关于页把 hero 放在 LazyColumn 之外用 padding 定位，内容区第一个 item 是一个
+     * 同样高度的 Spacer 撑出滚动预算；页面一滚，hero 原地不动、逐块淡出，背景跟着变透明。
+     * 这里用相同结构：hero 放在根容器的覆盖层里，ScrollView 顶部留等高的空白。
+     */
     private void buildHero() {
-        // 允许 hero 溢出页面内边距，渐变才能铺满整屏宽
-        page.column.setClipChildren(false);
-        page.column.setClipToPadding(false);
-
-        FrameLayout hero = new FrameLayout(c);
-        hero.setClipChildren(false);
-
-        // 顶部氛围渐变：直接用 Miuix 的 OS3 背景着色器（见 MiuixBg）
-        MiuixBg wash = new MiuixBg(c, pal);
-        hero.addView(wash, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(c, 420)));
-
-
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        col.setPadding(Theme.dp(c, 20), Theme.dp(c, 116) + host.statusInset(), Theme.dp(c, 20), Theme.dp(c, 26));
+        heroCol = col;
+        applyHeroTop();
 
-        AppIcon icon = new AppIcon(c, Theme.dp(c, 88), pal.primary);
+        heroIcon = new AppIcon(c, Theme.dp(c, 88), pal.primary);
+        // 玻璃：和参考一样由 RenderNode + RenderEffect 出图（见 GlassNode），
+        // 渲染半径取参考的 blurRadius = 200f（图标）/ 150f（字标）按 dp 折算。
+        iconGlass = new GlassNode(pal.night, Theme.dpf(c, 40), Theme.dp(c, 26));
+        ((AppIcon) heroIcon).setGlass(iconGlass);
         // 隐藏入口：连续点击 logo 5 次弹出调试页
-        icon.setClickable(true);
-        icon.setOnClickListener(new View.OnClickListener() {
+        heroIcon.setClickable(true);
+        heroIcon.setOnClickListener(new View.OnClickListener() {
             private int taps;
             private long last;
 
@@ -263,35 +472,92 @@ final class AboutPage {
                 }
             }
         });
-        col.addView(icon, new LinearLayout.LayoutParams(Theme.dp(c, 88), Theme.dp(c, 88)));
+        col.addView(heroIcon, new LinearLayout.LayoutParams(
+                Theme.dp(c, 88), Theme.dp(c, 88)));
 
-        TextView name = Ui.text(c, "HyperHand", 30, pal.title, Theme.semibold());
-        name.setLetterSpacing(-0.01f);
-        name.setPadding(0, Theme.dp(c, 16), 0, 0);
-        name.setGravity(Gravity.CENTER);
-        col.addView(name);
+        GlassText name = new GlassText(c, "HyperHand", Theme.dpf(c, 34), pal.title);
+        wordGlass = new GlassNode(pal.night, Theme.dpf(c, 30), Theme.dp(c, 20));
+        name.setGlass(wordGlass);
+        heroWord = name;
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nameLp.topMargin = Theme.dp(c, 12);
+        col.addView(name, nameLp);
 
         TextView ver = Ui.text(c, versionName() + "(" + versionCode() + ")", 14,
                 pal.summary, false);
         ver.setPadding(0, Theme.dp(c, 5), 0, 0);
         ver.setGravity(Gravity.CENTER);
+        heroVersion = ver;
         col.addView(ver);
 
-        hero.addView(col, new FrameLayout.LayoutParams(
+        heroLayer.addView(col, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // 渐变要横向出血到屏幕两侧，抵消页面的左右内边距
-        int pad = Ui.pagePad(c);
-        LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        heroLp.leftMargin = -pad;
-        heroLp.rightMargin = -pad;
-        page.add(hero, heroLp);
+        // hero 高度依赖状态栏 inset，布局完成后再算滚动预算（SonyPods 的 heroHeightDp）。
+        col.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int l, int t, int r, int b,
+                                       int ol, int ot, int or, int ob) {
+                computeBudget();
+            }
+        });
     }
 
     /**
-     * 圆形头像。avatar.png 已经是按猫脸裁好的正方形（320×320），
-     * 这里只需等比铺满，不再做偏移运算 —— 之前在运行期裁切容易取错区域。
+     * 滚动预算 = hero 底部到内容顶部的距离 + 126dp。
+     *
+     * 126dp 是 SonyPods 里留的「滚完这一段英雄区才彻底消失」的余量；滚满这段，
+     * scrollProgress 到 1，背景完全透明、英雄区全部淡出。
+     */
+    private void computeBudget() {
+        if (heroLayer.getHeight() <= 0 || page.column == null) {
+            return;
+        }
+        int colTop = page.column.getPaddingTop();
+        int budget = Math.max(0, heroLayer.getBottom() - colTop) + Theme.dp(c, 126);
+        if (budget != heroBudget) {
+            heroBudget = budget;
+            if (spacer != null) {
+                ViewGroup.LayoutParams lp = spacer.getLayoutParams();
+                lp.height = budget;
+                spacer.setLayoutParams(lp);
+            }
+        }
+        fillTail();
+        onScrolled(page.scroll.getScrollY());
+    }
+
+    /**
+     * 补足尾部空白，保证「可滚动距离 ≥ hero 预算」，滚到底时 progress 能到 1。
+     *
+     * 用「除尾部以外的内容高度」来算，而不是「当前可滚动距离」：后者加上尾部之后
+     * 正好等于预算，下一次计算又会得出 0，会来回抖。这里的 bodyH 不含尾部，
+     * 所以换成新尾部高度后再算一次结果不变，一次收敛。
+     */
+    private void fillTail() {
+        if (tail == null || page.column == null || page.scroll.getHeight() <= 0) {
+            return;
+        }
+        int colH = page.column.getHeight();
+        if (colH <= 0) {
+            return;
+        }
+        int tailH = tail.getHeight();
+        int bodyH = colH - tailH;
+        int want = Math.max(0, heroBudget + page.scroll.getHeight() - bodyH);
+        if (want == tailH) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = tail.getLayoutParams();
+        lp.height = want;
+        tail.setLayoutParams(lp);
+    }
+
+    /**
+     * 圆形头像：centerCrop —— 等比缩放到刚好铺满正方形，超出部分被圆形 clip 裁掉。
+     * 不做任何非等比拉伸，也不会像旧的 1:1 drawBitmap 那样只显示大图左上角一小块。
+     * 图源是用户指定的 940×940 正方图，铺满后就是完整的一张脸，不需要额外偏移。
      */
     private View avatar(int sizeDp) {
         final int size = Theme.dp(c, sizeDp);
@@ -314,11 +580,15 @@ final class AboutPage {
                 canvas.save();
                 canvas.clipPath(clip);
                 if (bmp != null && !bmp.isRecycled()) {
-                    // 正方形图源：等比铺满即可
-                    float s = (float) size / bmp.getWidth();
-                    float dw = bmp.getWidth() * s;
-                    float dh = bmp.getHeight() * s;
-                    canvas.drawBitmap(bmp, (size - dw) / 2f, (size - dh) / 2f, bitPaint);
+                    // 等比铺满（centerCrop）：取宽高两个方向里较大的缩放比，
+                    // 再居中平移，短边多出来的部分由圆形 clip 裁掉，绝不拉伸变形。
+                    float scale = Math.max((float) size / bmp.getWidth(),
+                            (float) size / bmp.getHeight());
+                    Matrix m = new Matrix();
+                    m.setScale(scale, scale);
+                    m.postTranslate((size - bmp.getWidth() * scale) / 2f,
+                            (size - bmp.getHeight() * scale) / 2f);
+                    canvas.drawBitmap(bmp, m, bitPaint);
                 } else {
                     canvas.drawColor(Theme.alpha(pal.primary, pal.night ? 0.24f : 0.12f));
                 }
@@ -340,10 +610,10 @@ final class AboutPage {
             }
             android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
             o.inPreferredConfig = Bitmap.Config.ARGB_8888;
-            // 关键：不让 aapt2 按屏幕密度把 320 的图放大成 880 —— 那样再缩到 154
-            // 就是 5.7 倍的双线性跳采样，头像会糊成一团。
+            // 不让 aapt2 按屏幕密度把图放大成 2000+ 再缩回来，那样会糊。
             o.inScaled = false;
-            // 解码阶段就降到接近显示尺寸（320 / 2 = 160 ≈ 154），由解码器做盒式平均，最清晰。
+            // 图源 940×940，/2 = 470px，仍远大于 56dp 的显示尺寸：
+            // 解码阶段只做整数降采样，绘制时由 Matrix 等比缩放到刚好铺满。
             o.inSampleSize = 2;
             return android.graphics.BitmapFactory.decodeResource(c.getResources(), id, o);
         } catch (Throwable t) {
@@ -353,22 +623,35 @@ final class AboutPage {
 
     // ---------------------------------------------------------------- 图标
 
-    /** 应用图标：圆角方块 + 蓝色渐变 + 白色下滑手势，和桌面图标同一套视觉。 */
+    /** 应用图标：圆角方块 + 玻璃（RenderNode + RenderEffect）+ 白色手掌。 */
     static final class AppIcon extends View {
         private final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint glyph = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path clip = new Path();
+        private final Path shape = new Path();
         private final float size;
         private final int accent;
+        private GlassNode glass;
+        /** 玻璃不可用时的退路：由背景取样得到的取色；0 表示还没拿到。 */
+        private int tint;
 
         AppIcon(Context c, float sizePx, int accent) {
             super(c);
             this.size = sizePx;
             this.accent = accent;
-            glyph.setStyle(Paint.Style.STROKE);
-            glyph.setStrokeCap(Paint.Cap.ROUND);
-            glyph.setStrokeJoin(Paint.Join.ROUND);
             glyph.setColor(Color.WHITE);
+        }
+
+        void setGlass(GlassNode g) {
+            glass = g;
+            invalidate();
+        }
+
+        void setTint(int color) {
+            if (color == tint) {
+                return;
+            }
+            tint = color;
+            invalidate();
         }
 
         @Override
@@ -381,25 +664,107 @@ final class AboutPage {
             float s = getWidth();
             float r = s * 0.27f;
             RectF box = new RectF(0, 0, s, s);
-            bg.setShader(new LinearGradient(0, 0, s, s,
-                    new int[] {Theme.blend(accent, 0xFFFFFFFF, 0.28f), accent, Theme.blend(accent, 0xFF001A4D, 0.28f)},
-                    new float[] {0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
-            canvas.drawRoundRect(box, r, r, bg);
 
-            // 顶部高光，让图标有一点玻璃质感
+            shape.reset();
+            shape.addRoundRect(box, r, r, Path.Direction.CW);
+
+            // 软件画布下 RenderNode 画不到正确位置（见 GlassNode#draw），必须退回纯色，
+            // 否则液态底栏采样这张图时会采到糊在原点的副本。
+            if (glass != null && glass.usable() && canvas.isHardwareAccelerated()) {
+                // 参考实现：图形本身是「磨砂玻璃」—— 圆角矩形当蒙版，里面填的是
+                // 背后那块背景的模糊采样（RenderEffect 链在 GPU 上算完）。
+                canvas.save();
+                canvas.clipPath(shape);
+                canvas.translate(-glass.pad(), -glass.pad());
+                glass.draw(canvas);
+                canvas.restore();
+            } else {
+                int base = tint != 0 ? tint : accent;
+                bg.setShader(new LinearGradient(0, 0, s, s,
+                        new int[] {Theme.blend(base, 0xFFFFFFFF, 0.22f), base,
+                                Theme.blend(base, 0xFF000000, 0.18f)},
+                        new float[] {0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+                canvas.drawRoundRect(box, r, r, bg);
+            }
+
+            // 顶部高光，玻璃边缘的那点反光
             Paint sheen = new Paint(Paint.ANTI_ALIAS_FLAG);
             sheen.setShader(new LinearGradient(0, 0, 0, s * 0.6f,
-                    new int[] {0x33FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+                    new int[] {0x26FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
             canvas.drawRoundRect(box, r, r, sheen);
 
             float inset = s * 0.22f;
             float gs = s - inset * 2;
-            Icons.draw(canvas, Icons.HAND, inset, inset, gs, Color.WHITE, Math.max(2f, s * 0.055f));
+            // 掌心比方块本身淡一点：参考的图形里线条 alpha 更低，露出更多背景。
+            Icons.draw(canvas, Icons.HAND, inset, inset, gs, 0xE6FFFFFF,
+                    Math.max(2f, s * 0.055f));
+        }
+    }
+
+    /**
+     * 字标：字形本身是玻璃。
+     *
+     * 参考里 wordmark 是一张 PNG，套同样的 {@code textureBlur(..., contentBlendMode = DstIn)}，
+     * 也就是用字形的 alpha 当蒙版去裁那块模糊背景。这里把字形转成 {@link Path} 来当蒙版，
+     * 效果一致，而且不用额外塞一张图。
+     */
+    static final class GlassText extends View {
+        private final String text;
+        private final TextPaint tp = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        private final Path glyph = new Path();
+        private final int fallback;
+        private GlassNode glass;
+        private final int w;
+        private final int h;
+        private float baseline;
+
+        GlassText(Context c, String s, float sizePx, int fallbackColor) {
+            super(c);
+            text = s;
+            fallback = fallbackColor;
+            tp.setTypeface(Theme.bold());
+            tp.setTextSize(sizePx);
+            tp.setColor(fallbackColor);
+            Paint.FontMetrics fm = tp.getFontMetrics();
+            baseline = -fm.ascent;
+            h = Math.max(1, Math.round(fm.descent - fm.ascent));
+            w = Math.max(1, Math.round(tp.measureText(s)));
+            tp.getTextPath(s, 0, s.length(), 0f, baseline, glyph);
+        }
+
+        void setGlass(GlassNode g) {
+            glass = g;
+            invalidate();
+        }
+
+        void setTint(int color) {
+            if (tp.getColor() == color) {
+                return;
+            }
+            tp.setColor(color);
+            invalidate();
+        }
+
+        @Override
+        protected void onMeasure(int widthSpec, int heightSpec) {
+            setMeasuredDimension(w, h);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            if (glass != null && glass.usable() && canvas.isHardwareAccelerated()) {
+                canvas.save();
+                canvas.clipPath(glyph);
+                canvas.translate(-glass.pad(), -glass.pad());
+                glass.draw(canvas);
+                canvas.restore();
+            } else {
+                canvas.drawText(text, 0f, baseline, tp);
+            }
         }
     }
 
     // ---------------------------------------------------------------- 数据
-
     private String versionName() {
         try {
             PackageInfo pi = c.getPackageManager().getPackageInfo(c.getPackageName(), 0);

@@ -11,8 +11,8 @@
     <application
         android:label="@string/app_name"
         android:description="@string/app_description"
-        android:icon="@drawable/ic_hyperhand"
-        android:roundIcon="@drawable/ic_hyperhand"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:hasCode="true"
         android:theme="@android:style/Theme.DeviceDefault.DayNight">
 

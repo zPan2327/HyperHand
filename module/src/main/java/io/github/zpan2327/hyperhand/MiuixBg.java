@@ -140,6 +140,23 @@ final class MiuixBg extends View {
     private ValueAnimator animator;
     private long startAt;
 
+    /** 上一帧真正重绘的时刻；配合 {@link #FRAME_MS} 把动画压到 60fps。 */
+    private long lastFrameAt;
+    private static final long FRAME_MS = 16L;
+
+    /** 颜色变化回调：关于页的「玻璃」logo / 应用名靠它跟着背景走。 */
+    interface OnTint {
+        void onTint(int color);
+    }
+
+    private OnTint onTint;
+    private int lastTint;
+    private boolean notifying;
+
+    void setOnTint(OnTint l) {
+        onTint = l;
+    }
+
     MiuixBg(Context c, Theme.Colors pal) {
         super(c);
         night = pal.night;
@@ -175,6 +192,15 @@ final class MiuixBg extends View {
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator a) {
+                // 这块背景是整屏 AGSL：1200×2670 每帧重跑一遍着色器，在 120Hz 上等于
+                // 每秒 3.8 亿像素，GPU 直接顶到一帧预算（实测 99 分位 10ms / 预算 8.3ms），
+                // 连带 logo 与字标的取色也跟着抖。而它只是 5 秒一周期的缓慢流动，
+                // 60fps 完全看不出差别，于是按 60fps 节流，把余下的帧让给合成。
+                long now = SystemClock.uptimeMillis();
+                if (now - lastFrameAt < FRAME_MS) {
+                    return;
+                }
+                lastFrameAt = now;
                 invalidate();
             }
         });
@@ -245,24 +271,71 @@ final class MiuixBg extends View {
             drawFallback(canvas, w, h, t);
         }
 
-        // 底部渐隐回页面底色，卡片才不会直接压在一刀切的色块上。
-        if (Theme.demoBg) {
-            // 演示模式没有"页面底色"可回 —— 用 DST_OUT 把这层自己淡成透明，
-            // 露出页面的彩色渐变。用 Theme.alpha(0x00000000, .55f) 会算成半透明黑，
-            // 在 42% 高度切出一条脏带。
-            Paint cut = new Paint(Paint.ANTI_ALIAS_FLAG);
-            cut.setShader(new LinearGradient(0, h * 0.42f, 0, h,
-                    new int[] {0x00000000, 0xFF000000}, null, Shader.TileMode.CLAMP));
-            cut.setXfermode(new android.graphics.PorterDuffXfermode(
-                    android.graphics.PorterDuff.Mode.DST_OUT));
-            canvas.drawRect(0, h * 0.42f, w, h, cut);
+        // 不再在底部渐隐到页面底色。那是为「420dp 高的局部色块」准备的收边，
+        // 现在这层渐变铺满整屏、靠 alpha 整体淡出（见 AboutPage.onScrolled），
+        // 再叠一层渐隐会在 42% 高度切出一条硬边。
+        notifyTint();
+    }
+
+    /**
+     * 把当前配色平均成一个颜色，交给关于页做「玻璃」取样。
+     *
+     * 参考实现是 textureBlur：把背景模糊采样后，用图形的 alpha 当蒙版填进去，
+     * 所以 logo / 字标的颜色会跟着背景一起变。原生 View 里拿不到那张采样图，
+     * 但这里用的就是同一套 4 光点配色，直接在 CPU 上按同样的权重混一遍即可 ——
+     * 反正最后还要过一道「压暗 + 提纯」的变换，肉眼看不出差别。
+     */
+    private void notifyTint() {
+        if (onTint == null || colors == null || colors.length < 16 || notifying) {
             return;
         }
-        fade.setShader(new LinearGradient(0, h * 0.42f, 0, h,
-                new int[] {0x00000000, Theme.alpha(fadeColor(), 0.55f),
-                        Theme.alpha(fadeColor(), 0.92f), fadeColor()},
-                new float[] {0f, 0.45f, 0.8f, 1f}, Shader.TileMode.CLAMP));
-        canvas.drawRect(0, h * 0.42f, w, h, fade);
+        float[] hsv = new float[3];
+        android.graphics.Color.colorToHSV(hueReference(), hsv);
+        int tint = android.graphics.Color.HSVToColor(new float[] {
+                hsv[0],
+                Math.min(1f, hsv[1] * 1.9f + 0.40f),
+                night ? 0.88f : 0.30f});
+        if (tint == lastTint) {
+            return;
+        }
+        lastTint = tint;
+        // 回调里会把这块背景重录进关于页的 RenderNode，那会再走一遍本类的 onDraw。
+        // 不做防护就是无限递归 —— 第二次进来直接返回，用同一帧已经算好的配色。
+        notifying = true;
+        try {
+            onTint.onTint(tint);
+        } finally {
+            notifying = false;
+        }
+    }
+
+    /**
+     * 「这片背景是什么颜色」—— 按 shader 里 4 个光点的混合（mix by smoothstep 距离）
+     * 在 hero 所在位置（画面水平居中、垂直约 1/4 处）合成一次，返回 rgb。
+     */
+    private int hueReference() {
+        float u = 0.5f;
+        float v = 1f - 0.25f;          // shader 里 vUv.y = 1 - y/H
+        float r = 0f, g = 0f, b = 0f, a = 0f;
+        for (int i = 0; i < 4; i++) {
+            float dx = u - POINTS[i * 2];
+            float dy = v - POINTS[i * 2 + 1];
+            float d = (float) Math.sqrt(dx * dx + dy * dy);
+            float t = Math.max(0f, Math.min(1f, 1f - d));   // smoothstep(1, 0, d)
+            float pct = t * t * (3f - 2f * t);
+            float ca = colors[i * 4 + 3];
+            r += (colors[i * 4] * ca - r) * pct;
+            g += (colors[i * 4 + 1] * ca - g) * pct;
+            b += (colors[i * 4 + 2] * ca - b) * pct;
+            a += (ca - a) * pct;
+        }
+        a = Math.max(a, 0.0001f);
+        return android.graphics.Color.rgb(
+                clamp255(r / a), clamp255(g / a), clamp255(b / a));
+    }
+
+    private static int clamp255(float v) {
+        return Math.max(0, Math.min(255, Math.round(v * 255f)));
     }
 
     private int fadeColor() {

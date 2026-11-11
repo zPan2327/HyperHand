@@ -27,8 +27,14 @@ final class PagePager extends ViewGroup {
         /** 停留在第 position 页（吸附完成）。 */
         void onPageSelected(int position);
 
-        /** 拖动/回弹中的连续位置，0..count-1。 */
-        void onPageScrolled(float position);
+        /**
+         * 拖动/回弹中的连续位置，0..count-1。
+         *
+         * @param following true 表示这次位移来自用户手势（含松手后的吸附），底栏指示器应当
+         *                  逐帧跟手；false 表示是代码触发的切页，底栏用它自己的弹簧走过去，
+         *                  不要再被这里的粗粒度步长拽着走。
+         */
+        void onPageScrolled(float position, boolean following);
     }
 
     private final int touchSlop;
@@ -44,6 +50,20 @@ final class PagePager extends ViewGroup {
     private float offset;          // 以"页"为单位，0..count-1
     private boolean dragging;
     private boolean settling;
+    /**
+     * 当前这轮位移是否来自用户手势。
+     *
+     * 只有手势拖动（含松手后的吸附）才让底栏指示器跟手；点底栏切页走的是
+     * {@link #setCurrentPage}，那是 280ms 的整段滚动，每帧位移可达半格，让指示器跟它
+     * 就会出现「一帧飞过去、再卡三帧、再跳一下」。
+     */
+    private boolean following;
+    /**
+     * 按下这一下是否把一段吸附动画掐断了。
+     *
+     * 掐断后若只是按住没横滑就松手，页面会永远停在两页中间 —— 必须在抬手时把吸附续上。
+     */
+    private boolean settleInterrupted;
     private float downX;
     private float downY;
     private float lastX;
@@ -91,6 +111,8 @@ final class PagePager extends ViewGroup {
                 return;
             }
         }
+        // 代码触发的整段滚动，不归手势，底栏不要跟。
+        following = false;
         current = target;
         if (!animate || getWidth() == 0) {
             offset = target;
@@ -124,6 +146,7 @@ final class PagePager extends ViewGroup {
                 downX = e.getX();
                 downY = e.getY();
                 lastX = downX;
+                settleInterrupted = settling;
                 dragging = false;
                 settling = false;
                 scroller.forceFinished(true);
@@ -191,7 +214,15 @@ final class PagePager extends ViewGroup {
                 releaseTracker();
                 if (wasDragging) {
                     settle(vel, e.getActionMasked() == MotionEvent.ACTION_CANCEL);
+                    settleInterrupted = false;
                     return true;
+                }
+                if (settleInterrupted) {
+                    // 按住把吸附掐断了但没滑动：续上，别停在两页中间。
+                    settleInterrupted = false;
+                    if (Math.abs(offset - current) > 0.01f) {
+                        setCurrentPage(current, true);
+                    }
                 }
                 return true;
             }
@@ -219,6 +250,7 @@ final class PagePager extends ViewGroup {
         if (w <= 0) {
             return;
         }
+        following = true;
         float next = offset - dxPx / w;
         // 边界阻尼：第一页往右、最后一页往左，只走 35% 的距离
         if (next < 0f) {
@@ -262,7 +294,7 @@ final class PagePager extends ViewGroup {
 
     private void notifyScrolled() {
         if (listener != null) {
-            listener.onPageScrolled(offset);
+            listener.onPageScrolled(offset, following);
         }
     }
 
@@ -287,9 +319,11 @@ final class PagePager extends ViewGroup {
                 offset = clampPage(landed);
                 applyScroll();
                 notifyScrolled();
+                // 吸附落定之后这轮位移才算结束，底栏从下一帧起交回自己的弹簧。
+                following = false;
                 if (offset != current) {
                     current = (int) offset;
-                    Haptics.get(getContext()).tick();
+                    // 切页不再震动：视觉上的吸附动画已经足够表达页面落定。
                     if (listener != null) {
                         listener.onPageSelected(current);
                     }

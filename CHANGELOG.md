@@ -2,6 +2,219 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.0.3-beta.1] - 2026-11-11 - miuix UI 一致性改造
+
+界面层仍是 `:module` 的纯 Java 原生 View（按 [miuix](https://github.com/compose-miuix-ui/miuix)
+规格手写，不引 AndroidX / Compose）；`:glass` 继续用 miuix Compose 库画液态玻璃底栏。
+新增 / 替换的组件全部按 miuix 的规格实现。
+
+### Added
+
+- **`ProgressiveBlur`**：按 [SonyPods `BarBlur.kt`](https://github.com/Mercury000/SonyPods)
+  的 `LayerBackdrop + progressiveTextureBlur` 架构实现。`backdrop` 是顶栏背后内容的一条
+  低分辨率（0.30×，约 324×94）采样位图；渐进模糊由 AGSL `RuntimeShader` 在 GPU 上
+  一次画完：<b>Vogel / 黄金角螺旋盘采样</b>（`r_i = sqrt(i/N) * R`，面积均匀地填满整个
+  圆盘）配高斯权重 `exp(-2i/N)`，每像素再用 interleaved gradient noise 把整组采样点
+  随机旋转一个角度，20 个 tap 就能得到连续、无方向伪影的高斯核。
+  <b>无 CPU 盒式模糊、无 getPixels/setPixels、无逐像素合成</b>；事件脏驱动，
+  静止时零开销。软件画布 / 不支持 RuntimeShader 时退化到小位图上的一次轻量模糊 + 渐变遮罩。
+- **`MiuixScrollView`**：按 `overScrollVertical()` 的 NestedScroll `onPostScroll` 语义
+  重做 Rubber Band —— 系统 ScrollView 先消费滚动，<b>同一帧</b>把未消费的 delta 转成
+  越界位移；`DefaultParabolaScrollEasing` 抛物线阻尼，关闭系统 EdgeEffect。拖动与
+  <b>惯性（fling）</b>两条路径都能撞出橡皮筋，抬手速度作为弹簧初速度延续惯性；
+  位移期间刷新顶栏模糊与玻璃底栏的 backdrop。
+  弹簧取 SonyPods 参数再放软一档：`springStiff 280 → 190`、`dampRatio 1 → 0.9`
+  （ω 从 16.7 降到 13.8，实测 404px 回弹由 ~240ms 变为 ~330ms，末端带一点点余韵）。
+- **`MiuixCheckbox`**：三态 `Checkbox`（`ToggleableState.On / Off / Indeterminate`）。
+- **`MiuixDialog`**：全应用唯一的弹窗组件（28dp 圆角、20dp 内边距、18dp 外边距、
+  maxWidth 288dp、dim 0.32、fade + scale 进出场）。卡片底强制不透明。
+
+### Changed
+
+- **顶部折叠栏**：删掉 `#17171B @ 86%` 实色黑底与 0.75dp 分隔线，改为折叠时才淡入的
+  GPU 渐进模糊（顶部全额 → 底边像素级清晰）；展开态完全透明、完全不采样。
+- **设置页 Slider 下沉**：一级页面只留「标题 + 当前值 + 箭头」，点行打开参数子页，
+  miuix Slider 只在子页出现；滑杆只在轨道矩形内响应，空白区域不再跳值。
+- **开关行**：只有右侧 `SwitchView` 自身可点 / 拖，行标题、摘要、空白一律不触发切换。
+- **弹窗统一**：四个 dialog 全部走 `MiuixDialog`；概览右上角的 `PopupWindow` 菜单与
+  关于页隐藏调试页的 root overlay 一并移除。
+- **概览右上角按钮**：`MiuixDialog` + 嵌套 `MiuixCheckbox`，父项三态联动两个子项。
+- **对话框排版**：maxWidth 420dp → 288dp，圆角 / 内外边距 / 按钮高度 / 标题正文与选项
+  字号行距全部收紧；长文本与调试页的最大高度同步下调。
+- **头像**：换成用户指定的 940×940 图片，绘制改为 `Matrix` 等比 centerCrop 铺满圆形，
+  不再用 1:1 `drawBitmap` 只截大图左上角。
+- **触感**：移除切页 `tick`、滚动到顶/底 `edge`、Rubber Band 边界 `edge` 三处震动，
+  点击类控件触感保留。
+
+### Fixed
+
+- **顶栏切页时标题突然跳变**：旧实现把标题画在固定位置，只在 `onPageSelected` 里
+  整块换成新文案，横滑过程中根本看不到过渡。现在 `TopBar.setPages()` 一次注册全部页面的
+  文案，`setPagePosition(浮点页索引)` 在横滑时把「滑出的页」和「滑入的页」两套标题
+  **按手势比例整体平移**（旧页向左移出 `-frac×w`、新页从右移入 `(1-frac)×w`），
+  副标题、大标题、右上角按钮一起跟随；折叠高度统一为「状态栏 + 52dp + 大标题块」，
+  不再因为切到没有大标题的关于页而整体矮一截。模糊带的强度取两页折叠状态的插值，
+  切换过程中带高与模糊厚度同样连续。
+- **模糊卡顿 + 不实时**：采样走的是软件 Canvas（`contentHost.draw()` 光栅化到 Bitmap），
+  成本正比于目标位图面积，0.30×（324×94）、滚动时每帧重来一遍，慢机上直接掉帧。
+  降到 **0.20×（216×63，面积 −56%）** 并去掉上一版为保证流畅而加的 48ms 节流 ——
+  重点在于<b>恢复每帧刷新</b>，模糊重新跟着内容实时变化。真机实测（小米 14 / Android 16，
+  `dumpsys gfxinfo`）：1729 帧中 Janky **1 帧（0.06%）**，99 分位 14ms。
+- **顶部模糊像「散光」而不是高斯**：旧的 13-tap 是「中心 + 两个固定环」的十字 / 对角
+  布局，半径几十 px 时相邻采样点间距接近 20px，圆盘中间是大片空洞，采出来是多重鬼影。
+  改成 Vogel 螺旋盘 + 高斯权重 + 每像素 IGN 抖动旋转，采样点均匀填满圆盘，条纹被摊成
+  不可见噪声。半径同时从 `16dp × 1.5`（66px，整条糊成一片雾）改回真实高斯半径
+  `16dp × 0.5`（采样盘半径 22px，σ≈11px）—— 保留形状轮廓、看不清文字。
+- **惯性停在临界位置、必须再滑一次才回弹**：`computeScroll()` 原先只在「上一帧
+  `scrollY` 有变化」时才判定撞边界。若抬手瞬间就已经贴边、或 scroller 立刻结束，
+  `delta` 从头到尾都是 0，判定永不成立。现在 `fling()` 先做一次即时判定（贴边就直接
+  用速度生成冲量，连 scroller 都不启动），`computeScroll()` 里再用初始速度折算单帧
+  增量兜底。实测 `atB=true cons=0 avail=80`，到底后每帧余量全部转成形变。
+- **橡皮筋回弹期间整机 ANR**：`onOverScroll` 每帧都 `topBar.invalidate()`，而顶栏一重绘
+  就要 `ProgressiveBlur.capture()` 把整个内容树重画进采样位图。回弹 30 多帧全部重采样，
+  在慢机上直接把主线程拖死（模拟器实测 777ms/帧）。现在顶栏与玻璃底栏的刷新按
+  ~20fps 节流（48ms），回弹本身只有 300ms 左右，视觉上看不出滞后，开销降到 1/3。
+  另外给 `rebound` / `impulseTick` 两个动画循环各加了帧数硬上限（180 / 150 帧），
+  任何数值异常都不会变成常驻循环。
+- **模糊不实时（真正根因）**：`capture()` 把 window 坐标塞进 `translate`、又用 window
+  偏移做 `clipRect`，两套坐标系不一致，实际截到的几乎全是纯色底色；再叠加"指纹命中
+  就复用上一帧"的缓存，画面永久定格。现在坐标一律按项目里已验证正确的
+  `ViewBackdrop.capture()` 写法（region 用 source 局部坐标，`scale → translate → clipRect`），
+  并且<b>彻底删除指纹与全部缓存判断，每次重绘无条件重采样</b>。另外 `MainActivity` 原来
+  只在 `collapse` 值变化时才 invalidate 顶栏，滚动到底 `collapse = 1` 饱和后就再也不重绘；
+  现在滚动、横向切页、Rubber Band 位移都显式驱动顶栏重采样。
+- **模糊一出现就很卡（真正根因）**：旧实现每帧在 UI 线程对约 16 万像素做
+  `getPixels` → 全像素 hash → 两次三趟盒式模糊 → 逐行 `mix` 合成 → `setPixels`，
+  几十毫秒一帧。现在 CPU 只剩一次约 2 万像素的 `View.draw`，模糊在 GPU shader 里完成；
+  且改成事件脏驱动，<b>不注册常驻帧回调</b>，静止时顶栏零重绘、零占用。
+- **关于页顶部一条遮挡带**：展开态也画模糊带 + scrim，未滚动时就有；现在只在
+  collapse > 0 的头部 30% 内淡入，且不再画任何分隔线（那条线就是"黑线"）。
+- **Rubber Band 只有按住拖才出现，惯性滚到底不弹**：旧实现只处理 `onTouchEvent`，
+  而「快速滑一下再抬手」的后续滚动完全由 `computeScroll()` 里的 `Scroller` 驱动，
+  根本不经过 `onTouchEvent` —— 惯性撞到边界时完全看不见，必须再滑一次（手指还在屏上）
+  才触发。现在覆写 `computeScroll()` 检测「scroller 还在跑但 `scrollY` 已不再变化」，
+  用上一帧的滚动增量做冲量，按惯性逐帧衰减累积成越界位移再弹回；`onTouchEvent` 与
+  `computeScroll` 两条路径的手感因此一致。实测一次强甩：抬手 → 273ms 后自动撞出
+  橡皮筋 → 599ms 渐进冲出 → 回弹，无需二次滑动。
+- **Rubber Band 位移不连续**：旧实现每帧 `rawDistance = -available`（覆盖），位移只
+  反映单帧增量，手指匀速拖动时反而一顿一顿。现在累加；并且统一成
+  `Δ形变 = -available` 一个式子，反向拖动时 `available` 与形变同号、绝对值自然减小，
+  形变跟着手指收回，不会像旧实现那样「继续外推 / 系统已消费」两个分支都不命中而卡住不动。
+- **Rubber Band 先卡一下 + 退出后跳变**：旧实现进入 band 后完全绕过
+  `super.onTouchEvent`，ScrollView 的 `mLastMotionY` / `mIsBeingDragged` /
+  `VelocityTracker` 停在旧帧，退出 band 的第一帧按「当前 y − 过期 y」算位移，内容会猛跳；
+  再次按下还要重过 `touchSlop`。现在每个 MOVE 都原样转发给系统（等价于 NestedScroll
+  先让滚动源消费），只用 `getScrollY()` 前后差值取余量转成 `translationY`，状态机全程同步。
+- **底部内容被悬浮底栏压住**（Android 15 模拟器实测）：insets 只取了
+  `systemBars()`，而 API 35 强制 edge-to-edge 后手势导航的底部条属于
+  `systemGestures()` / `mandatorySystemGestures()`，`systemBars().bottom` 返回 0，
+  页面底部 padding 少算一个手势条高度 —— 设置页「起效速度」、关于页「使用说明」
+  的最后一行被胶囊底栏盖住。现在几类 inset 一起取并集。
+- **Slider 比例失真**：`MiuixSlider` 把 `SliderDefaults.MinHeight = 28dp`（触点高度）
+  误当成轨道厚度，轨道被画成 28dp 粗的实心条、圆钮被 `r * 0.72` 撑到接近轨道高，
+  看起来像 iOS 的粗 SeekBar。现在按规格改为轨道 4dp / 圆钮 20dp / 28dp 只作触摸区，
+  命中区也收窄到圆心上下 14dp（实测点轨道上方空白不再跳值）。
+- Dialog 在 MIUI 上透出下层页面：卡片底色改用不透明 surface。
+- **液态底栏选中项「跳来跳去」**（滑动底栏 / 点击底栏 / 双击来回切时偶发）：逐帧
+  录屏（600×1336 @≈100fps，按 pts 还原位移曲线）定位到三个独立成因，都已修掉。
+  1. **`snapshotFlow` 捕获了过期的 `selectedIndex`**。上一版为了消除「每帧重建
+     `LaunchedEffect`」把驱动改成单个长驻协程，但 effect 只启动一次，直接引用
+     `position` / `selectedIndex` 这两个参数会把**首次组合时的值**永久捕获 ——
+     实测第二次点击后 `sel` 仍是初始的 0，指示器于是从第 2 格往第 0 格跑，
+     正常应当去第 2 格。改用 `rememberUpdatedState` 后再经 `snapshotFlow` 读取。
+  2. **拖动底栏时用弹簧追手**。`onDrag` 里对每一帧 `dragAmount` 调 `updateValue`
+     （`animateTo`），快速划过两格时弹簧追不上、松手再补一段；且累加基准取的是
+     `targetValue` 而非当前位置，按下瞬间弹簧才走一半时第一帧会倒跳。改为
+     `dragTo()` 直接按位置（`value` 为基准累加），松手才交给弹簧收尾。
+  3. **点击被重复启动动画**。按下时 `onDragStarted` 已启动朝该格的归位动画，
+     宿主 `select()` 回来又 `animateTo` 一次，把速度清零后重新加速 —— 视觉上
+     「顿一下再窜出去」。现在 `targetValue` 已是目标格时不再重启。
+- **底栏跨两格切换时中途卡住**：`PagePager` 的整段 280ms 滚动（点底栏触发）原本也
+  逐帧下发 `onPageScrolled`，让指示器跟着这个粗粒度步长走（单帧位移可达半格），
+  与自身弹簧互相拽。新增 `following` 标志区分「用户手势滚动」与「代码触发的切页」，
+  只有前者让底栏跟手；后者由底栏自己的弹簧走完。
+- **切到概览页顶掉一帧**：`OverviewPage.refresh()` 每次都把「系统信息」整块
+  `removeView` + 重建，连带整页 ScrollView 重新测量；此时底栏指示器正走到一半，
+  这一下布局吃掉几帧，表现成「卡住再跳」。系统信息在进程生命周期内不变，改为只构建一次。
+- **`PagePager` 按住吸附动画不放**：吸附过程中按下但不横滑就松手，`settling` 已被
+  清掉而 `offset` 停在两页中间，页面会永久卡在半路。抬手时把被打断的吸附续上。
+- **底栏指示器移动过快到看不出过程**：`valueAnimationSpec` 的 stiffness 1000f
+  意味着跨一格只要约 32ms（比一帧还短），观感是「闪过去」。降到 500f
+  （临界阻尼、约 210ms 到位），既跟得上手指也不再像瞬移。
+
+### 关于页按参考版式重做
+
+版式来自 [SonyPods](https://github.com/Mercury000/SonyPods) 的 `AboutPage.kt`
+（它又是照 miuix 示例应用的 AboutPage 抄的）：整屏 OS3 流动背景 + 固定 hero
+（图标 / 字标 / 版本号）+ 滚动内容，hero 与背景按同一个 `scrollProgress` 依次淡出。
+真机（小米 14，1200×2670 @480dpi）逐像素比对过，logo 顶部落在 188dp、直径 88dp，
+与参考完全一致。
+
+- **背景**：`MiuixBg`（miuix 官方 OS3 `BgEffectBackground` 的 AGSL 移植，配色就是
+  `OS3_PHONE_LIGHT` / `OS3_PHONE_DARK` 那两组）铺满整屏，透明度 `1 - scrollProgress`。
+  以前它只铺 420dp 高的一块、底部渐隐到页面色，现在铺满并整体淡出，中途不会切出色带。
+- **hero 元素淡出顺序**：版本号 `0.05–0.20` → 字标 `0.20–0.35` → 图标 `0.35–0.50`，
+  每段各带 `1 → 0.95` 的缩放，与参考的 `graphicsLayer` 窗口一一对应。
+- **logo 与字标是「玻璃」的**：参考里两者都套了 `textureBlur(blurRadius = 200f/150f,
+  contentBlendMode = DstIn)` —— 用背景的模糊采样去填图形，所以<b>颜色会跟着背景变</b>。
+  miuix 的 `textureBlur` 实际是把<b>RenderEffect 链</b>（高斯模糊 → 混合调色，全部由
+  RuntimeShader 驱动）挂在 Compose 图层上，而 Compose 图层背后就是 RenderNode；
+  HyperIsland 的关于页同样引用了 `RenderEffect + RuntimeShader`。这里按同一套做
+  （`GlassNode`）：把图形背后那块背景录进一张 `RenderNode`，挂
+  `RenderEffect.createChainEffect(混合, 模糊)`，再用图形 alpha（圆角矩形 / 字形 Path）
+  当蒙版画出来。混合项取 SonyPods 传的那组 `BlurColors`：
+  `(0xCC4A4A4A, ColorBurn)` 与 `(0xFF4F4F4F, LinearLight)`，公式就是 W3C 合成规范里那两条。
+  第三个 `(0xFF1AF200, Lab)` 项无法照搬（Lab 混合要转 CIELAB，miuix 的实现藏在 11KB
+  的 AGSL 里且提不全），它的作用是把前两项压得过暗的结果拉回可见区间，这里用一个
+  明度归一替代。实测同一位置的 logo 会随背景色相变化：紫背景 `#391162`、偏蓝背景 `#273569`。
+- **滚动预算**：参考的第一屏内容块是 `Box + fillParentMaxHeight`，天然撑满一个视口，
+  滚到底时进度正好到 1。顺序布局做不到这点，于是补了一个尾部占位，按「除尾部以外的
+  内容高度」反算，保证<b>可滚动距离 ≥ hero 预算</b>且一次收敛不抖 —— 否则卡片少的时候
+  滚到底进度只有 0.3，背景和 logo 都淡不干净。
+- **顶栏**：关于页不走渐进模糊（自带整屏渐变，压一条模糊带会切出色带）。滚动过程中
+  顶栏保持透明、内容从底下经过，快到底时才化成页面底色（`gradient → 纯白`）；
+  标题 `((scrollProgress - 0.35) / 0.65)` 淡入并居中，横滑切页时<b>不跟着平移</b>，
+  改为原地交叉淡出。
+- 删掉参考版式里没有的「项目」小标题，开发者卡片下面直接接卡片。
+
+### 图标
+
+- 桌面图标原来是手绘的三指简化图，与关于页 logo 不是同一套。改为<b>自适应图标</b>
+  （`mipmap-anydpi-v26`）：背景是对角渐变（`#6DA5FF → #3482FF → #2564CD`，
+  即 `blend(accent, white, .28) → accent → blend(accent, #001A4D, .28)`），
+  前景直接复用关于页那条 Material Symbols `front_hand` 路径（按可见区 72dp 的 56%
+  缩放居中，与 `AppIcon` 的 `inset = 0.22 × s` 完全一致），另带 monochrome 层
+  以支持 HyperOS 的主题图标。旧的 `drawable/ic_hyperhand.xml` 已删除。
+
+### 修复
+
+- **顶部 inset 多算了 12dp**：`statusInset` 取的是 `systemBars | displayCutout |
+  systemGestures | mandatorySystemGestures` 的并集，小米 14 上 `mandatorySystemGestures`
+  的 top 是 170px（56.7dp），而真正的状态栏只有 134px（44.7dp）。顶部只认前两者、
+  底部继续取并集后，所有页面内容整体上移 12dp，关于页 logo 也因此落到正确高度。
+- **关于页滚到底背景还是半透明**：`scrollProgress` 到不了 1（见上「滚动预算」）。
+- **关于页滚到底液态底栏发黑**：渐变淡出后根容器是透明的，底栏采样不到颜色。
+  给根容器补一层页面底色，同时保证「渐变 → 纯白」的过渡中间不露窗口底色。
+- **液态底栏滚到底出现紫色雾团与「HyperHand」残影**：底栏采样走的是软件画布
+  （`ViewBackdrop` 把整页 draw 进 Bitmap），而 hero 的 `GlassNode` 用的是
+  `Canvas.drawRenderNode` —— RenderNode 的坐标**不跟随 canvas 的 translate/clip**，
+  于是在采样图里被画到画布原点，正好糊在底栏那块。现在 `GlassNode#draw` 遇到软件
+  画布直接不画，让 `AppIcon` / `GlassText` 退回纯色（`MiuixBg` 早有同类守卫）。
+
+### 性能
+
+- **关于页渐变在动的时候掉帧**：背景是满屏 AGSL，1200×2670 每帧重跑一遍着色器，
+  在小米 14 的 120Hz 上实测 GPU 中位 8.4ms —— 已经超过 8.3ms 的一帧预算。
+  按 SonyPods（miuix 示例 AboutPage 的同一套做法）对齐两处：
+  1. 动画按 60fps 节流（SonyPods 的 `minDeltaNanos = 1s/60`），余下的帧留给合成；
+  2. 背景完全淡出后把动画一并停掉（SonyPods 的 `alpha <= 0 → cancel`），
+     滚到底静止时帧数归零。
+  另外 hero 玻璃的重录改成隔帧：参考实现里 logo / 字标是 `textureBlur`，
+  直接从背景图层 GPU 采样、零 CPU 成本；我们得显式把背景重录进 RenderNode，
+  这正是滚动时最大的一笔开销。背景 5 秒一周期，30fps 的更新速度看不出差别。
+  结果：静止渐变由 240fps 满速（每帧超预算）变成稳定的 60fps，帧间隔 16.6ms、
+  GPU 中位 6.3ms；滚动时 GPU 由 8.4ms 降到 7.0ms。
+
 ## [3.0.2-beta.2] - 2026-11-10
 
 > 测试版，只发 GitHub Releases 的 prerelease 通道。versionCode 29904，可直接覆盖安装

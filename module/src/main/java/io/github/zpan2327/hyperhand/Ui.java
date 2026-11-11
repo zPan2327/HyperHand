@@ -1,18 +1,14 @@
 package io.github.zpan2327.hyperhand;
 
 import android.app.Activity;
-import android.app.Dialog;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.SystemClock;
 import android.text.SpannableStringBuilder;
@@ -23,11 +19,9 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.util.Locale;
@@ -254,30 +248,32 @@ final class Ui {
 
     // ---------------------------------------------------------------- 行
 
-    /** 开关行：整行可点，点击即切换。 */
+    /**
+     * 开关行：只有右侧的 {@link SwitchView} 本身可点击 / 拖动。
+     * 行的标题、摘要、空白区域一律不触发切换（之前整行可点，点哪儿都会改开关）。
+     */
     static SwitchView switchRow(Context c, LinearLayout card, Theme.Colors p,
                                 String title, String summary, boolean checked) {
         LinearLayout row = rowShell(c);
-        rowRipple(row, p);
         row.addView(twoLine(c, p, title, summary),
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         final SwitchView sw = new SwitchView(c, p);
         sw.setCheckedNoAnim(checked);
+        // 给开关自身一点触摸扩展，但事件命中区仍严格限制在这个小 View 内
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 Theme.dp(c, 49), Theme.dp(c, 28));
         slp.leftMargin = Theme.dp(c, 12);
         row.addView(sw, slp);
-        row.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                sw.toggle();
-            }
-        });
         addRow(c, card, p, row);
         return sw;
     }
 
+    /**
+     * 一级设置页只显示「标题 + 当前值 + 箭头」。
+     * miuix Slider 不再挂在行下面（旧的 bottomAction 内联滑杆），
+     * 点行打开对应的参数子页（MiuixDialog），滑杆只在子页里出现。
+     */
     static final class ValueRow {
         final LinearLayout row;
         final TextView label;
@@ -286,14 +282,6 @@ final class Ui {
         final int decimals;
         float value;
 
-        /** 行内滑杆（miuix SliderPreference 的 bottomAction）。懒创建。 */
-        private MiuixSlider slider;
-        private final Context context;
-        private final float min;
-        private final float max;
-        private final float step;
-        private final Runnable onChange;
-
         ValueRow(LinearLayout row, TextView label, Theme.Colors pal, String unit, int decimals,
                  Context c, float min, float max, float step, Runnable onChange) {
             this.row = row;
@@ -301,56 +289,22 @@ final class Ui {
             this.pal = pal;
             this.unit = unit;
             this.decimals = decimals;
-            this.context = c;
-            this.min = min;
-            this.max = max;
-            this.step = step;
-            this.onChange = onChange;
         }
 
         void set(float v) {
             value = v;
             label.setText(valueSpan(pal, fmt(v, decimals), unit));
-            if (slider != null) {
-                slider.setValue(v);
-            }
-        }
-
-        /** 在行下面挂一条 miuix 滑杆：点行展开/收起，拖动实时改值。 */
-        MiuixSlider attachSlider(LinearLayout card, int insetDp) {
-            if (card == null) {
-                return null;
-            }
-            final MiuixSlider s = new MiuixSlider(context, pal, min, max, step, value);
-            int padV = Theme.dp(context, 6);
-            s.setPadding(Theme.dp(context, insetDp), padV,
-                    Theme.dp(context, insetDp), padV);
-            s.setOnValue(new MiuixSlider.OnValue() {
-                @Override
-                public void onValue(float v) {
-                    value = v;
-                    label.setText(valueSpan(pal, fmt(v, decimals), unit));
-                    Haptics.get(context).step();
-                    if (onChange != null) {
-                        onChange.run();
-                    }
-                }
-            });
-            // 高度 = 轨道 28dp + 上下各 6dp，否则 padding 会吃掉轨道高度
-            card.addView(s, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(context, 28 + 12)));
-            return s;
         }
     }
 
-    /** 数值行：右侧显示当前值，点行弹出滑杆对话框。 */
+    /** 数值行：右侧显示当前值，点行打开参数子页（Slider 只在子页里）。 */
     static ValueRow valueRow(Context c, LinearLayout card, Theme.Colors p,
                              String title, String summary, String unit,
                              float value, int decimals) {
         return valueRow(c, card, p, title, summary, unit, value, decimals, 0);
     }
 
-    /** 带范围与步长的数值行（行内滑杆需要它们）。 */
+    /** 兼容旧签名的数值行（范围 / 步长现在只由参数子页使用）。 */
     static ValueRow valueRow(Context c, LinearLayout card, Theme.Colors p,
                              String title, String summary, String unit,
                              float value, int decimals, final int sliderInset) {
@@ -662,11 +616,10 @@ final class Ui {
     }
 
     static Page page(Context c, Theme.Colors p) {
-        ScrollView scroll = new ScrollView(c);
+        // miuix overScrollVertical()：所有页面统一带 Rubber Band 越界回弹，
+        // 系统自带的 EdgeEffect 由 MiuixScrollView 关掉（overscrollEffect = null）。
+        MiuixScrollView scroll = new MiuixScrollView(c);
         scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
-        scroll.setVerticalScrollBarEnabled(false);
-        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         scroll.setBackground(Theme.pageBackground(p));
 
         LinearLayout col = new LinearLayout(c);
@@ -851,231 +804,101 @@ final class Ui {
 
     // ---------------------------------------------------------------- 对话框
 
-    /** miuix WindowDialog 规格：cornerRadius 32dp、insideMargin 24dp、outsideMargin 12dp、maxWidth 420dp。 */
-    private static LinearLayout dialogShell(Activity a, Dialog d, Theme.Colors p) {
-        FrameLayout root = new FrameLayout(a);
-        int pad = Theme.dp(a, 12);
-        root.setPadding(pad, pad, pad, pad);
+    // ---------------------------------------------------------------- 对话框
+    //
+    // 全应用的弹窗只走 MiuixDialog（miuix Dialog / WindowDialog 组件）。
+    // 旧的 dialogShell / dialogTitle / dialogButtons / sliderTrack / dialogTextButton
+    // 各自 new Dialog，popupMenu 用 PopupWindow，隐藏调试页用 root overlay ——
+    // 四条不同的子窗口路径全部收敛到同一个组件，规格见 MiuixDialog。
 
-        LinearLayout box = new LinearLayout(a);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setBackground(Theme.round(p.card, Theme.dp(a, 32)));
-        box.setClipToOutline(true);
-        int screenW = a.getResources().getDisplayMetrics().widthPixels;
-        FrameLayout.LayoutParams boxLp = new FrameLayout.LayoutParams(
-                Math.min(screenW - 2 * pad, Theme.dp(a, 420)),
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        boxLp.gravity = Gravity.CENTER;
-        root.addView(box, boxLp);
+    /** 概览右上角的锚点菜单已改为 MiuixDialog + MiuixCheckbox（见 MainActivity）。 */
 
-        d.setContentView(root);
-        Window w = d.getWindow();
-        if (w != null) {
-            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            int maxW = Theme.dp(a, 420) + 2 * pad;
-            w.setLayout(Math.min(screenW, maxW), ViewGroup.LayoutParams.WRAP_CONTENT);
-            w.setDimAmount(0.3f);
-        }
-        return box;
-    }
+    /**
+     * 参数详情子页：点一级设置页的数值行之后才打开，miuix Slider 只在这一层出现。
+     *
+     * <p>一级页面现在只有「标题 + 当前值 + 箭头」，不再把 SliderPreference 的
+     * bottomAction 内联滑杆挂在行下面。子页本身由 MiuixDialog 承载 ——
+     * 所有弹出式子窗口统一用 Dialog 组件。
+     */
+    static void sliderPageDialog(final Activity a, final Theme.Colors p,
+                                 String title, String summary, final String unit,
+                                 final float min, final float max, final float step,
+                                 final int decimals, float current, final OnNumber cb) {
+        final MiuixDialog d = new MiuixDialog(a, p);
+        d.title(title);
+        d.summary(summary);
 
-    /** miuix 对话框标题：title4 18sp Medium，居中，上方 24dp。 */
-    private static TextView dialogTitle(Activity a, LinearLayout box, Theme.Colors p, String s,
-                                        boolean withBottomGap) {
-        TextView t = text(a, s, 18, p.title, Theme.medium());
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(Theme.dp(a, 24), Theme.dp(a, 24), Theme.dp(a, 24),
-                Theme.dp(a, withBottomGap ? 12 : 8));
-        box.addView(t);
-        return t;
-    }
+        LinearLayout body = new LinearLayout(a);
+        body.setOrientation(LinearLayout.VERTICAL);
 
-    /** 竖向堆叠的全宽按钮：primary 在上、普通在下，间距 10dp。 */
-    private static void dialogButtons(Activity a, LinearLayout box, Theme.Colors p,
-                                      TextView secondary, TextView primary) {
-        LinearLayout stack = new LinearLayout(a);
-        stack.setOrientation(LinearLayout.VERTICAL);
-        int m = Theme.dp(a, 24);
-        int gap = Theme.dp(a, 10);
-        stack.setPadding(m, Theme.dp(a, 8), m, m);
-        if (primary != null) {
-            stack.addView(primary, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44)));
-        }
-        if (secondary != null) {
-            LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 44));
-            if (primary != null) {
-                lp2.topMargin = gap;
-            }
-            stack.addView(secondary, lp2);
-        }
-        box.addView(stack, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-    }
-
-    /** 滑杆轨道：4dp 圆头、未选中用淡色，已选中用强调色。 */
-    private static Drawable sliderTrack(Context c, Theme.Colors p) {
-        int h = Theme.dp(c, 4);
-        Squircle.D bg = Theme.round(p.night ? 0x33FFFFFF : 0x1A000000, h / 2f);
-        bg.setSize(1, h);
-        Squircle.D fg = Theme.round(p.primary, h / 2f);
-        ClipDrawable clip = new ClipDrawable(fg, Gravity.LEFT, ClipDrawable.HORIZONTAL);
-        LayerDrawable layer = new LayerDrawable(new Drawable[] {bg, clip});
-        layer.setId(0, android.R.id.background);
-        layer.setId(1, android.R.id.progress);
-        layer.setLayerHeight(0, h);
-        layer.setLayerHeight(1, h);
-        return layer;
-    }
-
-    /** miuix 风格锚点弹出菜单（二级菜单）：20dp 圆角卡片 + 48dp 行。 */
-    static void popupMenu(Context c, Theme.Colors p, View anchor, String[] items, final OnChoice cb) {
-        LinearLayout col = new LinearLayout(c);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setBackground(Theme.roundStroke(p.card, Theme.dp(c, 20),
-                Theme.alpha(p.night ? 0xFFFFFFFF : 0xFF0B1220, 0.08f), Math.max(1, Theme.dp(c, 1))));
-        int pad = Theme.dp(c, 6);
-        col.setPadding(pad, pad, pad, pad);
-        final android.widget.PopupWindow[] win = new android.widget.PopupWindow[1];
-        for (int i = 0; i < items.length; i++) {
-            final int idx = i;
-            TextView t = text(c, items[i], Theme.T_ROW, p.title, Theme.regular());
-            t.setPadding(Theme.dp(c, 18), Theme.dp(c, 13), Theme.dp(c, 18), Theme.dp(c, 13));
-            t.setBackground(new RippleDrawable(ColorStateList.valueOf(
-                    p.night ? 0x14FFFFFF : 0x0D000000), null, new ColorDrawable(Color.TRANSPARENT)));
-            t.setClickable(true);
-            t.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (win[0] != null) {
-                        win[0].dismiss();
-                    }
-                    cb.onChoice(idx);
-                }
-            });
-            col.addView(t, new LinearLayout.LayoutParams(
-                    Theme.dp(c, 216), ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
-        android.widget.PopupWindow w = new android.widget.PopupWindow(
-                col, ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, true);
-        w.setElevation(Theme.dp(c, 12));
-        w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        w.setOutsideTouchable(true);
-        win[0] = w;
-        int menuW = Theme.dp(c, 228);
-        int screenW = c.getResources().getDisplayMetrics().widthPixels;
-        int margin = Theme.dp(c, 12);
-        int[] loc = new int[2];
-        anchor.getLocationOnScreen(loc);
-        int x = Math.min(loc[0] + anchor.getWidth() - menuW, screenW - menuW - margin);
-        x = Math.max(margin, x);
-        int y = loc[1] + anchor.getHeight() + Theme.dp(c, 6);
-        w.showAtLocation(anchor, Gravity.NO_GRAVITY, x, y);
-    }
-
-    /** miuix TextButton：16dp 圆角实底。强调按钮 = primary 底 + 白字。 */
-    private static TextView dialogTextButton(Activity a, Theme.Colors p, String s,
-                                             int color, boolean bold) {
-        boolean primary = color == p.primary;
-        TextView t = text(a, s, Theme.T_ROW, primary ? p.onPrimary : p.onFill, Theme.medium());
-        t.setGravity(Gravity.CENTER);
-        int bg = primary ? p.primary : p.fill;
-        t.setBackground(new RippleDrawable(ColorStateList.valueOf(
-                primary ? 0x33FFFFFF : (p.night ? 0x14FFFFFF : 0x0D000000)),
-                Theme.round(bg, Theme.dp(a, 16)), null));
-        t.setClickable(true);
-        return t;
-    }
-
-    /** 数字对话框：标题 / 大号数值 + 单位 / 滑杆 / 两个按钮。 */
-    static void numberDialog(final Activity a, final Theme.Colors p, String title, final String unit,
-                             final float min, final float max, final float step,
-                             final int decimals, float current, final OnNumber cb) {
-        final Dialog d = new Dialog(a);
-        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        LinearLayout box = dialogShell(a, d, p);
-
-        dialogTitle(a, box, p, title, false);
-
-        final TextView big = text(a, "", 34, p.title, Theme.medium());
+        final int inset = MiuixDialog.pad(a);
+        final TextView big = text(a, "", 30, p.title, Theme.medium());
         big.setGravity(Gravity.CENTER);
-        big.setPadding(Theme.dp(a, 16), Theme.dp(a, 4), Theme.dp(a, 16), 0);
-        box.addView(big);
+        big.setPadding(inset, Theme.dp(a, 2), inset, 0);
+        body.addView(big);
 
         TextView u = text(a, unit == null || unit.length() == 0 ? " " : unit,
-                Theme.T_SUM, p.summary, Theme.regular());
+                13, p.summary, Theme.regular());
         u.setGravity(Gravity.CENTER);
-        u.setPadding(Theme.dp(a, 16), Theme.dp(a, 2), Theme.dp(a, 16), Theme.dp(a, 4));
-        box.addView(u);
+        u.setPadding(inset, Theme.dp(a, 2), inset, Theme.dp(a, 6));
+        body.addView(u);
 
         final float[] result = {current};
-        // 对话框里也用 miuix Slider，和设置页行内那条是同一个组件
+        // 子页里用 miuix Slider，和一级页面彻底解耦
         final MiuixSlider sb = new MiuixSlider(a, p, min, max, step, current);
         sb.setOnValue(new MiuixSlider.OnValue() {
             @Override
             public void onValue(float v) {
                 result[0] = v;
                 big.setText(fmt(v, decimals));
+                Haptics.get(a).step();
             }
         });
-        int padH = Theme.dp(a, 24);
-        sb.setPadding(padH, Theme.dp(a, 14), padH, Theme.dp(a, 6));
+        sb.setPadding(inset, Theme.dp(a, 12), inset, Theme.dp(a, 6));
         // 高度 = 轨道 28dp + 上下 padding，轨道才是完整的 28dp
-        box.addView(sb, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 28 + 20)));
+        body.addView(sb, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 28 + 18)));
         result[0] = sb.value();
         big.setText(fmt(result[0], decimals));
+        d.content(body);
 
-        TextView cancel = dialogTextButton(a, p, "取消", p.summary, false);
-        cancel.setOnClickListener(new View.OnClickListener() {
+        d.buttons("确定", new MiuixDialog.OnClick() {
             @Override
-            public void onClick(View v) {
-                d.dismiss();
-            }
-        });
-        TextView ok = dialogTextButton(a, p, "确定", p.primary, true);
-        ok.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
+            public void onClick(MiuixDialog dlg) {
                 cb.onNumber(result[0]);
-                d.dismiss();
+                dlg.dismiss();
+            }
+        }, "取消", new MiuixDialog.OnClick() {
+            @Override
+            public void onClick(MiuixDialog dlg) {
+                dlg.dismiss();
             }
         });
-        dialogButtons(a, box, p, cancel, ok);
         d.show();
     }
 
-    /** 单选对话框：标题 + 选项列表（选中项高亮 + 勾）。 */
+    /** 单选对话框（MiuixDialog）：标题 + 选项列表，选中项高亮 + 勾。 */
     static void singleChoiceDialog(final Activity a, final Theme.Colors p, String title,
                                    String summary, final String[] options, int selected,
                                    final OnChoice cb) {
-        final Dialog d = new Dialog(a);
-        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        LinearLayout box = dialogShell(a, d, p);
+        final MiuixDialog d = new MiuixDialog(a, p);
+        d.title(title);
+        d.summary(summary);
 
-        dialogTitle(a, box, p, title, true);
-
-        if (summary != null && summary.length() > 0) {
-            TextView s = text(a, summary, Theme.T_SUM, p.summary, Theme.regular());
-            s.setGravity(Gravity.CENTER);
-            s.setLineSpacing(Theme.dp(a, 2), 1f);
-            s.setPadding(Theme.dp(a, 24), 0, Theme.dp(a, 24), Theme.dp(a, 12));
-            box.addView(s);
-        }
-
+        LinearLayout list = new LinearLayout(a);
+        list.setOrientation(LinearLayout.VERTICAL);
         for (int i = 0; i < options.length; i++) {
             final int idx = i;
             LinearLayout row = new LinearLayout(a);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setMinimumHeight(Theme.dp(a, 52));
-            row.setPadding(Theme.dp(a, 24), Theme.dp(a, 8), Theme.dp(a, 24), Theme.dp(a, 8));
+            int inset = MiuixDialog.pad(a);
+            row.setMinimumHeight(Theme.dp(a, 46));
+            row.setPadding(inset, Theme.dp(a, 7), inset, Theme.dp(a, 7));
             row.setBackground(new RippleDrawable(ColorStateList.valueOf(
                     p.night ? 0x14FFFFFF : 0x0D000000), null, new ColorDrawable(Color.TRANSPARENT)));
             row.setClickable(true);
-            TextView label = text(a, options[i], Theme.T_ROW,
+            TextView label = text(a, options[i], 15,
                     i == selected ? p.primary : p.title, Theme.regular());
             row.addView(label, new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -1091,57 +914,42 @@ final class Ui {
                     d.dismiss();
                 }
             });
-            box.addView(row, new LinearLayout.LayoutParams(
+            list.addView(row, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-
-        TextView cancel = dialogTextButton(a, p, "取消", p.summary, false);
-        cancel.setOnClickListener(new View.OnClickListener() {
+        d.content(list);
+        d.button("取消", false, new MiuixDialog.OnClick() {
             @Override
-            public void onClick(View v) {
-                d.dismiss();
+            public void onClick(MiuixDialog dlg) {
+                dlg.dismiss();
             }
         });
-        dialogButtons(a, box, p, cancel, null);
         d.show();
     }
 
-    /** 确认对话框：用于重启作用域这类破坏性操作。 */
+    /** 确认对话框（MiuixDialog）：用于重启作用域这类破坏性操作。 */
     static void confirmDialog(final Activity a, final Theme.Colors p, String title, String summary,
                               String okText, final OnConfirm cb) {
-        final Dialog d = new Dialog(a);
-        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        LinearLayout box = dialogShell(a, d, p);
-
-        dialogTitle(a, box, p, title, true);
-
-        TextView s = text(a, summary, Theme.T_SUM, p.summary, Theme.regular());
-        s.setGravity(Gravity.CENTER);
-        s.setLineSpacing(Theme.dp(a, 3), 1f);
-        s.setPadding(Theme.dp(a, 24), 0, Theme.dp(a, 24), Theme.dp(a, 16));
-        box.addView(s);
-
-        TextView cancel = dialogTextButton(a, p, "取消", p.summary, false);
-        cancel.setOnClickListener(new View.OnClickListener() {
+        final MiuixDialog d = new MiuixDialog(a, p);
+        d.title(title);
+        d.summary(summary);
+        d.buttons(okText, new MiuixDialog.OnClick() {
             @Override
-            public void onClick(View v) {
-                d.dismiss();
-            }
-        });
-        TextView ok = dialogTextButton(a, p, okText, p.primary, true);
-        ok.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                d.dismiss();
+            public void onClick(MiuixDialog dlg) {
+                dlg.dismiss();
                 cb.onConfirm();
             }
+        }, "取消", new MiuixDialog.OnClick() {
+            @Override
+            public void onClick(MiuixDialog dlg) {
+                dlg.dismiss();
+            }
         });
-        dialogButtons(a, box, p, cancel, ok);
         d.show();
     }
 
     /** 高度上限可设的 ScrollView：内容短时按内容收缩，长时才滚动。 */
-    static final class MaxScrollView extends ScrollView {
+    static final class MaxScrollView extends MiuixScrollView {
         private int maxHeight;
 
         MaxScrollView(android.content.Context c, int maxHeight) {
@@ -1156,33 +964,28 @@ final class Ui {
         }
     }
 
-    /** 长文本对话框（引用 / 许可 / 使用说明），内容可滚动。 */
+    /** 长文本对话框（MiuixDialog）：引用 / 许可 / 使用说明 / 运行状态，内容可滚动。 */
     static void infoDialog(final Activity a, final Theme.Colors p, String title, String body) {
-        final Dialog d = new Dialog(a);
-        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        LinearLayout box = dialogShell(a, d, p);
+        final MiuixDialog d = new MiuixDialog(a, p);
+        d.title(title);
 
-        dialogTitle(a, box, p, title, true);
-
-        int maxH = Math.min(Theme.dp(a, 380),
-                (int) (a.getResources().getDisplayMetrics().heightPixels * 0.56f));
+        int maxH = Math.min(Theme.dp(a, 340),
+                (int) (a.getResources().getDisplayMetrics().heightPixels * 0.50f));
         ScrollView sc = new MaxScrollView(a, maxH);
         sc.setVerticalScrollBarEnabled(false);
-        TextView bodyView = text(a, body, Theme.T_SUM, p.summary, Theme.regular());
-        bodyView.setLineSpacing(Theme.dp(a, 4), 1f);
-        bodyView.setPadding(Theme.dp(a, 24), 0, Theme.dp(a, 24), Theme.dp(a, 16));
+        TextView bodyView = text(a, body, 13, p.summary, Theme.regular());
+        bodyView.setLineSpacing(Theme.dp(a, 3), 1f);
+        int inset = MiuixDialog.pad(a);
+        bodyView.setPadding(inset, 0, inset, Theme.dp(a, 12));
         sc.addView(bodyView);
-        box.addView(sc, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        d.content(sc);
 
-        TextView ok = dialogTextButton(a, p, "知道了", p.primary, true);
-        ok.setOnClickListener(new View.OnClickListener() {
+        d.button("知道了", true, new MiuixDialog.OnClick() {
             @Override
-            public void onClick(View v) {
-                d.dismiss();
+            public void onClick(MiuixDialog dlg) {
+                dlg.dismiss();
             }
         });
-        dialogButtons(a, box, p, null, ok);
         d.show();
     }
 

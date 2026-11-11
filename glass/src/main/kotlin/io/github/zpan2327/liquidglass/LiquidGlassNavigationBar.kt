@@ -38,8 +38,11 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -263,6 +266,11 @@ internal fun IosLiquidGlassNavigationBar(
     }
 
     var currentIndex by remember { mutableIntStateOf(selectedIndex) }
+    /**
+     * 自身手势窗口。从按下到松手后一帧，宿主推来的跟手位置不参与决策 —— 否则「手指还在
+     * 底栏上拖、宿主的页面位置还停在上一页」两边会互相把指示器拽回去。
+     */
+    var selfGesturing by remember { mutableStateOf(false) }
     val onItemClickUpdated by rememberUpdatedState(onItemClick)
 
     fun indexAt(positionX: Float): Int {
@@ -285,8 +293,9 @@ internal fun IosLiquidGlassNavigationBar(
             canDrag = { position ->
                 position.x in 0f..totalWidthPx
             },
-            onDragStarted = { position ->
-                updateValue(indexAt(position.x).toFloat())
+            onDragStarted = { downPos ->
+                selfGesturing = true
+                updateValue(indexAt(downPos.x).toFloat())
             },
             onDragStopped = {
                 val targetIndex = targetValue.roundToInt().coerceIn(0, tabsCount - 1)
@@ -294,9 +303,20 @@ internal fun IosLiquidGlassNavigationBar(
                     currentIndex = targetIndex
                     onItemClickUpdated(targetIndex)
                 }
-                updateValue(targetIndex.toFloat())
+                // 只在这两情况下才重新起弹簧：拖拽过（位置由手指直接给，需要交给动画收尾），
+                // 或者落点不在动画目标上。纯点击时归位动画本来就在跑，重启会把速度清零，看起来顿一下。
+                val stillSettling = !isExternallyDriven && targetValue == targetIndex.toFloat()
+                if (!stillSettling) {
+                    updateValue(targetIndex.toFloat())
+                }
                 animationScope.launch {
                     offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                }
+                // 延一帧再放开：这一帧里宿主刚把跟手值收回、页面才开始滚动，立刻放开会让
+                // 还没清掉的旧位置把指示器拉回起点。
+                animationScope.launch {
+                    withFrameMillis { }
+                    selfGesturing = false
                 }
             },
             onDragCancelled = {
@@ -304,11 +324,17 @@ internal fun IosLiquidGlassNavigationBar(
                 animationScope.launch {
                     offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
                 }
+                animationScope.launch {
+                    withFrameMillis { }
+                    selfGesturing = false
+                }
             },
             onDrag = { _, dragAmount ->
                 if (tabWidthPx > 0f && dragAmount.x != 0f) {
-                    updateValue(
-                        (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                    // 以当前显示位置为基准累加：按下时 spring 可能才走到一半，若拿 targetValue
+                    // 当基准，第一帧会从目标格倒跳回手指处。
+                    dragTo(
+                        (value + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
                             .coerceIn(0f, (tabsCount - 1).toFloat()),
                     )
                     animationScope.launch {
@@ -321,19 +347,38 @@ internal fun IosLiquidGlassNavigationBar(
 
     // 宿主横滑页面时，指示器直接跟到手指的位置（原 GlassBar 的 setPagePosition 语义）；
     // 宿主把跟手位置收回（position 变回 null）时，落到 selectedIndex 上，避免停在两格之间。
-    LaunchedEffect(position, selectedIndex) {
-        if (position != null) {
-            dampedDrag.snapToValue(position)
-        } else if (kotlin.math.abs(dampedDrag.value - selectedIndex) > 0.01f) {
-            dampedDrag.animateToValue(selectedIndex.toFloat())
-        }
-    }
-
-    LaunchedEffect(selectedIndex) {
-        if (currentIndex != selectedIndex) {
-            currentIndex = selectedIndex
-            dampedDrag.animateToValue(selectedIndex.toFloat())
-        }
+    //
+    // 这里刻意不用 LaunchedEffect(position, ...)：position 是每帧都在变的连续值，把它当 key
+    // 会每帧「取消 + 重建」一个协程，重建的空档就是一帧不更新 —— 实测表现为指示器走两步停
+    // 三帧、再猛跳一下。改成单个长驻协程 + snapshotFlow，每帧只做一次赋值。
+    //
+    // 关键：effect 只启动一次，直接引用 position / selectedIndex 这两个参数会把「首次组合
+    // 时的值」永久捕获下来（选中项永远在往初始那一格跑）。必须经 rememberUpdatedState 读。
+    val latestPosition by rememberUpdatedState(position)
+    val latestSelected by rememberUpdatedState(selectedIndex)
+    LaunchedEffect(dampedDrag) {
+        snapshotFlow { Triple(latestPosition, latestSelected, selfGesturing) }
+            .collect { (hostPosition, sel, self) ->
+                when {
+                    // 正在拖底栏：位置归拖拽所有，宿主的跟手值一律不理会。
+                    self -> Unit
+                    hostPosition != null -> {
+                        dampedDrag.snapToValue(hostPosition)
+                    }
+                    else -> {
+                        if (currentIndex != sel) currentIndex = sel
+                        // 按下时 onDragStarted 已经启动了朝这一格的归位动画，宿主 select 回来
+                        // 再起一次会把速度清零、从当前位置重新加速 —— 视觉上就是「顿一下再窜出去」。
+                        val alreadyHeading = !dampedDrag.isExternallyDriven &&
+                            dampedDrag.targetValue == sel.toFloat()
+                        if (!alreadyHeading &&
+                            kotlin.math.abs(dampedDrag.value - sel) > 0.01f
+                        ) {
+                            dampedDrag.animateToValue(sel.toFloat())
+                        }
+                    }
+                }
+            }
     }
 
     fun activateTab(index: Int) {

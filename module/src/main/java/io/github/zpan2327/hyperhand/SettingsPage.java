@@ -194,7 +194,8 @@ final class SettingsPage {
                 });
         rAnimScale = Ui.valueRow(c, cardAnim, pal, "动画时长",
                 "1.00 = 系统原生 600ms；越大越慢，改动即时生效", "×", cur.animScale, 2);
-        realTime(rAnimScale, "动画时长", "×", 0.60f, 2.00f, 0.05f, 2);
+        realTime(rAnimScale, "动画时长", "1.00 = 系统原生 600ms；越大越慢，改动即时生效",
+                "×", 0.60f, 2.00f, 0.05f, 2);
         animInfo = Ui.block(c, pal, animInfoText());
         Ui.addRow(c, cardAnim, pal, animInfo);
         page.add(cardAnim, Ui.cardLp(c, Theme.CARD_GAP));
@@ -377,25 +378,15 @@ final class SettingsPage {
         });
     }
 
-    /** 数值行 + 滑杆对话框。 */
-    private Ui.ValueRow numberRow(LinearLayout card, final String title, String summary,
+    /** 数值行：一级页面只有标题 + 当前值 + 箭头，点行才进参数子页看 miuix Slider。 */
+    private Ui.ValueRow numberRow(LinearLayout card, final String title, final String summary,
                                   final String unit, float value, final int dec,
                                   final float min, final float max, final float step) {
-        // miuix SliderPreference：标题 + 数值在行上，行下面直接挂一条滑杆（bottomAction），
-        // 拖动即时改值；点行仍然弹对话框，方便精确输入。
-        final boolean[] dragging = {false};
-        final Ui.ValueRow row = Ui.valueRow(c, card, pal, title, summary, unit, value, dec,
-                min, max, step, Theme.ROW_PAD_H, new Runnable() {
-                    @Override
-                    public void run() {
-                        markDirty();
-                    }
-                });
-        row.attachSlider(card, Theme.ROW_PAD_H);
+        final Ui.ValueRow row = Ui.valueRow(c, card, pal, title, summary, unit, value, dec);
         row.row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Ui.numberDialog(host, pal, title, unit, min, max, step, dec, row.value,
+                Ui.sliderPageDialog(host, pal, title, summary, unit, min, max, step, dec, row.value,
                         new Ui.OnNumber() {
                             @Override
                             public void onNumber(float nv) {
@@ -408,15 +399,14 @@ final class SettingsPage {
         return row;
     }
 
-    /** 即时生效的数值行（动画时长）。 */
-    private void realTime(final Ui.ValueRow row, final String title, final String unit,
-                          final float min, final float max, final float step, final int dec) {
-        row.attachSlider(row.row.getParent() instanceof LinearLayout
-                ? (LinearLayout) row.row.getParent() : null, Theme.ROW_PAD_H);
+    /** 即时生效的数值行（动画时长）：同样不在一级页面挂滑杆。 */
+    private void realTime(final Ui.ValueRow row, final String title, final String summary,
+                          final String unit, final float min, final float max,
+                          final float step, final int dec) {
         row.row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Ui.numberDialog(host, pal, title, unit, min, max, step, dec, row.value,
+                Ui.sliderPageDialog(host, pal, title, summary, unit, min, max, step, dec, row.value,
                         new Ui.OnNumber() {
                             @Override
                             public void onNumber(float nv) {

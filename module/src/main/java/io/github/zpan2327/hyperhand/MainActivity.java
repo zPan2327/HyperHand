@@ -13,6 +13,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -110,12 +111,12 @@ public class MainActivity extends ComponentActivity {
         // 截图/调试用：am start --ei scroll 600 直接把当前页滚到指定位置，
         // 用来验证折叠标题栏与玻璃底栏在滚动中的表现
         int scroll = getIntent() == null ? 0 : getIntent().getIntExtra("scroll", 0);
-        if (scroll > 0 && pages[start] instanceof android.widget.ScrollView) {
-            final android.widget.ScrollView sv = (android.widget.ScrollView) pages[start];
-            sv.postDelayed(new Runnable() {
+        final android.widget.ScrollView startScroller = scrollOf(pages[start]);
+        if (scroll > 0 && startScroller != null) {
+            startScroller.postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    sv.scrollTo(0, scroll);
+                    startScroller.scrollTo(0, scroll);
                 }
             }, 400);
         }
@@ -171,10 +172,24 @@ public class MainActivity extends ComponentActivity {
             }
 
             @Override
-            public void onPageScrolled(float position) {
-                // 拖动中：指示器跟手；标题栏按偏移淡入淡出
-                nav.setPagePosition(position);
+            public void onPageScrolled(float position, boolean following) {
+                // 拖动中：底栏指示器、顶栏标题都跟手。
+                // 顶栏不再是「吸附后整块换标题」，而是按这个浮点位置把两页的标题
+                // 一起平移 —— 旧页向左滑出、新页从右滑入，和内容同步。
+                //
+                // 底栏只在手势滚动时跟手；点底栏切页是 280ms 的整段滚动，一帧最多跨半格，
+                // 让指示器逐帧跟它反而会「一帧飞过去、卡三帧、再跳一下」，交给它自己的弹簧。
+                if (following) {
+                    nav.setPagePosition(position);
+                } else {
+                    nav.clearPagePosition();
+                }
                 nav.onContentScrolled();
+                if (topBar != null) {
+                    topBar.setPagePosition(position);
+                    // 横向拖动改变了顶栏背后的内容，必须重采样，否则渐进模糊会停在拖动前那一帧。
+                    topBar.invalidate();
+                }
             }
         });
         contentHost.addView(pager, new FrameLayout.LayoutParams(
@@ -182,6 +197,15 @@ public class MainActivity extends ComponentActivity {
 
         // 折叠大标题栏：浮在内容之上，随当前页的滚动位置折叠
         topBar = new TopBar(this, pal);
+        // 一次性注册三页文案：横滑时要同时画「滑出的页」和「滑入的页」，
+        // 索引与 pager 的子 View 顺序一致。关于页 showLarge = false（自带渐变英雄区）。
+        topBar.setPages(
+                new String[] {"概览", "设置", "关于"},
+                new String[] {"单手模式增强", "改动保存后立即生效", ""},
+                new boolean[] {true, true, false},
+                // 关于页的顶栏不加渐进模糊：它自带整屏渐变，压一条模糊带会把渐变切出边。
+                // 参考版式也是「滚动时顶栏透明，快到底才化成页面底色」。
+                new boolean[] {false, false, true});
         root.addView(topBar, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -225,10 +249,25 @@ public class MainActivity extends ComponentActivity {
         root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                // Android 15（API 35）强制 edge-to-edge 后，手势导航的底部条不再算进
+                // systemBars()：`systemBars().bottom` 在全面屏手势模式下返回 0，实际挡在
+                // 底部的是 systemGestures / mandatorySystemGestures。只取 systemBars 会让
+                // 页面底部 padding 少算一个手势条高度 —— 模拟器实测最后一行被悬浮底栏压住
+                // （设置页「起效速度」、关于页「使用说明」）。几个 type 一起传给 getInsets
+                // 会取并集，这样无论三键导航还是手势导航都能拿到正确的底部高度。
                 android.graphics.Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars()
+                                | WindowInsets.Type.displayCutout()
+                                | WindowInsets.Type.systemGestures()
+                                | WindowInsets.Type.mandatorySystemGestures());
+                // 顶部不能取上面那个并集：小米 14 上 mandatorySystemGestures 的 top 是 170px
+                // （56.7dp），而真正的状态栏只有 134px（44.7dp）。拿并集当状态栏高度会让
+                // 每个页面的内容整体下移 12dp，关于页的 logo 位置也因此对不上参考版式。
+                // 顶部只认状态栏 / 挖孔，底部仍旧取并集（手势条只有并集才拿得到）。
+                android.graphics.Insets topBars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                statusInset = bars.top;
-                topBar.setStatusInset(bars.top);
+                statusInset = topBars.top;
+                topBar.setStatusInset(topBars.top);
 
                 navLp.bottomMargin = Theme.dp(MainActivity.this, 12) + bars.bottom;
                 navLp.leftMargin = Theme.dp(MainActivity.this, 20);
@@ -254,10 +293,14 @@ public class MainActivity extends ComponentActivity {
         int top = topBar.expandedHeight();
         // 底栏自身 78dp（64 + 上下 7 的溢出）+ 12dp 外边距 + 16dp 呼吸
         int bottom = navLp.bottomMargin + Theme.dp(this, 78 + 16);
+        // 关于页的 hero 顶距也要状态栏高度：页面是在 insets 下发之前构建的，
+        // 那会儿 statusInset 还是 0，必须在这里补一次。
+        if (aboutPage != null) {
+            aboutPage.onInsets();
+        }
         for (int i = 0; i < pages.length; i++) {
-            View p = pages[i];
-            if (p instanceof android.widget.ScrollView) {
-                android.widget.ScrollView sv = (android.widget.ScrollView) p;
+            android.widget.ScrollView sv = scrollOf(pages[i]);
+            if (sv != null) {
                 sv.setClipToPadding(false);
                 View child = sv.getChildAt(0);
                 if (child != null) {
@@ -266,35 +309,49 @@ public class MainActivity extends ComponentActivity {
                     child.setPadding(child.getPaddingLeft(), padTop,
                             child.getPaddingRight(), bottom);
                 }
-                final android.widget.ScrollView scroll = sv;
                 final int pageIndex = i;
-                final int[] lastEdge = {0};   // -1 顶 / 0 无 / 1 底
+                // miuix overScrollVertical()：橡皮筋位移期间 backdrop 一直在变，
+                // 顶栏的渐进式模糊和玻璃底栏都要跟着重画，否则会停在拖动前那一帧。
+                if (sv instanceof MiuixScrollView) {
+                    ((MiuixScrollView) sv).setOnOverScroll(new MiuixScrollView.OnOverScroll() {
+                        @Override
+                        public void onOverScroll(float offset) {
+                            // 每帧都刷新，保证「实时」。采样位图已降到 0.20×，
+                            // 单帧成本足够低，不再需要靠降帧换性能。
+                            if (topBar != null) {
+                                topBar.invalidate();
+                            }
+                            if (nav != null) {
+                                nav.onContentScrolled();
+                            }
+                        }
+                    });
+                }
                 sv.setOnScrollChangeListener(new View.OnScrollChangeListener() {
                     @Override
                     public void onScrollChange(View v, int x, int y, int ox, int oy) {
                         if (pageIndex == current && topBar != null) {
-                            topBar.setScroll(y);
+                            if (pageIndex == TAB_ABOUT && aboutPage != null) {
+                                // 关于页的顶栏不吃「120dp 折叠预算」，直接跟 hero 的
+                                // 滚动进度 —— SonyPods 里 title 的 alpha 也是
+                                // ((scrollProgress - 0.35) / 0.65)，两页才对得上。
+                                aboutPage.onScrolled(y);
+                                topBar.setCollapse(aboutPage.progress());
+                            } else {
+                                topBar.setScroll(y);
+                            }
+                            // collapse 到 1 饱和后 setCollapse 会提前 return、不再 invalidate，
+                            // 但内容仍在滚动 —— 顶栏的 backdrop 必须每帧重采样，否则渐进
+                            // 模糊会永久定格在「刚折叠完」那一帧。这里无条件补一次重绘。
+                            topBar.invalidate();
                         }
                         // 玻璃要"实时"透出背后的内容：页面滚动不会让底栏自己重绘，
                         // 不主动重画就会停在滚动前那一帧上（旧 GlassBar 也有这个毛病）。
                         if (nav != null) {
                             nav.onContentScrolled();
                         }
-                        // 滚动到顶/底的边界反馈：只在"刚碰到"那一下触发，不连震
-                        if (Math.abs(y - oy) < Theme.dp(MainActivity.this, 2)) {
-                            return;
-                        }
-                        boolean down = y > oy;
-                        int edge = 0;
-                        if (down && !scroll.canScrollVertically(1) && y > 0) {
-                            edge = 1;
-                        } else if (!down && !scroll.canScrollVertically(-1)) {
-                            edge = -1;
-                        }
-                        if (edge != 0 && edge != lastEdge[0]) {
-                            Haptics.get(MainActivity.this).edge();
-                        }
-                        lastEdge[0] = edge;
+                        // 不在滚动到顶/底时震动：Rubber Band 本身已经给了边界反馈，
+                        // 触感只保留在点击类控件上。
                     }
                 });
             }
@@ -330,46 +387,145 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
-    /** 每一页的标题 / 副标题 / 右上角动作。 */
+    /** 每一页的右上角动作；标题文案在启动时由 {@code TopBar.setPages} 一次给全。 */
     private void applyTopBar(int index) {
-        if (index == TAB_OVERVIEW) {
-            topBar.setPage("概览", "单手模式增强", Icons.RESTART, new TopBar.OnAction() {
-                @Override
-                public void onAction() {
-                    showRestartMenu();
-                }
-            });
-        } else if (index == TAB_SETTINGS) {
-            topBar.setPage("设置", "改动保存后立即生效", -1, null);
+        int icon = index == TAB_OVERVIEW ? Icons.RESTART : -1;
+        TopBar.OnAction act = index == TAB_OVERVIEW ? new TopBar.OnAction() {
+            @Override
+            public void onAction() {
+                showRestartDialog();
+            }
+        } : null;
+        topBar.setCurrentPage(index, icon, act);
+        topBar.setPagePosition(index);
+        if (index == TAB_ABOUT && aboutPage != null) {
+            aboutPage.onScrolled(scrollYOf(index));
+            topBar.setCollapse(aboutPage.progress());
         } else {
-            // 关于页是渐变英雄区，自带大标题，收起后只剩顶部一行小标题
-            topBar.setPage("关于", "", false, -1, null);
+            topBar.setScroll(scrollYOf(index));
         }
-        topBar.setScroll(scrollYOf(index));
         applyInsets();
     }
 
     private int scrollYOf(int index) {
-        View p = pages[index];
-        return p instanceof android.widget.ScrollView
-                ? ((android.widget.ScrollView) p).getScrollY() : 0;
+        android.widget.ScrollView sv = scrollOf(pages[index]);
+        return sv != null ? sv.getScrollY() : 0;
     }
 
-    private void showRestartMenu() {
-        Ui.popupMenu(this, pal, topBar,
-                new String[] {"重启系统界面", "重启小米桌面", "重启两个作用域"},
-                new Ui.OnChoice() {
+    /**
+     * 取一页内部的滚动容器。
+     *
+     * 关于页现在返回的是「OS3 背景 + 滚动内容 + 固定 hero」的容器的 FrameLayout，
+     * 不再是裸 ScrollView，所以所有按类型判断的地方都改走这里。
+     */
+    static android.widget.ScrollView scrollOf(View page) {
+        if (page instanceof android.widget.ScrollView) {
+            return (android.widget.ScrollView) page;
+        }
+        if (page instanceof AboutPage.Root) {
+            return ((AboutPage.Root) page).scroll;
+        }
+        return null;
+    }
+
+    /**
+     * 概览右上角按钮：miuix {@code Dialog} 里嵌 {@code Checkbox}。
+     *
+     * <p>原来是 {@code Ui.popupMenu} 的 PopupWindow 锚点菜单（三个固定选项），
+     * 现在改成可多选的作用域对话框：父项「全部作用域」是三态 Checkbox
+     * （全选 On / 全不选 Off / 部分选中 Indeterminate），与两个子项联动 ——
+     * 正是 miuix Checkbox 文档里的父子复选框用法。
+     */
+    private void showRestartDialog() {
+        final MiuixDialog d = new MiuixDialog(this, pal);
+        d.title("重启作用域");
+        d.summary("勾选需要重启的作用域，结束后钩子会随进程重启重新注入。");
+
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+
+        final MiuixCheckbox.Row[] children = new MiuixCheckbox.Row[2];
+        final MiuixCheckbox.Row[] parent = new MiuixCheckbox.Row[1];
+        final boolean[] syncing = {false};
+
+        final Runnable syncParent = new Runnable() {
+            @Override
+            public void run() {
+                if (syncing[0] || parent[0] == null) {
+                    return;
+                }
+                boolean sysui = children[0].state() == MiuixCheckbox.State.ON;
+                boolean home = children[1].state() == MiuixCheckbox.State.ON;
+                MiuixCheckbox.State s = sysui && home ? MiuixCheckbox.State.ON
+                        : (!sysui && !home ? MiuixCheckbox.State.OFF
+                        : MiuixCheckbox.State.INDETERMINATE);
+                syncing[0] = true;
+                parent[0].checkbox.setState(s, true);
+                syncing[0] = false;
+            }
+        };
+
+        MiuixCheckbox.OnStateChange childChanged = new MiuixCheckbox.OnStateChange() {
+            @Override
+            public void onChanged(MiuixCheckbox.State state) {
+                syncParent.run();
+            }
+        };
+
+        parent[0] = MiuixCheckbox.row(this, pal, "全部作用域", "系统界面 + 小米桌面",
+                MiuixCheckbox.State.OFF, new MiuixCheckbox.OnStateChange() {
                     @Override
-                    public void onChoice(int index) {
-                        if (index == 0) {
-                            restartScope("sysui");
-                        } else if (index == 1) {
-                            restartScope("home");
-                        } else {
-                            restartScopes();
+                    public void onChanged(MiuixCheckbox.State state) {
+                        if (syncing[0]) {
+                            return;
                         }
+                        // 半选中态点一下变成全选，与 miuix 父子示例一致
+                        MiuixCheckbox.State target = state == MiuixCheckbox.State.ON
+                                ? MiuixCheckbox.State.ON : MiuixCheckbox.State.OFF;
+                        syncing[0] = true;
+                        children[0].checkbox.setState(target, true);
+                        children[1].checkbox.setState(target, true);
+                        syncing[0] = false;
                     }
                 });
+        list.addView(parent[0].view, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        children[0] = MiuixCheckbox.row(this, pal, "系统界面", "com.android.systemui",
+                MiuixCheckbox.State.OFF, childChanged);
+        children[1] = MiuixCheckbox.row(this, pal, "小米桌面", "com.miui.home",
+                MiuixCheckbox.State.OFF, childChanged);
+        for (int i = 0; i < children.length; i++) {
+            list.addView(children[i].view, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        d.content(list);
+
+        d.buttons("重启", new MiuixDialog.OnClick() {
+            @Override
+            public void onClick(MiuixDialog dlg) {
+                boolean sysui = children[0].state() == MiuixCheckbox.State.ON;
+                boolean home = children[1].state() == MiuixCheckbox.State.ON;
+                if (!sysui && !home) {
+                    toast("请至少勾选一个作用域");
+                    return;   // 保持 Dialog 打开
+                }
+                dlg.dismiss();
+                if (sysui && home) {
+                    restartScopes();
+                } else if (sysui) {
+                    restartScope("sysui");
+                } else {
+                    restartScope("home");
+                }
+            }
+        }, "取消", new MiuixDialog.OnClick() {
+            @Override
+            public void onClick(MiuixDialog dlg) {
+                dlg.dismiss();
+            }
+        });
+        d.show();
     }
 
     void goSettings() {
@@ -490,22 +646,6 @@ public class MainActivity extends ComponentActivity {
             // 走默认提示
         }
         return "还没有记录。开启调试日志后，在屏幕底部下滑一次再看这里。";
-    }
-
-    /** 全屏二级页 overlay：盖在所有页面与底栏之上。 */
-    void showOverlay(View v) {
-        if (root == null) {
-            return;
-        }
-        hideOverlay(v);
-        root.addView(v, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-    }
-
-    void hideOverlay(View v) {
-        if (root != null && v.getParent() == root) {
-            root.removeView(v);
-        }
     }
 
     void showStatusDetail() {

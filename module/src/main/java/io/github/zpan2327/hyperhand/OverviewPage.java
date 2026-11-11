@@ -162,7 +162,10 @@ final class OverviewPage {
         zoneValue.setText(Ui.fmt(cfg.zoneDp, 0) + " dp");
 
         if (dynamic != null) {
-            page.column.removeView(dynamic);
+            // 系统信息区里全是进程生命周期内不变的值（机型、版本、安装时间），
+            // 之前每次 refresh 都整块拆掉重建，连带整页 ScrollView 重新测量；切到本页
+            // 时底栏指示器正走到一半，这一下布局就把那几帧吃掉 —— 看起来像「卡住再跳」。
+            return;
         }
         dynamic = new LinearLayout(c);
         dynamic.setOrientation(LinearLayout.VERTICAL);

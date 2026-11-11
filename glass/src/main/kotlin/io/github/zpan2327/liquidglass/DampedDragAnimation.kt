@@ -47,7 +47,9 @@ internal class DampedDragAnimation(
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
 
-    private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
+    // 1000f 的刚度意味着跨一格只要 ~32ms —— 比一帧还短，眼睛看到的就是「闪过去」而不是
+    // 「滑过去」。降到 500f（临界阻尼、约 210ms 到位），既跟得上手指也不再有瞬移感。
+    private val valueAnimationSpec = spring(1f, 500f, visibilityThreshold)
     private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
     private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
@@ -64,14 +66,25 @@ internal class DampedDragAnimation(
     private var pressJob: Job? = null
     private var releaseJob: Job? = null
 
+    /**
+     * 外部直接驱动的位置（宿主横滑页面时的跟手位置）。
+     *
+     * 非 null 时 [value] 直接返回它：跟手是「每帧给一个新值」，走 Animatable 就必须每帧起一个
+     * 协程去 snapTo，一帧的调度延迟就是一次肉眼可见的抖动。这里退化成普通字段，读取零开销。
+     * 同时值写回 Animatable（[snapToValue]），保证撤销外部驱动时动画从当前位置接着走。
+     */
+    private var externalValue: Float? = null
+
     private val velocityTracker = VelocityTracker()
 
     private val startMark = TimeSource.Monotonic.markNow()
 
     private fun nowMillis(): Long = startMark.elapsedNow().inWholeMilliseconds
 
-    val value: Float get() = valueAnimation.value
-    val targetValue: Float get() = valueAnimation.targetValue
+    val value: Float get() = externalValue ?: valueAnimation.value
+    val targetValue: Float get() = externalValue ?: valueAnimation.targetValue
+    /** 是否正被外部（宿主横滑页面）直接驱动。 */
+    val isExternallyDriven: Boolean get() = externalValue != null
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
@@ -105,10 +118,23 @@ internal class DampedDragAnimation(
         pressJob?.cancel()
         velocityTracker.resetTracking()
         pressJob = animationScope.launch {
+            detachExternal()
             launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
             launch { scaleXAnimation.animateTo(pressedScale, scaleXAnimationSpec) }
             launch { scaleYAnimation.animateTo(pressedScale, scaleYAnimationSpec) }
         }
+    }
+
+    /**
+     * 交接：外部驱动让位给内部动画。
+     *
+     * 先把 Animatable 钉到外部位置，再撤销 [externalValue] —— 顺序反过来会有一帧读到
+     * Animatable 的陈旧值，指示器会闪回上一次动画的落点。
+     */
+    private suspend fun detachExternal() {
+        val ext = externalValue ?: return
+        valueAnimation.snapTo(ext.coerceIn(valueRange))
+        externalValue = null
     }
 
     fun release() {
@@ -128,21 +154,38 @@ internal class DampedDragAnimation(
     fun updateValue(value: Float) {
         val targetValue = value.coerceIn(valueRange)
         animationScope.launch {
+            detachExternal()
             valueAnimation.animateTo(targetValue, valueAnimationSpec) { updateVelocity() }
         }
     }
 
     /**
-     * 直接把位置钉到 [value]，不播动画，用于宿主的连续跟手（例如横滑页面时的页面位置）。
+     * 直接把位置钉到 [value]，用于宿主的连续跟手（例如横滑页面时的页面位置）。
+     *
+     * 只写一个普通字段，不起协程、不做动画 —— 每帧一个 [value] 的语义本来就是「立刻到这儿」。
      */
     fun snapToValue(value: Float) {
-        val targetValue = value.coerceIn(valueRange)
-        animationScope.launch { valueAnimation.snapTo(targetValue) }
+        externalValue = value.coerceIn(valueRange)
+    }
+
+    /**
+     * 拖拽跟手：把位置直接按到 [value]，不走弹簧。
+     *
+     * 拖拽期间手指是「绝对定位」，用 animateTo 去追只会慢半拍并在换格时过冲 —— 快速划过
+     * 两格时尤其明显（追不上 → 松手再补一段 → 看起来就是跳）。
+     */
+    fun dragTo(value: Float) {
+        if (externalValue == null) {
+            // 第一次接管：把还在跑的归位动画停掉，免得它继续空转（并和拖拽抢 targetValue）。
+            animationScope.launch { valueAnimation.stop() }
+        }
+        externalValue = value.coerceIn(valueRange)
     }
 
     fun animateToValue(value: Float) {
         animationScope.launch {
             mutatorMutex.mutate {
+                detachExternal()
                 press()
                 val targetValue = value.coerceIn(valueRange)
                 launch { valueAnimation.animateTo(targetValue, valueAnimationSpec) }

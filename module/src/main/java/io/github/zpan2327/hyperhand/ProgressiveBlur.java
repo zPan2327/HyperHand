@@ -190,6 +190,8 @@ final class ProgressiveBlur {
     private final RectF dst = new RectF();
 
     private View backdropSource;
+    /** 上次软件采样的时刻；60fps 节流，见 draw()。 */
+    private long lastCaptureAt;
     private float blurRadiusDp = DEFAULT_BLUR_RADIUS_DP;
     private Gradient gradient = Gradient.TOP;
     private boolean enabled = true;
@@ -256,9 +258,15 @@ final class ProgressiveBlur {
             return;
         }
 
-        // 每帧无条件重采样：不设指纹、不设缓存、不设时间节流。
-        // 顶栏只在折叠态才走到这里，采样区约 330×60，成本远低于一帧预算。
-        capture(top, bottom);
+        // 重采样按 60fps 节流：滚动是 120Hz 事件流，逐帧软件重画整棵 View 树（虽然
+        // 只采 330×60 一小条，遍历成本不随面积变）正是 Draw 阶段最大的一笔 CPU 开销。
+        // 8ms 旧的模糊内容完全看不出来（内容本来就是糊的），而顶栏标题的跟手运动
+        // 不受影响 —— 着色器仍然每帧重跑，只是喂给它的采样图最多旧 16ms。
+        long now = android.os.SystemClock.uptimeMillis();
+        if (sample == null || now - lastCaptureAt >= 16L) {
+            lastCaptureAt = now;
+            capture(top, bottom);
+        }
         if (sample == null || sample.isRecycled()) {
             return;
         }

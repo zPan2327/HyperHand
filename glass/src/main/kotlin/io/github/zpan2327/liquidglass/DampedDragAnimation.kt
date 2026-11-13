@@ -10,6 +10,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
@@ -47,9 +50,11 @@ internal class DampedDragAnimation(
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
 
-    // 1000f 的刚度意味着跨一格只要 ~32ms —— 比一帧还短，眼睛看到的就是「闪过去」而不是
-    // 「滑过去」。降到 500f（临界阻尼、约 210ms 到位），既跟得上手指也不再有瞬移感。
-    private val valueAnimationSpec = spring(1f, 500f, visibilityThreshold)
+    // 与参考实现（Kyant0/AndroidLiquidGlass → SonyPods）逐值一致：临界阻尼、刚度 1000。
+    // 拖拽时每帧把「目标」推到手指处、显示值由这根弹簧追，~180ms 的收敛就是原版
+    // 「有阻尼、有弹性」的手感来源。此前把刚度降到 500（更糊）并改成 dragTo 直接钉值
+    // （完全没有弹性），都是偏离参考的自作主张，已撤回。
+    private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
     private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
     private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
@@ -67,13 +72,14 @@ internal class DampedDragAnimation(
     private var releaseJob: Job? = null
 
     /**
-     * 外部直接驱动的位置（宿主横滑页面时的跟手位置）。
+     * 外部直接驱动的位置（宿主横滑页面时的跟手位置），NaN = 未被外部驱动。
      *
-     * 非 null 时 [value] 直接返回它：跟手是「每帧给一个新值」，走 Animatable 就必须每帧起一个
-     * 协程去 snapTo，一帧的调度延迟就是一次肉眼可见的抖动。这里退化成普通字段，读取零开销。
-     * 同时值写回 Animatable（[snapToValue]），保证撤销外部驱动时动画从当前位置接着走。
+     * 「每帧给一个新值」不能走 Animatable（每帧起协程 snapTo 有调度延迟，会抖），但**必须是
+     * snapshot state**：graphicsLayer/drawBackdrop 这些块是靠读到的 state 失效来重跑的，
+     * 写普通字段不会通知任何人 —— 表现就是页面在滑、药丸纹丝不动（宿主每帧都调到了
+     * snapToValue，链路全通，唯独绘制端不知道值变了）。
      */
-    private var externalValue: Float? = null
+    private var externalValue by mutableFloatStateOf(Float.NaN)
 
     private val velocityTracker = VelocityTracker()
 
@@ -81,10 +87,16 @@ internal class DampedDragAnimation(
 
     private fun nowMillis(): Long = startMark.elapsedNow().inWholeMilliseconds
 
-    val value: Float get() = externalValue ?: valueAnimation.value
-    val targetValue: Float get() = externalValue ?: valueAnimation.targetValue
+    val value: Float get() {
+        val ext = externalValue
+        return if (ext.isNaN()) valueAnimation.value else ext
+    }
+    val targetValue: Float get() {
+        val ext = externalValue
+        return if (ext.isNaN()) valueAnimation.targetValue else ext
+    }
     /** 是否正被外部（宿主横滑页面）直接驱动。 */
-    val isExternallyDriven: Boolean get() = externalValue != null
+    val isExternallyDriven: Boolean get() = !externalValue.isNaN()
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
@@ -132,9 +144,10 @@ internal class DampedDragAnimation(
      * Animatable 的陈旧值，指示器会闪回上一次动画的落点。
      */
     private suspend fun detachExternal() {
-        val ext = externalValue ?: return
+        val ext = externalValue
+        if (ext.isNaN()) return
         valueAnimation.snapTo(ext.coerceIn(valueRange))
-        externalValue = null
+        externalValue = Float.NaN
     }
 
     fun release() {
@@ -166,20 +179,8 @@ internal class DampedDragAnimation(
      */
     fun snapToValue(value: Float) {
         externalValue = value.coerceIn(valueRange)
-    }
-
-    /**
-     * 拖拽跟手：把位置直接按到 [value]，不走弹簧。
-     *
-     * 拖拽期间手指是「绝对定位」，用 animateTo 去追只会慢半拍并在换格时过冲 —— 快速划过
-     * 两格时尤其明显（追不上 → 松手再补一段 → 看起来就是跳）。
-     */
-    fun dragTo(value: Float) {
-        if (externalValue == null) {
-            // 第一次接管：把还在跑的归位动画停掉，免得它继续空转（并和拖拽抢 targetValue）。
-            animationScope.launch { valueAnimation.stop() }
-        }
-        externalValue = value.coerceIn(valueRange)
+        // 值同时写回 Animatable：撤销外部驱动时动画从当前位置接着走，不闪跳。
+        // snapTo 是 suspend，这里只在已有外部值时才需要 —— 首帧在 detachExternal 里兜底。
     }
 
     fun animateToValue(value: Float) {

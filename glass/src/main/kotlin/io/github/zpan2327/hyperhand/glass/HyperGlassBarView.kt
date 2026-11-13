@@ -123,11 +123,19 @@ class HyperGlassBarView @JvmOverloads constructor(
         redrawScheduled = true
         Choreographer.getInstance().postFrameCallback {
             redrawScheduled = false
-            redrawTick.intValue++
+            // 60fps 节流：滚动事件是 120Hz 的，逐帧 ++redrawTick 会让整条底栏每帧
+            // 重组一次并把整页软件重画一遍采样（Draw 阶段最大的一笔 CPU 开销）。
+            // 玻璃背后的内容本来就是糊的，采样图旧 8ms 完全看不出来。
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastTickAt >= 16L) {
+                lastTickAt = now
+                redrawTick.intValue++
+            }
         }
     }
 
     private var redrawScheduled = false
+    private var lastTickAt = 0L
 
     /** 强调色（选中态的图标/文字）。不设则用 miuix 主题默认值。 */
     fun setAccentColor(argb: Int) {

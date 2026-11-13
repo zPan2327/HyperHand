@@ -303,8 +303,9 @@ internal fun IosLiquidGlassNavigationBar(
                     currentIndex = targetIndex
                     onItemClickUpdated(targetIndex)
                 }
-                // 只在这两情况下才重新起弹簧：拖拽过（位置由手指直接给，需要交给动画收尾），
-                // 或者落点不在动画目标上。纯点击时归位动画本来就在跑，重启会把速度清零，看起来顿一下。
+                // 只在落点不在动画目标上时才重起弹簧：拖拽松手时目标还在手指处，需要改道
+                // 吸附到最近一格；纯点击时归位动画本来就在跑（且目标就是这一格），重启
+                // animateTo 虽然继承速度，但没必要多一次 mutate。
                 val stillSettling = !isExternallyDriven && targetValue == targetIndex.toFloat()
                 if (!stillSettling) {
                     updateValue(targetIndex.toFloat())
@@ -331,10 +332,11 @@ internal fun IosLiquidGlassNavigationBar(
             },
             onDrag = { _, dragAmount ->
                 if (tabWidthPx > 0f && dragAmount.x != 0f) {
-                    // 以当前显示位置为基准累加：按下时 spring 可能才走到一半，若拿 targetValue
-                    // 当基准，第一帧会从目标格倒跳回手指处。
-                    dragTo(
-                        (value + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                    // 与参考实现一致：目标按手指增量累加，显示值由 spring(1f, 1000f) 追。
+                    // 弹簧追目标的滞后就是「有阻尼」的手感；基准必须是 targetValue
+                    // （增量积分 = 手指绝对位置），拿 value 当基准会把滞后复利进目标。
+                    updateValue(
+                        (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
                             .coerceIn(0f, (tabsCount - 1).toFloat()),
                     )
                     animationScope.launch {

@@ -52,6 +52,10 @@ final class AboutPage {
     private LinearLayout heroCol;
     private View spacer;
     private View tail;
+    /** 「开发者」小标题：滚动上限锚在它的字顶（见 scrollLimit）。 */
+    private TextView devSection;
+    /** 滚动上限（px）：字样的顶贴到顶栏底边时的 scrollY，也是 hero 淡出的预算。 */
+    private int scrollLimit;
     private GlassNode iconGlass;
     private GlassNode wordGlass;
     private View heroIcon;
@@ -180,10 +184,12 @@ final class AboutPage {
 
     /** MainActivity 的滚动回调转进来，驱动背景与 hero 的淡出。 */
     void onScrolled(int y) {
-        if (heroBudget <= 0) {
+        int budget = scrollLimit > 0 ? scrollLimit : heroBudget;
+        if (budget <= 0) {
             return;
         }
-        float p = Math.max(0f, Math.min(1f, (float) y / heroBudget));
+        // 淡出预算取滚动上限：滚到「开发者」贴住顶栏的那一刻，hero 与背景正好全部消失。
+        float p = Math.max(0f, Math.min(1f, (float) y / budget));
         if (Math.abs(p - progress) < 0.0005f) {
             return;
         }
@@ -260,7 +266,9 @@ final class AboutPage {
 
         buildHero();
         // ---------------------------------------------------------- 开发者
-        page.add(Ui.section(c, pal, "开发者"));
+        // 滚动上限就锚在这个标题上：字样的顶不允许越过顶栏的底（见 scrollLimit）。
+        devSection = Ui.section(c, pal, "开发者");
+        page.add(devSection);
         LinearLayout cardDev = Ui.card(c, pal);
         LinearLayout row = Ui.rowShell(c);
         Ui.rowRipple(row, pal);
@@ -560,13 +568,30 @@ final class AboutPage {
         }
         int tailH = tail.getHeight();
         int bodyH = colH - tailH;
-        int want = Math.max(0, heroBudget + page.scroll.getHeight() - bodyH);
+        // 滚动上限（产品约定）：「开发者」字样的顶不允许越过顶栏的底。
+        // 把尾部补白调成「正好能滚到这条线」，ScrollView 自己的边界就是钳制点 ——
+        // 拖动、fling、橡皮筋都不用再单独处理，手感保持一致。
+        scrollLimit = computeScrollLimit();
+        int want = Math.max(0, scrollLimit + page.scroll.getHeight() - bodyH);
         if (want == tailH) {
             return;
         }
         ViewGroup.LayoutParams lp = tail.getLayoutParams();
         lp.height = want;
         tail.setLayoutParams(lp);
+    }
+
+    /**
+     * 允许的最大 scrollY：「开发者」字样的顶（content 坐标）− 顶栏底边。
+     * 顶栏底边 = 状态栏 + 52dp 标题条（{@link Theme#BAR_H}）。
+     */
+    private int computeScrollLimit() {
+        if (devSection == null || page.column == null) {
+            return heroBudget;
+        }
+        int textTop = page.column.getTop() + devSection.getTop() + devSection.getTotalPaddingTop();
+        int barBottom = host.statusInset() + Theme.dp(c, Theme.BAR_H);
+        return Math.max(0, textTop - barBottom);
     }
 
     /**

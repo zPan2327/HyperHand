@@ -224,6 +224,39 @@ class MiuixScrollView extends ScrollView {
                         || (atBottom && available > 0.01f);
                 boolean hasBand = Math.abs(rawDistance) > 0.01f;
 
+                // 形变回收优先于内容滚动：手指往回收（dy 与 rawDistance 同号）时，
+                // 这一帧的位移必须全部用来收形变。但系统在上面已经把它滚成内容位移了
+                // （进入内容区间后 consumed == dy，旧公式只剩像素取整残差，形变收敛不动），
+                // 于是形变挂着跟内容滚进中段，抬手时 wasOver 判成「越界松手」，
+                // 在中段炸出一次回弹 —— 这就是「没到顶/底却出现阻尼回弹」的根因。
+                // 这里把系统滚掉的量退回（stolen），dy 全额记到形变上：形变先归零、
+                // 多出来的位移才滚内容，与 iOS 橡皮筋「先回弹、后跟手」一致。
+                boolean collapsing = hasBand && Math.abs(dy) > 0.001f
+                        && Math.signum(dy) == Math.signum(rawDistance);
+                if (collapsing) {
+                    int stolen = getScrollY() - before;
+                    if (stolen != 0) {
+                        scrollBy(0, -stolen);
+                    }
+                    float used = Math.copySign(
+                            Math.min(Math.abs(dy), Math.abs(rawDistance)), dy);
+                    float leftover = dy - used;
+                    float next = rawDistance - used;
+                    if (Math.signum(next) != Math.signum(rawDistance)) {
+                        next = 0f;
+                    }
+                    rawDistance = next;
+                    apply(defaultParabolaScrollEasing(rawDistance, getHeight()));
+                    if (next == 0f) {
+                        startRebound(0f);
+                        if (Math.abs(leftover) > 0.5f) {
+                            // 形变已收完，这一帧没用掉的位移还给内容滚动。
+                            scrollBy(0, Math.round(leftover));
+                        }
+                    }
+                    return true;
+                }
+
                 // 统一成一个式子：Δ形变 = -available。
                 // 轴向约定 —— 底部外推 available > 0 → 形变变负（内容上移）；
                 // 顶部外推 available < 0 → 形变变正（内容下移）。
@@ -247,7 +280,10 @@ class MiuixScrollView extends ScrollView {
 
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
-                boolean wasOver = Math.abs(offset) > 0.5f || rawDistance != 0f;
+                // 只有贴在边界上的形变才算「越界松手」；中段残余的形变（若有）
+                // 交给已在跑的弹簧，不要在中段再起一次回弹。
+                boolean atEdge = !canScrollVertically(-1) || !canScrollVertically(1);
+                boolean wasOver = atEdge && (Math.abs(offset) > 0.5f || rawDistance != 0f);
                 if (wasOver) {
                     // 越界状态下抬手：给 super 一个 CANCEL 收尾，避免它拿抬手的 UP
                     // 去启动一段必然被 clamp 掉的 fling（那会和弹簧回弹抢动画）。

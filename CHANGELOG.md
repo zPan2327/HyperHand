@@ -4,7 +4,21 @@
 
 ## [Unreleased]
 
+## [3.0.3-beta.2] - 2026-11-13 - 横滑边界与交互一致性修复
+
+> 测试版，只发 GitHub Releases 的 prerelease 通道。versionCode 29906，可直接覆盖安装
+> 3.0.3-beta.1（29905）。同时同步到 LSPosed 模块仓库，tag `29906-3.0.3-beta.2`。
+
 ### 修复
+- **横滑左右边界阻尼生硬且不跟手**：`PagePager` 旧实现每帧把「已压缩过的
+  `offset`」再套一次边界阻尼公式（复合压缩），越拉越拉不动、往回拖也不沿原路
+  返回；松手时又把整段 fling 速度灌进 `k=300` 的切页弹簧，越界会先大幅外冲
+  再猛绷回。现按 miuix `MiuixOverscrollEffect.rawTouchAccumulationX` 的语义，
+  用未压缩的 `rawOffset` 1:1 记录手指位移，超界部分一次性过
+  `DefaultParabolaScrollEasing`（复用纵向 `MiuixScrollView` 的同款曲线，
+  饱和 20% 屏宽）；越界松手改走软弹簧 `k=190 / ζ=0.9` 并把甩速限幅到
+  0.9 页/秒，回弹动画被手指接管时反解当前形变、不跳位。页内吸附保持不变，
+  仅在甩向首/末页时把朝界外的速度分量折减 75%，避免撞墙式回弹。
 - **关于页 logo / 应用名显示错误**：玻璃混色链里第三层 Lab 被「明度归一 LIFT」
   近似替代，把方块压成灰紫、字标发浅。现逐行移植 miuix `Shaders.kt` 的
   `mi_blend_color_burn / color_dodge / blendLinearLight / labColor`（含预乘语义与

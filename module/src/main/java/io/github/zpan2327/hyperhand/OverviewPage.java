@@ -92,12 +92,9 @@ final class OverviewPage {
     private FrameLayout statusCard() {
         hero = new FrameLayout(c);
         hero.setClipToOutline(true);
-        Ui.clickableCard(hero, Theme.CARD_RADIUS, pal.successBg, pal, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                host.showStatusDetail();
-            }
-        });
+        // 状态卡不可点击（产品约定：无论模块是否启用，都不弹「运行状态」对话框）。
+        // 静态圆角底即可，别用 clickableCard —— 涟漪 + 按压缩放会暗示「可点」。
+        hero.setBackground(Theme.round(pal.successBg, Theme.dp(c, Theme.CARD_RADIUS)));
 
         heroIcon = Icons.view(c, Icons.HAND, 96, pal.onSuccess, 0f);
         FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(
@@ -205,30 +202,30 @@ final class OverviewPage {
         return s == null || s.length() == 0 ? "未知" : s;
     }
 
+    /**
+     * 状态卡配色与 SonyPods {@code StatusCard} 逐值一致：
+     * 启用 = 绿 {@code #36D167}/{@code #DFFAE4}，未启用 = 红 {@code #FF5A52}/{@code #FFE5E3}。
+     * 未启用文案固定「未启用」；卡不可点击（见 {@link #statusCard()}）。
+     */
     private void applyHero() {
         int level = host.statusLevel();
+        boolean enabled = level > 0;
         int bg;
         int iconTint;
         int summaryColor;
         String title;
         String summary;
-        if (level == 2) {
-            bg = pal.successBg;
-            iconTint = pal.success;
-            summaryColor = pal.onSuccess;
-            title = "模块已激活";
-            summary = "钩子已在系统界面生效";
-        } else if (level == 1) {
-            bg = pal.warnBg;
-            iconTint = pal.primary;
-            summaryColor = pal.onWarn;
-            title = "模块已启用";
-            summary = "等待系统界面重启后注入";
+        if (enabled) {
+            bg = pal.night ? 0xFF16301F : 0xFFDFFAE4;
+            iconTint = pal.night ? 0xFF5BD07E : 0xFF36D167;
+            summaryColor = Theme.alpha(pal.night ? 0xFFB8E8C5 : 0xFF2F3A32, 0.78f);
+            title = level == 2 ? "模块已激活" : "模块已启用";
+            summary = level == 2 ? "钩子已在系统界面生效" : "等待系统界面重启后注入";
         } else {
-            bg = pal.cardHigh;
-            iconTint = pal.section;
-            summaryColor = pal.summary;
-            title = "模块已停用";
+            bg = pal.night ? 0xFF3A201E : 0xFFFFE5E3;
+            iconTint = pal.night ? 0xFFFF8A82 : 0xFFFF5A52;
+            summaryColor = pal.night ? 0xFFFF8A82 : 0xFFFF5A52;
+            title = "未启用";
             summary = "总开关关闭";
         }
 

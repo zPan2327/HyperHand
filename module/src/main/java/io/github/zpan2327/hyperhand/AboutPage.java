@@ -64,8 +64,14 @@ final class AboutPage {
     /** hero 占掉的滚动预算（px）：滚完这段，背景和 hero 正好全部淡出。 */
     private int heroBudget;
     private float progress;
-    /** 玻璃重录的帧计数；配合隔帧更新（见 onTint）。 */
-    private int glassTick;
+    /*
+     * 玻璃层必须逐帧重录，禁止再加间隔 / 隔帧 / 取色阈值。
+     *
+     * SonyPods 的 textureBlur(backdrop) 每帧从 LayerBackdrop 采样，是连续的；本项目
+     * 用显式重录模拟。真机 60fps 静止录屏实测：加 64ms 间隔后 logo 区域出现单帧 8.4
+     * 级亮度跳变（>3 级 6 次）、最长连续 4 帧完全不变的阶梯，而同屏纯背景区只有
+     * 1 次 3.2 级跳变 —— 这就是「logo 渐变卡顿」。逐帧重录的成本由 framestats 验证。
+     */
 
     /**
      * 根容器。
@@ -135,13 +141,9 @@ final class AboutPage {
                     return;
                 }
                 // 主体路径：把背后那块背景重录进 RenderNode，模糊与调色在 GPU 上完成。
-                // 参考实现里这一步是零成本的（textureBlur 直接从背景图层采样），
-                // 我们要显式重录一次，每帧两遍全屏着色器正是滚动时最大的一笔开销。
-                // 背景是 5 秒一周期的缓慢流动，30fps 的更新速度肉眼看不出差别，于是隔帧录。
-                if ((++glassTick & 1) == 0) {
-                    captureGlass(heroIcon, iconGlass);
-                    captureGlass(heroWord, wordGlass);
-                }
+                // 逐帧更新，与 60fps 背景动画严格同步 —— 降频会造成可见的阶梯（见字段注释）。
+                captureGlass(heroIcon, iconGlass);
+                captureGlass(heroWord, wordGlass);
                 // 退路：渲染节点不可用时退回纯色填充
                 if (heroIcon instanceof AppIcon) {
                     ((AppIcon) heroIcon).setTint(color);

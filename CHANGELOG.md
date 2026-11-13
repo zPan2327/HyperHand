@@ -4,6 +4,50 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-13 - 正式版
+
+> 正式版：GitHub Release 标为 latest（**非 prerelease**），并同步到 LSPosed 模块仓库
+> tag `30100-3.1.0`。versionCode 30100，可直接覆盖安装 3.0.3-beta.2（29906）。
+> 应用 / 模块显示名统一为 `HyperHand`，不再带「-媲美iPhone的单手模式增强」。
+
+### 变更
+- **名称统一为 `HyperHand`**：`strings.xml` 的 `app_name`（即 `android:label`，
+  LSPosed 读到的应用名）、README 标题、模块仓库 release 名一律只用 `HyperHand`；
+  模块仓库 description 已为 `HyperHand`，历史 release 标题里的长名一并修正。
+
+### 修复
+- **关于页 logo 渐变卡顿（真机实测纠错）**：先按「配色几秒才变一次」的推测给
+  `MiuixBg` 加了 RGB 阈值 + `AboutPage` 64ms 重录间隔，结果无线/有线 adb
+  60fps 静止录屏显示 logo 区域出现单帧 8.4 级亮度跳变、最长连续 4 帧完全不变的
+  阶梯（同屏纯背景区只有 1 次 3.2 级跳变）—— 降频反而制造了可见阶梯。
+  现撤销全部阈值与间隔，tint 与两个 `GlassNode` 重录都跟着 60fps 背景逐帧走，
+  与 SonyPods `textureBlur(backdrop)` 的连续采样一致。
+- **顶栏渐进模糊：延迟 + 马赛克 + 非高斯（真机实测纠错）**：无规律慢滚录屏显示
+  49/209 帧「内容动了但模糊带没动」（双缓冲的一帧延迟），规律滚动则 0 帧；
+  0.20× 采样位图放大回屏幕会形成 5×5 像素块。现改为 1:1 全分辨率采样、
+  三张位图轮换（同帧内容、零延迟，且位图 2 帧内不被覆写）、32 tap Vogel 盘 +
+  `exp(-2(rr/r)²)` 高斯权重核（σ = r/2）、采样外扩 24dp ≥ 模糊半径。
+  时间节流与固定 front/back 双缓冲均已移除。
+- **顶栏渐进模糊上下滚动闪烁（上一条修复的回归）**：单缓冲每帧 `eraseColor`
+  擦掉的正是 GPU 还在异步读取的那张位图；且 `bottom`（顶栏 + fade）随 collapse
+  每帧变化 1px，1:1 全分辨率下 `ensure()` 每帧 recycle / new 一张约 1200×350
+  的 ARGB_8888 位图并重建 BitmapShader 纹理，慢滚时交替出现半更新纹理与底色帧。
+  现固定采样窗尺寸（单调递增 `bandH` + 240dp 下限，滚动期间零位图分配），并改
+  三张轮换：capture 写临时张、整条画完才提升为 `active`，shader 每帧绑定本帧
+  内容（零延迟）、该张之后 2 帧不被覆写（无撕裂）；软件绘制异常只丢弃这一张、
+  沿用上一帧完整内容，绝不闪底色。
+- **深色模式顶栏渐进模糊偏白（未适配）**：`surfaceColor()` 错用了 `pal.card`
+  （= miuix `surfaceContainer`，深色 `#242424`），而 SonyPods `BarBlur.kt` 用的是
+  `MiuixTheme.colorScheme.surface`（= 本项目 `pal.bg`，深色 `#000000`）。浅色下两者
+  都接近白，一直没暴露；深色下用 `#242424` 以 `SURFACE_ALPHA=0.66` 混到纯黑采样
+  内容上，会把顶栏从 `#000000` 提亮成 `#2E312F` 的灰白雾罩。真机取色：展开态顶栏
+  `(5,6,6)`、滚动折叠后 `(44,50,46)`，页面主体为纯黑。现改回 `pal.bg`，并把采样
+  底色兜底统一为 `#000000`；`SURFACE_ALPHA` 与高斯核等参数不变。
+- **概览页状态卡不检测 LSPosed 启用状态**：`statusLevel()` 只看 app 总开关和
+  「7 天内历史心跳」，模块在 LSP 里禁用后仍显示绿色「模块已激活」。现改为
+  `ACTION_SET/probe` 主动探测作用域进程、只有探测后回写的心跳才算已激活；
+  未启用一律红色「模块未启用」（探测在途显示中性「检测中」），状态卡仍不可点击。
+
 ## [3.0.3-beta.2] - 2026-11-13 - 横滑边界与交互一致性修复
 
 > 测试版，只发 GitHub Releases 的 prerelease 通道。versionCode 29906，可直接覆盖安装

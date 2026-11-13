@@ -49,6 +49,21 @@ public class MainActivity extends ComponentActivity {
     Theme.Colors pal;
     private Cfg cur;
 
+    /**
+     * 最近一次「模块运行状态」主动探测的发出时刻（epoch ms）。
+     * 概览页不再相信 7 天内的历史心跳：只有探测之后写回的心跳才能证明
+     * LSPosed 当前真的启用了模块，否则一律显示红色的「模块未启用」。
+     */
+    private long lastProbeAt;
+    private final Runnable probeRefresh = new Runnable() {
+        @Override
+        public void run() {
+            if (overviewPage != null) {
+                overviewPage.refresh();
+            }
+        }
+    };
+
     private FrameLayout contentHost;
     private FrameLayout root;
     private PagePager pager;
@@ -125,6 +140,7 @@ public class MainActivity extends ComponentActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        probeModule();
         if (overviewPage != null && current == TAB_OVERVIEW) {
             overviewPage.refresh();
         }
@@ -380,6 +396,7 @@ public class MainActivity extends ComponentActivity {
     /** 切到某一页时刷新它的数据（三页常驻，不重建）。 */
     private void refreshPage(int index) {
         if (index == TAB_OVERVIEW) {
+            probeModule();
             overviewPage.refresh();
         } else if (index == TAB_SETTINGS) {
             settingsPage.refreshAnimInfo();
@@ -599,21 +616,55 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
-    /** 模块运行状态：0 停用 / 1 已启用但没读到注入 / 2 已激活。 */
+    /**
+     * 模块运行状态：0 总开关关闭 / 1 未检测到注入（LSP 未启用或作用域没重启）/ 2 已激活。
+     *
+     * <p>旧实现只看「7 天内的历史心跳」：模块在 LSPosed 里被禁用后旧心跳仍落在窗口里，
+     * 概览页会一直显示绿色的「模块已激活」。现在改成主动探测：app 发
+     * {@code ACTION_SET/probe} 给作用域进程，只有探测之后写回的心跳才算数；没回应就是
+     * 没有注入 —— 与 SonyPods 用 HookStateMirror 查询 hook 端状态是同一思路。
+     */
     int statusLevel() {
         Cfg cfg = cfg();
         if (!cfg.enabled) {
             return 0;
         }
-        long ts = Cfg.aliveTs(this, Cfg.K_ALIVE_SYSUI);
-        if (ts > 0 && System.currentTimeMillis() - ts < 7L * 24 * 3600 * 1000) {
-            return 2;
-        }
-        long lt = Cfg.aliveTs(this, Cfg.K_ALIVE_LAUNCHER);
-        if (lt > 0 && System.currentTimeMillis() - lt < 7L * 24 * 3600 * 1000) {
+        long ts = Math.max(Cfg.aliveTs(this, Cfg.K_ALIVE_SYSUI),
+                Cfg.aliveTs(this, Cfg.K_ALIVE_LAUNCHER));
+        if (lastProbeAt > 0 && ts >= lastProbeAt - 1000L) {
             return 2;
         }
         return 1;
+    }
+
+    /** 探测结果还没回来：状态卡显示「检测中」，避免先闪一下红色再变绿。 */
+    boolean probing() {
+        // 总开关关掉时结论已经确定，不要拿「检测中」盖住红色的未启用状态。
+        if (!cfg().enabled || statusLevel() == 2) {
+            return false;
+        }
+        return lastProbeAt == 0 || System.currentTimeMillis() - lastProbeAt < 700L;
+    }
+
+    /** 主动探测 LSPosed 是否真的启用了模块并注入了作用域进程。 */
+    private void probeModule() {
+        lastProbeAt = System.currentTimeMillis();
+        // systemui 里注册了 ACTION_SET 接收器；桌面也一并问，将来注册了就能覆盖。
+        String[] pkgs = {"com.android.systemui", "com.miui.home"};
+        for (String pkg : pkgs) {
+            Intent i = new Intent(HyperHand.ACTION_SET);
+            i.setPackage(pkg);
+            i.putExtra(Cfg.K_ACTION, "probe");
+            sendBroadcast(i);
+        }
+        if (overviewPage != null) {
+            View v = overviewPage.view();
+            v.removeCallbacks(probeRefresh);
+            // 两次刷新：180ms 是常规广播回写时间，650ms 兜底慢机 / 广播排队，
+            // 避免状态卡一直停在「检测中」或误落成红色。
+            v.postDelayed(probeRefresh, 180);
+            v.postDelayed(probeRefresh, 650);
+        }
     }
 
     String aliveSummary() {

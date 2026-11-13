@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HyperHand-媲美iPhone的单手模式增强</string>
+    <!-- 应用 / 模块显示名：就叫 HyperHand，不附加任何副标题。
+         LSPosed 从 android:label 读这个名字，模块仓库 description 也是 HyperHand。 -->
+    <string name="app_name">HyperHand</string>
     <string name="app_description">单手模式增强：扩大底部触发区、按速度判定，保留原生动画与退出方式</string>
 </resources>

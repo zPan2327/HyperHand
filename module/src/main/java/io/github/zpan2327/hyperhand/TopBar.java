@@ -223,6 +223,10 @@ final class TopBar extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        // 本次重绘一定对应 backdrop 的一次变化（滚动 / 折叠 / 横滑 / 橡皮筋）。
+        // 声明脏，让 ProgressiveBlur 在下面 draw() 时同步重采一次，二者严格同帧。
+        // 放在 onDraw 而不是各 setter 里，才能覆盖所有 invalidate 来源。
+        progressive.invalidateCapture();
         int n = pageTitles.length;
         if (n == 0) {
             return;

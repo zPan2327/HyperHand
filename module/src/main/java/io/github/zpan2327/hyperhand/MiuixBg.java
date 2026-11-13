@@ -144,6 +144,15 @@ final class MiuixBg extends View {
     private long lastFrameAt;
     private static final long FRAME_MS = 16L;
 
+    /*
+     * 注意：这里<b>不能</b>给取色变化加阈值 / 降帧。真机录屏实测（静止 8s、
+     * 60fps 逐帧像素）显示：一旦用「RGB 累计差 ≥ 4 才通知」，logo 区域会出现
+     * 单帧 8.4 级的亮度跳变（>3 级 6 次），而同一屏的纯背景区只有 1 次 3.2 级 ——
+     * 玻璃层变成每 4 帧一跳的阶梯，就是用户说的「logo 部分渐变卡顿」。
+     * SonyPods 的 textureBlur 每帧从 LayerBackdrop 采样，颜色是连续的；
+     * 本项目必须让 tint 与玻璃录制都跟着 60fps 背景逐帧走，不能靠降频换性能。
+     */
+
     /** 颜色变化回调：关于页的「玻璃」logo / 应用名靠它跟着背景走。 */
     interface OnTint {
         void onTint(int color);

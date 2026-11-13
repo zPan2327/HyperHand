@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.0.3-beta.2"
+val defaultVersionName = "3.1.0"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -38,7 +38,9 @@ val derivedVersionCode: Int = run {
 // 而 3.0.3-beta.1 因下限实际发成 29905，会和 beta.2 的推导值撞号。
 // Android 要求 versionCode 严格递增（否则覆盖安装失败），所以下限跟着发版走：
 // 每次发版把 minVersionCode 抬到本次的号即可，公式本身不用动，历史版本仍可复现。
-val minVersionCode = 29906
+// 3.1.0 是正式版：derivedVersionCode = 3*10000 + 1*100 + 0 = 30100，
+// 天然大于 beta.2 的 29906，下限同步抬到 30100。
+val minVersionCode = 30100
 
 val versionCodeValue = fromEnvOrProperty("VERSION_CODE")?.toIntOrNull()
     ?: maxOf(derivedVersionCode, minVersionCode)

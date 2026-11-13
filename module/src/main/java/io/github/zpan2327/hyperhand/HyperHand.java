@@ -1110,6 +1110,13 @@ public class HyperHand extends XposedModule {
                             ContentResolver cr = context.getContentResolver();
                             // 调试动作：手动进入/退出一次单手模式（设置页的「预览遮罩」用它）
                             String act = intent.getStringExtra(Cfg.K_ACTION);
+                            if ("probe".equals(act)) {
+                                // 概览页的模块运行状态探测：只有钩子真的注入了这个进程，
+                                // 才会收到并写回心跳；LSPosed 里没启用模块时无人应答。
+                                // 不要落到下面的配置合并逻辑，probe 不带任何配置键。
+                                Cfg.markAlive(context);
+                                return;
+                            }
                             if ("reload".equals(act)) {
                                 // 不需要 root：SystemUI 是 persistent 进程，自己退出后系统会立刻拉起，
                                 // 模块随之重新加载最新代码。

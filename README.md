@@ -1,6 +1,6 @@
 <div align="center">
 
-# HyperHand · 单手模式增强
+# HyperHand
 
 **给小米 14 / HyperOS 3（Android 16）的原生单手模式，加上一颗"iPhone 式"的下拉触发**
 

@@ -204,29 +204,38 @@ final class OverviewPage {
 
     /**
      * 状态卡配色与 SonyPods {@code StatusCard} 逐值一致：
-     * 启用 = 绿 {@code #36D167}/{@code #DFFAE4}，未启用 = 红 {@code #FF5A52}/{@code #FFE5E3}。
-     * 未启用文案固定「未启用」；卡不可点击（见 {@link #statusCard()}）。
+     * 已激活 = 绿 {@code #36D167}/{@code #DFFAE4}，未启用 = 红 {@code #FF5A52}/{@code #FFE5E3}。
+     *
+     * <p>只有 {@link MainActivity#statusLevel()} 主动探测到作用域进程回写心跳（level 2）
+     * 才是绿色；LSPosed 里没启用模块 / 作用域没重启时一律红色「模块未启用」，
+     * 不再拿 7 天内的历史心跳冒充「已激活」。探测在途用中性色，避免红→绿闪一下。
+     * 卡不可点击（见 {@link #statusCard()}）。
      */
     private void applyHero() {
         int level = host.statusLevel();
-        boolean enabled = level > 0;
         int bg;
         int iconTint;
         int summaryColor;
         String title;
         String summary;
-        if (enabled) {
+        if (level == 2) {
             bg = pal.night ? 0xFF16301F : 0xFFDFFAE4;
             iconTint = pal.night ? 0xFF5BD07E : 0xFF36D167;
             summaryColor = Theme.alpha(pal.night ? 0xFFB8E8C5 : 0xFF2F3A32, 0.78f);
-            title = level == 2 ? "模块已激活" : "模块已启用";
-            summary = level == 2 ? "钩子已在系统界面生效" : "等待系统界面重启后注入";
+            title = "模块已激活";
+            summary = "钩子已在系统界面生效";
+        } else if (host.probing()) {
+            bg = pal.card;
+            iconTint = pal.summary;
+            summaryColor = pal.summary;
+            title = "检测中";
+            summary = "正在查询模块运行状态…";
         } else {
             bg = pal.night ? 0xFF3A201E : 0xFFFFE5E3;
             iconTint = pal.night ? 0xFFFF8A82 : 0xFFFF5A52;
             summaryColor = pal.night ? 0xFFFF8A82 : 0xFFFF5A52;
-            title = "未启用";
-            summary = "总开关关闭";
+            title = "模块未启用";
+            summary = level == 0 ? "总开关关闭" : "未在 LSPosed 启用或作用域未注入";
         }
 
         hero.setBackground(Theme.round(bg, Theme.dp(c, Theme.CARD_RADIUS)));

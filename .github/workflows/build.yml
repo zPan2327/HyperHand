@@ -189,7 +189,7 @@ jobs:
           repository: Xposed-Modules-Repo/io.github.zpan2327.hyperhand
           token: ${{ env.MODULE_REPO_TOKEN }}
           tag_name: ${{ steps.apk.outputs.version_code }}-${{ steps.apk.outputs.version_name }}
-          name: ${{ steps.apk.outputs.version_name }}
+          name: HyperHand ${{ steps.apk.outputs.version_name }}
           body: |
             HyperHand ${{ steps.apk.outputs.version_name }}（versionCode ${{ steps.apk.outputs.version_code }}）
 

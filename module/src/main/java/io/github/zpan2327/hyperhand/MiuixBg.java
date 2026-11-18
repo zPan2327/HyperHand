@@ -159,7 +159,6 @@ final class MiuixBg extends View {
     }
 
     private OnTint onTint;
-    private int lastTint;
     private boolean notifying;
 
     void setOnTint(OnTint l) {
@@ -304,12 +303,15 @@ final class MiuixBg extends View {
                 hsv[0],
                 Math.min(1f, hsv[1] * 1.9f + 0.40f),
                 night ? 0.88f : 0.30f});
-        if (tint == lastTint) {
-            return;
-        }
-        lastTint = tint;
-        // 回调里会把这块背景重录进关于页的 RenderNode，那会再走一遍本类的 onDraw。
-        // 不做防护就是无限递归 —— 第二次进来直接返回，用同一帧已经算好的配色。
+        // 3.3.2 修复（浅色 logo 渐变一卡一卡）：这里原先有 `if (tint == lastTint) return;`
+        // 的量化去重 —— tint 是 8bit 整数，浅色把它压到 V=0.30 后值域更窄、整数重复更多，
+        // 于是 onTint 被跳过大量帧，关于页的玻璃 logo / 字标跟着“定格”，只在 tint 跨过
+        // 整数边界那一帧一次性跳过去，肉眼就是连续几帧不动再突然跳一级的阶梯。真机与
+        // 模拟器 60fps 逐帧取色均证实：浅色 logo 跳变是深色的 2~3 倍。
+        // 注意 onTint 里的 captureGlass 每次都重拍当前背景、根本不用这个 tint 参数；
+        // tint 只喂给有自己去重的 fallback setTint。所以这里的去重纯粹是有害的隔帧。
+        // 去掉后玻璃层跟着 60fps 背景逐帧重录（对齐 UI 规范 §5.3 / SonyPods textureBlur）。
+        // notifying 防递归仍保留：回调里的重录会再走本类 onDraw，第二次进来直接返回。
         notifying = true;
         try {
             onTint.onTint(tint);

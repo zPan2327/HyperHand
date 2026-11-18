@@ -92,6 +92,16 @@ final class Cfg {
     static final String K_ALIVE_SYSUI       = "oh_tuner_alive_sysui";
     static final String K_ALIVE_LAUNCHER    = "oh_tuner_alive_launcher";
 
+    // ---------------------------------------------------------------- 快捷菜单滑选（iOS 式）
+    /** 总开关：长按弹出菜单后，手滑向菜单项抬手即选中。默认开。 */
+    static final String K_SLIDE_ENABLED       = "oh_tuner_slide_enabled";
+    /** 判定"滑向菜单"的最大夹角（度）。越小越严格、越不容易误伤拖动排序。 */
+    static final String K_SLIDE_ANGLE_DEG     = "oh_tuner_slide_angle_deg";
+    /** 命中 item 的外扩容差（dp），也用作"距离收敛"的最小量。 */
+    static final String K_SLIDE_SLOP_DP       = "oh_tuner_slide_slop_dp";
+    /** 起判所需的最小手指位移（dp），过滤手抖。 */
+    static final String K_SLIDE_MIN_TRAVEL_DP = "oh_tuner_slide_min_travel_dp";
+
     /** 调试动作（不落盘，只当广播参数）：trigger / stop。 */
     static final String K_ACTION            = "oh_tuner_action";
 
@@ -104,7 +114,8 @@ final class Cfg {
             K_BLUR_BG, K_BLUR_RADIUS, K_BLUR_DIM,
             K_ANIM_SCALE, K_ANIM_CURVE,
             K_END_BOOST, K_END_ZONE_DP, K_ZONE_RATIO_MODE, K_ZONE_RATIO,
-            K_TOP_SHADE, K_TOP_SHADE_DY_DP, K_TOP_SHADE_SIDE
+            K_TOP_SHADE, K_TOP_SHADE_DY_DP, K_TOP_SHADE_SIDE,
+            K_SLIDE_ENABLED, K_SLIDE_ANGLE_DEG, K_SLIDE_SLOP_DP, K_SLIDE_MIN_TRAVEL_DP
     };
 
     /** 设置页提交时一并带上的键（不含只读的 K_LAST_GESTURE）。 */
@@ -211,6 +222,12 @@ final class Cfg {
      */
     static final int DEF_TOP_SHADE_DELAY_MS = 120;
 
+    // 快捷菜单滑选：默认夹角 60°（再大就容易把"斜着拖图标排序"误判成滑选），
+    // 命中外扩 10dp，起判位移 14dp（真机实测超阈值约 33dp，这里留足余量）。
+    static final float DEF_SLIDE_ANGLE_DEG = 60f;
+    static final float DEF_SLIDE_SLOP_DP = 10f;
+    static final float DEF_SLIDE_MIN_TRAVEL_DP = 14f;
+
     /**
      * 贴底路径要求的最小向下位移。
      * 起点已经在底部区域里，只需要一点点位移就能到底，所以这里比常规路径低得多；
@@ -299,6 +316,12 @@ final class Cfg {
     float topShadeDyDp = DEF_TOP_SHADE_DY_DP;
     int topShadeSide = DEF_TOP_SHADE_SIDE;
     int topShadeDelayMs = DEF_TOP_SHADE_DELAY_MS;
+
+    // 快捷菜单滑选（iOS 式）
+    boolean slideEnabled = true;
+    float slideAngleDeg = DEF_SLIDE_ANGLE_DEG;
+    float slideSlopDp = DEF_SLIDE_SLOP_DP;
+    float slideMinTravelDp = DEF_SLIDE_MIN_TRAVEL_DP;
 
     private static Cfg sCached;
     private static long sCachedAt;
@@ -391,6 +414,14 @@ final class Cfg {
             c.topShadeDyDp = clamp(floatOf(cr, K_TOP_SHADE_DY_DP, DEF_TOP_SHADE_DY_DP), 8f, 120f);
             c.topShadeSide = (int) clamp(intOf(cr, K_TOP_SHADE_SIDE, DEF_TOP_SHADE_SIDE),
                     TOP_SIDE_SPLIT, TOP_SIDE_CONTROL);
+
+            // 快捷菜单滑选
+            c.slideEnabled = boolOf(cr, K_SLIDE_ENABLED, true);
+            c.slideAngleDeg = clamp(floatOf(cr, K_SLIDE_ANGLE_DEG, DEF_SLIDE_ANGLE_DEG),
+                    15f, 90f);
+            c.slideSlopDp = clamp(floatOf(cr, K_SLIDE_SLOP_DP, DEF_SLIDE_SLOP_DP), 2f, 40f);
+            c.slideMinTravelDp = clamp(floatOf(cr, K_SLIDE_MIN_TRAVEL_DP, DEF_SLIDE_MIN_TRAVEL_DP),
+                    4f, 60f);
         } catch (Throwable t) {
             Log.w(HyperHand.TAG, "load config failed, use defaults", t);
         }
@@ -503,6 +534,7 @@ final class Cfg {
                 + ", anim=" + animScale + "x/curve" + animCurve
                 + ", endBoost=" + endBoost + "/" + endZoneDp + "dp"
                 + ", topShade=" + topShade + "/" + topShadeDyDp + "dp/side" + topShadeSide
+                + ", slide=" + slideEnabled + "/" + slideAngleDeg + "deg/" + slideSlopDp + "dp"
                 + ", zoneRatio=" + (zoneRatioMode ? zoneRatio + "(" + zoneDp + "dp)" : "off") + "}";
     }
 

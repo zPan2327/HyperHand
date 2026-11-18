@@ -73,12 +73,54 @@ final class Hooks {
     int hookMethods(Class<?> cls, String name, XposedInterface.Hooker hooker) {
         int n = 0;
         for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
-            for (Method m : c.getDeclaredMethods()) {
-                if (!m.getName().equals(name) || m.isBridge() || m.isSynthetic()) continue;
-                if (hook(m, hooker)) n++;
+            Method[] methods;
+            try {
+                methods = c.getDeclaredMethods();
+            } catch (Throwable t) {
+                // 某些类里方法签名引用了本 ROM 缺失的类（如 NewHomeView），
+                // getDeclaredMethods() 会整体抛 NoClassDefFoundError，跳过该层。
+                continue;
+            }
+            for (Method m : methods) {
+                try {
+                    if (!m.getName().equals(name) || m.isBridge() || m.isSynthetic()) continue;
+                    if (hook(m, hooker)) n++;
+                } catch (Throwable ignored) {
+                    // 单个方法的参数/返回类型无法解析时跳过，不影响同名其它重载。
+                }
             }
         }
         return n;
+    }
+
+    /**
+     * 按方法名 + 参数个数精确 Hook 单个方法（最多匹配一个）。
+     * 用 getDeclaredMethod(name, parameterTypes) 而非遍历 getDeclaredMethods()，
+     * 规避「类里其它方法签名引用缺失类导致整个 getDeclaredMethods() 抛
+     * NoClassDefFoundError」的问题。逐层向上找，参数用目标方法自身的类型。
+     *
+     * @param paramCount 期望的参数个数，-1 表示不限（取第一个同名方法）
+     * @return 钩上的方法数（0 或 1）
+     */
+    int hookMethodExact(Class<?> cls, String name, int paramCount,
+                        XposedInterface.Hooker hooker) {
+        for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
+            Method[] methods;
+            try {
+                methods = c.getDeclaredMethods();
+            } catch (Throwable t) {
+                continue;
+            }
+            for (Method m : methods) {
+                try {
+                    if (!m.getName().equals(name) || m.isBridge() || m.isSynthetic()) continue;
+                    if (paramCount >= 0 && m.getParameterCount() != paramCount) continue;
+                    return hook(m, hooker) ? 1 : 0;
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return 0;
     }
 
     /** 等价于 {@code XposedBridge.hookAllConstructors}。 */

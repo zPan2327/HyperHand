@@ -1330,7 +1330,41 @@ public class HyperHand extends XposedModule {
             log("hook SystemUiProxyWrapper failed: " + t);
         }
 
+        // 快捷菜单「iOS 式长按滑选」：长按弹出菜单后手滑向 item 抬手即选中；
+        // 划区拦截 onDragOverThreshold 取消回调，滑向菜单时保住菜单并阻止图标被拖动，
+        // 滑向非菜单则完全放行原生拖动排序。失败一律吞掉，不影响现有桌面钩子。
+        // 注意：Hook 装配只依赖 ClassLoader，不需要 Context；Context 用于读配置，
+        // 而 currentApplication() 在本回调时机尚未就绪，故延迟重试注入，绝不能 skip。
+        installSlideLater(cl);
+
         markAliveLater();
+    }
+
+    /** 延迟拿到 Application Context 后装配 ShortcutSlide；Hook 失败不影响桌面。 */
+    private void installSlideLater(final ClassLoader cl) {
+        final Handler h = new Handler(Looper.getMainLooper());
+        h.postDelayed(new Runnable() {
+            int tries = 0;
+
+            @Override
+            public void run() {
+                try {
+                    Context ctx = Hooks.currentApplication();
+                    if (ctx == null && tries++ < 12) {
+                        h.postDelayed(this, 400);
+                        return;
+                    }
+                    if (ctx == null) {
+                        log("Slide: no context after retries, skipped");
+                        return;
+                    }
+                    int n = new ShortcutSlide(HyperHand.this, hooks, cl, ctx).hookAll();
+                    log("Slide installed after " + tries + " tries, hooks=" + n);
+                } catch (Throwable t) {
+                    log("hook ShortcutSlide failed: " + t);
+                }
+            }
+        }, 300);
     }
 
     /** 吞转发的日志每 800ms 最多一条，避免每个 MOVE 刷爆。 */

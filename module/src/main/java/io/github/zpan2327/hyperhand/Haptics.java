@@ -2,6 +2,7 @@ package io.github.zpan2327.hyperhand;
 
 import android.content.Context;
 import android.os.Build;
+import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
@@ -131,6 +132,73 @@ final class Haptics {
     /** 轻点：列表行、底栏 tab、二级菜单项。 */
     void tick() {
         play(TAP_LIGHT);
+    }
+
+    /**
+     * 滑选命中项时的"清脆"反馈。
+     *
+     * <p>直接命令线性马达打原语，绕过 MIUI effect 的衰减包络（那是"嗡嗡"感的来源）。
+     * 手感构成：一发 {@code PRIMITIVE_TICK}（高频、极短、清亮的"嗒"）作为脆感主体，
+     * 紧叠一发满强度 {@code PRIMITIVE_CLICK}（实体"咔"的力量感），两者无延迟叠加，
+     * 得到 iOS 开关/选择器那种干净利落的一记脆响，不拖尾、不嗡嗡。</p>
+     */
+    void crispTick() {
+        // 用独立 id 做节流，避免和其它 effect 共用节流槽互相干扰。
+        if (!enabled() || isThrottled(0x43524950)) return; // 'CRIP'
+        playCrispClick();
+    }
+
+    /**
+     * 系统「设置」列表滚到边界回弹时的震动（用户点名的手感）。
+     *
+     * <p>Frida 在 com.android.settings 里抓到的真实调用：
+     * {@code Vibrator.vibrate(Composed{segments=[Prebaked{effect=201, strength=MEDIUM,
+     * fallback=true}]}, VibrationAttributes{mUsage=HARDWARE_FEEDBACK})}.
+     * 201 是 MIUI 预烘焙的边界回弹 effect，用 {@link VibrationEffect#createPredefined(int)}
+     * 即可原样拿到；直接打原语（TICK+CLICK）做不出这个"弹一下"的感觉。</p>
+     */
+    void rebound() {
+        if (!enabled() || isThrottled(0x52454231)) return; // 'REB1'
+        try {
+            VibrationEffect e = VibrationEffect.createPredefined(201);
+            if (Build.VERSION.SDK_INT >= 33) {
+                VibrationAttributes attr = new VibrationAttributes.Builder()
+                        .setUsage(VibrationAttributes.USAGE_HARDWARE_FEEDBACK).build();
+                vibrator.vibrate(e, attr);
+            } else {
+                vibrator.vibrate(e);
+            }
+            return;
+        } catch (Throwable ignored) {
+            // 落到下面的原语兜底
+        }
+        playCrispClick();
+    }
+
+    /** TICK(脆) + CLICK(实) 同发；兜底用极短高振幅 one-shot（绝不用长波形，避免嗡嗡）。 */
+    private void playCrispClick() {
+        try {
+            if (compositionSupported && vibrator != null) {
+                VibrationEffect.Composition c = VibrationEffect.startComposition();
+                // TICK 是马达能给出的最清亮短促的一发；CLICK 叠上力量感。
+                c.addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 1f);
+                c.addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.8f);
+                vibrator.vibrate(c.compose());
+                return;
+            }
+        } catch (Throwable ignored) {
+            // 落到 one-shot 兜底
+        }
+        try {
+            if (vibrator == null) return;
+            if (Build.VERSION.SDK_INT >= 26) {
+                // 10ms / 满振幅：短促、强劲、无嗡嗡拖尾
+                vibrator.vibrate(VibrationEffect.createOneShot(10, 255));
+            } else {
+                vibrator.vibrate(10);
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     /** 按钮：主按钮更实、次按钮更轻。 */

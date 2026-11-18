@@ -24,7 +24,9 @@
 /module/build/
 /module/out/
 /glass/build/
-/module/signing/
+# /module/signing/ 里的 hyperhand.keystore 必须随仓库保留：换机器构建时若密钥变了，
+# 用户就无法 adb install -r 覆盖升级（只能先卸载），且和模块仓库历史版本不同签名。
+# 这是开源 Xposed 模块的自签密钥，不是私密凭据。
 *.apk.idsig
 *.class
 *.dex

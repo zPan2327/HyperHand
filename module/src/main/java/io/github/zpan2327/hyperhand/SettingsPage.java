@@ -32,6 +32,7 @@ final class SettingsPage {
     private Ui.SwitchView swEndBoost;
     private Ui.SwitchView swZoneRatio;
     private Ui.SwitchView swTopShade;
+    private Ui.SwitchView swSlide;
 
     private Ui.ChoiceRow cMode;
     private Ui.ChoiceRow cAnimCurve;
@@ -57,6 +58,9 @@ final class SettingsPage {
     private Ui.ValueRow rEndZone;
     private Ui.ValueRow rZoneRatio;
     private Ui.ValueRow rTopShadeDy;
+    private Ui.ValueRow rSlideAngle;
+    private Ui.ValueRow rSlideSlop;
+    private Ui.ValueRow rSlideTravel;
 
     private LinearLayout advancedBox;
     private TextView animInfo;
@@ -229,6 +233,28 @@ final class SettingsPage {
                         + "这块模糊区原本没有任何手势，现在整个模糊区都可以当\"状态栏\"用：\n"
                         + "左半屏下滑 → 通知中心；右半屏下滑 → 控制中心（可在上面改成固定一个）"));
         page.add(cardTop, Ui.cardLp(c, Theme.CARD_GAP));
+
+        // ---------------------------------------------------------- 快捷菜单滑选
+        page.add(Ui.section(c, pal, "快捷菜单滑选"));
+        LinearLayout cardSlide = Ui.card(c, pal);
+        swSlide = Ui.switchRow(c, cardSlide, pal, "长按滑选菜单项",
+                "iOS 式操作：长按图标弹出菜单后手指不松，直接滑到某项上抬手即打开；"
+                        + "原来的\"长按后点一下\"照常可用", cur.slideEnabled);
+        dirty(swSlide);
+        rSlideAngle = numberRow(cardSlide, "滑选判定夹角",
+                "手指方向与\"图标→菜单\"方向的夹角上限；调小更保守，避免误伤拖图标排序", "°",
+                cur.slideAngleDeg, 0, 15, 90, 5);
+        rSlideSlop = numberRow(cardSlide, "命中容差",
+                "菜单项可被命中的外扩范围，也作为\"确实朝菜单靠近\"的最小位移", "dp",
+                cur.slideSlopDp, 0, 2, 40, 1);
+        rSlideTravel = numberRow(cardSlide, "起判位移",
+                "手指至少移动这么远才开始判定，过滤手抖；系统约 33dp 时就会取消菜单", "dp",
+                cur.slideMinTravelDp, 0, 4, 60, 1);
+        cardSlide.addView(Ui.block(c, pal,
+                "只在你确实朝菜单方向滑动时才接管：手指滑向菜单 → 菜单保持、图标不会被拖动；"
+                        + "滑向别处 → 完全交给原生（照常拖动排序）。"
+                        + "改动需重启桌面进程生效。"));
+        page.add(cardSlide, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---------------------------------------------------------- 互斥
         page.add(Ui.section(c, pal, "互斥"));
@@ -470,6 +496,10 @@ final class SettingsPage {
         rTopShadeDy.set(Cfg.DEF_TOP_SHADE_DY_DP);
         cTopShadeSide.value = Cfg.DEF_TOP_SHADE_SIDE;
         cTopShadeSide.label.setText(Cfg.TOP_SIDE_SHORT[Cfg.DEF_TOP_SHADE_SIDE]);
+        switchWithoutMark(swSlide, true);
+        rSlideAngle.set(Cfg.DEF_SLIDE_ANGLE_DEG);
+        rSlideSlop.set(Cfg.DEF_SLIDE_SLOP_DP);
+        rSlideTravel.set(Cfg.DEF_SLIDE_MIN_TRAVEL_DP);
     }
 
     private void switchWithoutMark(Ui.SwitchView sw, boolean v) {
@@ -515,6 +545,10 @@ final class SettingsPage {
         i.putExtra(Cfg.K_TOP_SHADE, swTopShade.isChecked() ? "1" : "0");
         i.putExtra(Cfg.K_TOP_SHADE_DY_DP, Ui.fmt(rTopShadeDy.value, 0));
         i.putExtra(Cfg.K_TOP_SHADE_SIDE, String.valueOf(cTopShadeSide.value));
+        i.putExtra(Cfg.K_SLIDE_ENABLED, swSlide.isChecked() ? "1" : "0");
+        i.putExtra(Cfg.K_SLIDE_ANGLE_DEG, Ui.fmt(rSlideAngle.value, 0));
+        i.putExtra(Cfg.K_SLIDE_SLOP_DP, Ui.fmt(rSlideSlop.value, 0));
+        i.putExtra(Cfg.K_SLIDE_MIN_TRAVEL_DP, Ui.fmt(rSlideTravel.value, 0));
     }
 
     /** 动画参数单独即时下发，方便"改一点、滑一下"地试手感。 */

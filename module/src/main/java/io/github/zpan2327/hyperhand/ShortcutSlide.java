@@ -758,7 +758,8 @@ final class ShortcutSlide {
                 log("HANDLE_MOVE PIN (session " + sessionId + ", live=("
                         + (int) x + "," + (int) y + ") d=" + (int) travel + "px)");
             }
-            Haptics.get(ctx).tick();
+            // 【去掉多余震动】刚判定进入滑选时不打 tick：此刻手指还没滑到任何菜单项，
+            // 这记提前的反馈对用户是多余的。真正的反馈只在滑到菜单项时给（updateHighlight）。
         }
         // SLIDING：钉住坐标 + 按真实坐标跟手高亮。
         updateHighlight(cfg, x, y);
@@ -818,7 +819,7 @@ final class ShortcutSlide {
                         + (int) x + "," + (int) y + ") d="
                         + (int) Math.hypot(x - downX, y - downY) + "px)");
             }
-            Haptics.get(ctx).tick();
+            // 【去掉多余震动】进入滑选不再 tick（见 onHandleMove 说明）。
         }
         // SLIDING：持续高亮，且短路 move 让图标不跟随
         updateHighlight(cfg, x, y);
@@ -915,7 +916,7 @@ final class ShortcutSlide {
                     + (int) Math.hypot(fx - downX, fy - downY) + "px)");
         }
         updateHighlight(cfg, fx, fy);
-        Haptics.get(ctx).tick();
+        // 【去掉多余震动】进入滑选不再 tick（见 onHandleMove 说明）。
         return null;   // void 方法短路 = 不发 flag=9 = 菜单保住、图标不进拖动
     }
 
@@ -981,7 +982,7 @@ final class ShortcutSlide {
                     + ", d=" + (int) Math.hypot(lastX - downX, lastY - downY) + "px)");
         }
         updateHighlight(cfg, lastX, lastY);
-        Haptics.get(ctx).tick();
+        // 【去掉多余震动】进入滑选不再 tick（见 onHandleMove 说明）。
         return null;                // void 方法：不调用原方法 = 菜单保住、图标不进拖动
     }
 
@@ -1190,7 +1191,8 @@ final class ShortcutSlide {
                     clearHighlight();
                     if (target != null) {
                         target.performClick();            // 等价原生点击（真机已验证）
-                        Haptics.get(ctx).rebound();         // 与滑过菜单项同一记边界反弹
+                        // 【去掉多余震动】放开抬手时不再补震动：滑到该项时 updateHighlight()
+                        // 已经给过一记边界反弹，这里再震一次是用户不想要的"松手震动"。
                         if (cfg.debug) {
                             log("COMMIT " + target.getClass().getName());
                         }

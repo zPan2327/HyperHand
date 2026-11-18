@@ -2,9 +2,10 @@
 
 # HyperHand
 
-**给小米 14 / HyperOS 3（Android 16）的原生单手模式，加上一颗"iPhone 式"的下拉触发**
+**把 iPhone 的手感搬进 HyperOS —— 桌面快捷菜单滑选 + 原生单手模式增强**
 
-只改触发层 —— 缩小动画、缩小布局、触摸映射、退出方式 100% 沿用系统原生实现。
+给小米 14 / HyperOS 3（Android 16）加两套 iOS 式交互：长按图标滑选快捷菜单（3.3.0 新增），
+以及底部下滑触发单手模式。两者都只改「触发/交互层」，动画、布局、窗口等沿用系统原生实现。
 
 [![Android](https://img.shields.io/badge/Android-16%20·%20HyperOS%203-3DDC84?logo=android&logoColor=white)](#验证环境)
 [![libxposed API](https://img.shields.io/badge/libxposed%20API-102-orange)](#模块声明与-api-102)

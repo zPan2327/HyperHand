@@ -18,6 +18,13 @@
 
 ## 它解决什么问题
 
+一句话：**HyperHand 把 iPhone 的两块手感搬进 HyperOS** —— 桌面菜单滑选、底部下滑单手模式。
+
+- **快捷菜单滑选**（3.3.0）：原生长按图标后要「松手再点」；这里改成长按后手指不松、直接滑到菜单项抬手选中，图标不会被拖动。
+- **单手模式**：原生触发区只有底部 25dp 窄条、很难按到；这里扩大到 134dp 可调，动画、模糊背景、下拉面板也都能调。
+
+下面先讲单手模式的原始痛点与完整实现，滑选的设计与真机验证见 [docs/桌面快捷菜单滑动选择.md](docs/桌面快捷菜单滑动选择.md)。
+
 MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊条）上向下滑"。这个入口有两个硬伤：
 
 1. **落指区域只有 25dp（本机 76px）**。手指稍微高一点，事件根本进不了 `NavStubView`，直接被 App 拿走 → 手感极差、成功率低。
@@ -58,11 +65,19 @@ MIUI / HyperOS 的单手模式入口是"在屏幕最底部的小白条（胶囊�
 行与行之间不画分隔线、`#3482FF` 强调色，深色模式跟随系统。
 右上角的数值直接显示当前值，点一行用滑杆改，底部一次性提交。
 
-<p>
-<img src="docs/screenshots/overview.png" width="250" alt="概览">
-<img src="docs/screenshots/light.png" width="250" alt="浅色">
-<img src="docs/screenshots/dark.png" width="250" alt="深色">
-</p>
+浅色（默认）：
+
+| 概览 | 快捷菜单滑选 | 关于 |
+|---|---|---|
+| ![概览](docs/screenshots/overview-light.png) | ![滑选设置](docs/screenshots/slide-light.png) | ![关于](docs/screenshots/about-light.png) |
+
+<details><summary>深色模式</summary>
+
+| 概览 | 快捷菜单滑选 | 关于 |
+|---|---|---|
+| ![概览](docs/screenshots/overview-dark.png) | ![滑选设置](docs/screenshots/slide-dark.png) | ![关于](docs/screenshots/about-dark.png) |
+
+</details>
 
 设计稿来源与逐条 token 对照见 [docs/设计稿对照.md](docs/设计稿对照.md)。没有引入 Compose / AndroidX，全部是原生 View 代码绘制，APK 约 200 KB。
 

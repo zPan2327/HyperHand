@@ -1,6 +1,8 @@
 package io.github.zpan2327.hyperhand;
 
 import android.app.ActionBar;
+import android.app.Dialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
@@ -22,7 +24,9 @@ import androidx.activity.ComponentActivity;
 import io.github.zpan2327.hyperhand.glass.HyperGlassBarView;
 
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -66,10 +70,13 @@ public class MainActivity extends ComponentActivity {
 
     private FrameLayout contentHost;
     private FrameLayout root;
+    private io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost dialogHost;
+    private io.github.zpan2327.hyperhand.glass.dialogs.InfoDialogHost infoDialogHost;
+    private io.github.zpan2327.hyperhand.glass.dialogs.MiuixDropdownHost dropdownHost;
+    private io.github.zpan2327.hyperhand.glass.dialogs.MiuixNumberPickerHost numberPickerHost;
     private PagePager pager;
     private TopBar topBar;
     private HyperGlassBarView nav;
-    private TextView savePill;
     private FrameLayout.LayoutParams navLp;
 
     private View[] pages = new View[3];
@@ -78,7 +85,6 @@ public class MainActivity extends ComponentActivity {
     private AboutPage aboutPage;
 
     private int current = TAB_OVERVIEW;
-    private boolean dirty;
     private int statusInset;
 
     @Override
@@ -167,7 +173,7 @@ public class MainActivity extends ComponentActivity {
         pages[TAB_ABOUT] = aboutPage.view();
 
         // 三页平级：横向容器同时承载，靠左右滑动或点底栏切换。
-        // 三页常驻（不销毁重建），滚动位置与未保存的编辑都留住。
+        // 三页常驻（不销毁重建），滚动位置与各页状态都留住。
         pager = new PagePager(this);
         for (int i = 0; i < pages.length; i++) {
             pager.addView(pages[i], new ViewGroup.LayoutParams(
@@ -216,7 +222,7 @@ public class MainActivity extends ComponentActivity {
         // 索引与 pager 的子 View 顺序一致。关于页 showLarge = false（自带渐变英雄区）。
         topBar.setPages(
                 new String[] {"概览", "设置", "关于"},
-                new String[] {"单手模式增强", "改动保存后立即生效", ""},
+                new String[] {"", "改动后立即生效", ""},
                 new boolean[] {true, true, false},
                 // 关于页的顶栏不加渐进模糊：它自带整屏渐变，压一条模糊带会把渐变切出边。
                 // 参考版式也是「滚动时顶栏透明，快到底才化成页面底色」。
@@ -240,26 +246,6 @@ public class MainActivity extends ComponentActivity {
                 selectTab(index, true);
             }
         });
-
-        // 有未保存改动时浮在底栏上方的"保存"胶囊
-        savePill = Ui.primaryButton(this, pal, "保存并立即生效");
-        savePill.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Theme.T_SUM);
-        savePill.setPadding(Theme.dp(this, 20), Theme.dp(this, 11),
-                Theme.dp(this, 20), Theme.dp(this, 11));
-        savePill.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                save();
-            }
-        });
-        FrameLayout.LayoutParams pillLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        pillLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        pillLp.bottomMargin = Theme.dp(this, 108);
-        savePill.setVisibility(View.GONE);
-        savePill.setAlpha(0f);
-        savePill.setElevation(Theme.dpf(this, 6));
-        root.addView(savePill, pillLp);
 
         root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
@@ -289,16 +275,30 @@ public class MainActivity extends ComponentActivity {
                 navLp.rightMargin = Theme.dp(MainActivity.this, 20);
                 nav.setLayoutParams(navLp);
 
-                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) savePill.getLayoutParams();
-                lp.bottomMargin = Theme.dp(MainActivity.this, 108) + bars.bottom;
-                savePill.setLayoutParams(lp);
-
                 applyInsets();
-                nav.setBackdropSource(contentHost);
+                nav.setBackdropSource(contentHost, pal.bg);
                 topBar.setBackdropSource(contentHost);
                 return insets;
             }
         });
+
+        // 全屏透明的 MIUIX Dropdown 宿主：设置页是 Java View，借它拿到 root Scaffold /
+        // MiuixPopupHost。最后 add = 盖在内容/顶栏/底栏之上；没有弹窗时它把触摸还给下层。
+        dropdownHost = new io.github.zpan2327.hyperhand.glass.dialogs.MiuixDropdownHost(this);
+        dropdownHost.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        dropdownHost.setDarkMode((getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        root.addView(dropdownHost);
+
+        // 数值项的单列 NumberPicker 宿主：与 dropdownHost 同为全屏透明 View，
+        // OverlayDialog 走它自己的 root Scaffold。没有弹窗时把触摸还给下层。
+        numberPickerHost = new io.github.zpan2327.hyperhand.glass.dialogs.MiuixNumberPickerHost(this);
+        numberPickerHost.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        numberPickerHost.setDarkMode((getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        root.addView(numberPickerHost);
 
         return root;
     }
@@ -379,13 +379,13 @@ public class MainActivity extends ComponentActivity {
         if (index < 0 || index > 2) {
             return;
         }
-        if (index == current && animate) {
-            nav.select(index, true);
-            return;
-        }
-        current = index;
+        hideDropdown();
         nav.select(index, true);
-        if (pager != null && pager.currentPage() != index) {
+        // 即使 index == current 也要让 pager 回正：切页动画进行中 current 已被提前改写，
+        // 此时再点当前 tab，若直接 return，页面会永远停在两页之间。setCurrentPage
+        // 内部对「已在目标且无偏移」有短路，正常重复点击不会有副作用。
+        current = index;
+        if (pager != null) {
             pager.setCurrentPage(index, animate);
         }
         applyTopBar(index);
@@ -445,6 +445,74 @@ public class MainActivity extends ComponentActivity {
     }
 
     /**
+     * 设置页的单选 / 有限选项行统一走这里：真正渲染的是 MIUIX
+     * {@code OverlayDropdownPopup}（DropdownImpl 选项行 + 勾选态 + 禁用态），
+     * 只是一张 Java 行把锚点矩形交给 Compose 宿主。
+     *
+     * @param anchor 被点的一级行，弹窗按它的位置定位（空间不足自动翻到上方）
+     * @param summaries 每项下方的说明，可为 null
+     */
+    void showDropdown(View anchor, String[] items, String[] summaries, int selected,
+                      Ui.OnChoice onSelected) {
+        if (dropdownHost == null || anchor == null || items == null || items.length == 0) {
+            return;
+        }
+        hideNumberPicker();
+        dropdownHost.setDarkMode((getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        int[] a = new int[2];
+        int[] r = new int[2];
+        anchor.getLocationOnScreen(a);
+        root.getLocationOnScreen(r);
+        List<String> labels = Arrays.asList(items);
+        List<String> desc = summaries == null ? null : Arrays.asList(summaries);
+        dropdownHost.show(
+                labels,
+                desc,
+                Math.max(0, Math.min(items.length - 1, selected)),
+                a[0] - r[0],
+                a[1] - r[1],
+                anchor.getWidth(),
+                anchor.getHeight(),
+                Math.round(getResources().getDisplayMetrics().heightPixels * 0.6f),
+                index -> onSelected.onChoice(index),
+                () -> { });
+    }
+
+    /** 切页 / 返回 / 重启对话框弹出前先收起下拉菜单与数值滚轮，避免两个弹出层叠在一起。 */
+    void hideDropdown() {
+        if (dropdownHost != null) {
+            dropdownHost.hide();
+        }
+        hideNumberPicker();
+    }
+
+    /**
+     * 数值项：MIUIX 单列 NumberPicker 对话框。索引即值，和 Dropdown 的数据流一致 ——
+     * Java 侧用 min/max/step 生成 labels（数值 + 单位已拼好），确认后把索引交回回调。
+     */
+    void showNumberPicker(String title, String[] labels, int selected, Ui.OnChoice onConfirm) {
+        if (numberPickerHost == null || labels == null || labels.length == 0) {
+            return;
+        }
+        hideDropdown();
+        numberPickerHost.setDarkMode((getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        numberPickerHost.show(
+                title,
+                Arrays.asList(labels),
+                Math.max(0, Math.min(labels.length - 1, selected)),
+                index -> onConfirm.onChoice(index),
+                () -> { });
+    }
+
+    void hideNumberPicker() {
+        if (numberPickerHost != null) {
+            numberPickerHost.hide();
+        }
+    }
+
+    /**
      * 概览右上角按钮：miuix {@code Dialog} 里嵌 {@code Checkbox}。
      *
      * <p>原来是 {@code Ui.popupMenu} 的 PopupWindow 锚点菜单（三个固定选项），
@@ -452,96 +520,126 @@ public class MainActivity extends ComponentActivity {
      * （全选 On / 全不选 Off / 部分选中 Indeterminate），与两个子项联动 ——
      * 正是 miuix Checkbox 文档里的父子复选框用法。
      */
+    /**
+     * 重启作用域对话框——直接用 SonyPods 的 {@code RestartScopeDialog} Composable 原版渲染，
+     * 通过 {@link io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost} 桥接到 Java。
+     * 这里只负责提供作用域数据与确认后的业务动作，界面代码一行都不手写。
+     */
     private void showRestartDialog() {
-        final MiuixDialog d = new MiuixDialog(this, pal);
-        d.title("重启作用域");
-        d.summary("勾选需要重启的作用域，结束后钩子会随进程重启重新注入。");
+        hideDropdown();
+        // miuix OverlayDialog 经 DialogLayout 把内容画到 Compose 宿主的 popup 层，必须和
+        // 宿主同处一个 window 才能显示——所以不新建 Dialog window，而是把桥接 View 直接
+        // 叠到 Activity 根容器 root 之上（也在玻璃底栏之上）。ComponentDialog 那种独立
+        // window 里 Composable 虽会执行（Checkbox 有编译日志），但 popup 不可见。
+        if (dialogHost != null && dialogHost.getParent() == root) {
+            root.removeView(dialogHost);
+        }
+        final io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost host =
+                new io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost(this);
+        dialogHost = host;
+        host.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        host.setDarkMode((getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        root.addView(host);   // 追加到末尾 = 盖在 contentHost / topBar / 底栏之上
 
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
+        final java.util.List<io.github.zpan2327.hyperhand.glass.dialogs.RestartScope> scopes =
+                new java.util.ArrayList<>();
+        scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
+                "com.android.systemui", "系统界面"));
+        scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
+                "com.miui.home", "小米桌面"));
+        host.setRestartScopes(scopes);
 
-        final MiuixCheckbox.Row[] children = new MiuixCheckbox.Row[2];
-        final MiuixCheckbox.Row[] parent = new MiuixCheckbox.Row[1];
-        final boolean[] syncing = {false};
-
-        final Runnable syncParent = new Runnable() {
-            @Override
-            public void run() {
-                if (syncing[0] || parent[0] == null) {
-                    return;
-                }
-                boolean sysui = children[0].state() == MiuixCheckbox.State.ON;
-                boolean home = children[1].state() == MiuixCheckbox.State.ON;
-                MiuixCheckbox.State s = sysui && home ? MiuixCheckbox.State.ON
-                        : (!sysui && !home ? MiuixCheckbox.State.OFF
-                        : MiuixCheckbox.State.INDETERMINATE);
-                syncing[0] = true;
-                parent[0].checkbox.setState(s, true);
-                syncing[0] = false;
-            }
-        };
-
-        MiuixCheckbox.OnStateChange childChanged = new MiuixCheckbox.OnStateChange() {
-            @Override
-            public void onChanged(MiuixCheckbox.State state) {
-                syncParent.run();
-            }
-        };
-
-        parent[0] = MiuixCheckbox.row(this, pal, "全部作用域", "系统界面 + 小米桌面",
-                MiuixCheckbox.State.OFF, new MiuixCheckbox.OnStateChange() {
+        final io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost.OnDismiss onDismiss =
+                new io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost.OnDismiss() {
                     @Override
-                    public void onChanged(MiuixCheckbox.State state) {
-                        if (syncing[0]) {
-                            return;
+                    public void onDismiss() {
+                        dismissRestartDialog(host);
+                    }
+                };
+        host.setCallbacks(onDismiss,
+                new io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost.OnConfirm() {
+                    @Override
+                    public void onConfirm(java.util.List<String> selected) {
+                        boolean sysui = selected.contains("com.android.systemui");
+                        boolean home = selected.contains("com.miui.home");
+                        dismissRestartDialog(host);
+                        // 第一个对话框点确定即直接重启，不再弹第二个确认框。
+                        if (sysui && home) {
+                            doRestart();
+                        } else if (sysui) {
+                            restartScopeNow("sysui");
+                        } else if (home) {
+                            restartScopeNow("home");
                         }
-                        // 半选中态点一下变成全选，与 miuix 父子示例一致
-                        MiuixCheckbox.State target = state == MiuixCheckbox.State.ON
-                                ? MiuixCheckbox.State.ON : MiuixCheckbox.State.OFF;
-                        syncing[0] = true;
-                        children[0].checkbox.setState(target, true);
-                        children[1].checkbox.setState(target, true);
-                        syncing[0] = false;
                     }
                 });
-        list.addView(parent[0].view, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        host.show();
+    }
 
-        children[0] = MiuixCheckbox.row(this, pal, "系统界面", "com.android.systemui",
-                MiuixCheckbox.State.OFF, childChanged);
-        children[1] = MiuixCheckbox.row(this, pal, "小米桌面", "com.miui.home",
-                MiuixCheckbox.State.OFF, childChanged);
-        for (int i = 0; i < children.length; i++) {
-            list.addView(children[i].view, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        }
-        d.content(list);
-
-        d.buttons("重启", new MiuixDialog.OnClick() {
+    /** 关掉原版 Composable 对话框：先让它播放退出动画，再从 root 移除宿主 View。 */
+    private void dismissRestartDialog(
+            final io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost host) {
+        host.hide();
+        host.postDelayed(new Runnable() {
             @Override
-            public void onClick(MiuixDialog dlg) {
-                boolean sysui = children[0].state() == MiuixCheckbox.State.ON;
-                boolean home = children[1].state() == MiuixCheckbox.State.ON;
-                if (!sysui && !home) {
-                    toast("请至少勾选一个作用域");
-                    return;   // 保持 Dialog 打开
+            public void run() {
+                if (host.getParent() == root) {
+                    root.removeView(host);
                 }
-                dlg.dismiss();
-                if (sysui && home) {
-                    restartScopes();
-                } else if (sysui) {
-                    restartScope("sysui");
-                } else {
-                    restartScope("home");
+                if (dialogHost == host) {
+                    dialogHost = null;
                 }
             }
-        }, "取消", new MiuixDialog.OnClick() {
+        }, 280);
+    }
+
+    /**
+     * 长文本信息对话框（引用 / 使用说明 / 许可 / 运行状态）。
+     *
+     * <p>和重启对话框同理：MIUIX OverlayDialog 的 popup 必须与宿主同处一个 window，
+     * 所以不新建 Dialog window，而是把 InfoDialogHost 叠到 Activity 根容器 root 之上。
+     * 界面全部由 MIUIX OverlayDialog 渲染，这里只提供标题/正文与关闭回调。
+     */
+    void showInfoDialog(String title, String body) {
+        hideDropdown();
+        if (infoDialogHost != null && infoDialogHost.getParent() == root) {
+            root.removeView(infoDialogHost);
+        }
+        final io.github.zpan2327.hyperhand.glass.dialogs.InfoDialogHost host =
+                new io.github.zpan2327.hyperhand.glass.dialogs.InfoDialogHost(this);
+        infoDialogHost = host;
+        host.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        host.setDarkMode((getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        host.setContent(title, body);
+        host.setOnDismiss(new io.github.zpan2327.hyperhand.glass.dialogs.InfoDialogHost.OnDismiss() {
             @Override
-            public void onClick(MiuixDialog dlg) {
-                dlg.dismiss();
+            public void onDismiss() {
+                dismissInfoDialog(host);
             }
         });
-        d.show();
+        root.addView(host);
+        host.show();
+    }
+
+    /** 关闭信息对话框：先播 MIUIX 退出动画，再从 root 移除宿主 View。 */
+    private void dismissInfoDialog(
+            final io.github.zpan2327.hyperhand.glass.dialogs.InfoDialogHost host) {
+        host.hide();
+        host.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (host.getParent() == root) {
+                    root.removeView(host);
+                }
+                if (infoDialogHost == host) {
+                    infoDialogHost = null;
+                }
+            }
+        }, 280);
     }
 
     void goSettings() {
@@ -550,6 +648,22 @@ public class MainActivity extends ComponentActivity {
 
     @Override
     public void onBackPressed() {
+        if (dropdownHost != null && dropdownHost.isShowing()) {
+            dropdownHost.hide();
+            return;
+        }
+        if (numberPickerHost != null && numberPickerHost.isShowing()) {
+            numberPickerHost.hide();
+            return;
+        }
+        if (dialogHost != null) {
+            dismissRestartDialog(dialogHost);
+            return;
+        }
+        if (infoDialogHost != null) {
+            dismissInfoDialog(infoDialogHost);
+            return;
+        }
         if (current != TAB_OVERVIEW) {
             selectTab(TAB_OVERVIEW, true);
             return;
@@ -579,41 +693,6 @@ public class MainActivity extends ComponentActivity {
     void reloadCfg() {
         Cfg.invalidate();
         cur = Cfg.get(this);
-    }
-
-    void markDirty() {
-        if (dirty) {
-            return;
-        }
-        dirty = true;
-        showSavePill(true);
-    }
-
-    private void clearDirty() {
-        dirty = false;
-        showSavePill(false);
-    }
-
-    private void showSavePill(boolean show) {
-        if (show) {
-            if (savePill.getVisibility() != View.VISIBLE) {
-                savePill.setVisibility(View.VISIBLE);
-                savePill.setAlpha(0f);
-                savePill.setTranslationY(Theme.dpf(this, 12));
-            }
-            savePill.animate().alpha(1f).translationY(0f).setDuration(200)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f)).start();
-        } else {
-            savePill.animate().alpha(0f).translationY(Theme.dpf(this, 12)).setDuration(150)
-                    .withEndAction(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (!dirty) {
-                                savePill.setVisibility(View.GONE);
-                            }
-                        }
-                    }).start();
-        }
     }
 
     /**
@@ -660,10 +739,13 @@ public class MainActivity extends ComponentActivity {
         if (overviewPage != null) {
             View v = overviewPage.view();
             v.removeCallbacks(probeRefresh);
-            // 两次刷新：180ms 是常规广播回写时间，650ms 兜底慢机 / 广播排队，
-            // 避免状态卡一直停在「检测中」或误落成红色。
+            // 180ms 常规回写、650ms 兜底慢机广播排队；关键是最末这一发必须落在
+            // probing() 的 700ms 窗口之外（取 850ms），否则刷新时窗口还没结束、
+            // 状态卡会永远停在「检测中」——LSPosed 没启用模块/没勾作用域时无人应答，
+            // 就靠这一发把结论落成红色「模块未启用」。
             v.postDelayed(probeRefresh, 180);
             v.postDelayed(probeRefresh, 650);
+            v.postDelayed(probeRefresh, 850);
         }
     }
 
@@ -762,7 +844,6 @@ public class MainActivity extends ComponentActivity {
         }
         sendBroadcast(i);
         settingsPage.onSaved();
-        clearDirty();
         reloadCfg();
         overviewPage.refresh();
         toast("已保存");
@@ -795,8 +876,7 @@ public class MainActivity extends ComponentActivity {
 
     void restartScopes() {
         Ui.confirmDialog(this, pal, "重启两个作用域",
-                "会结束「系统界面」与「小米桌面」两个进程，屏幕闪一下、短暂黑屏后自动恢复。\n"
-                        + "未保存的参数修改会丢失。",
+                "会结束「系统界面」与「小米桌面」两个进程，屏幕闪一下、短暂黑屏后自动恢复。",
                 "重启", new Ui.OnConfirm() {
                     @Override
                     public void onConfirm() {
@@ -805,43 +885,50 @@ public class MainActivity extends ComponentActivity {
                 });
     }
 
-    /** 概览右上角二级菜单：按作用域重启。scope = "sysui" / "home"。 */
-    void restartScope(final String scope) {
+    /** 单作用域直接重启（第一个对话框点确定后调用，不再弹第二个确认框）。scope = "sysui" / "home"。 */
+    void restartScopeNow(final String scope) {
         final String label = "sysui".equals(scope) ? "系统界面" : "小米桌面";
         final String pkg = "sysui".equals(scope) ? "com.android.systemui" : "com.miui.home";
-        Ui.confirmDialog(this, pal, "重启" + label,
-                "会结束「" + label + "」进程，屏幕可能闪一下后自动恢复。\n"
-                        + "未保存的参数修改会丢失。",
-                "重启", new Ui.OnConfirm() {
+        settingsPage.setRestarting(true);
+        settingsPage.setStatus("正在检查 root 权限……若弹出授权请允许。");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                // 【未授权 root 不允许重启】没有 root 直接中止，不发 reload、不杀进程。
+                if (!hasRoot()) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            settingsPage.setRestarting(false);
+                            settingsPage.setStatus("未获得 root 权限，已取消重启。请先在 "
+                                    + "KernelSU / Magisk 里授予 HyperHand 超级用户权限后重试。");
+                            toast("没有 root，未执行重启");
+                            if (current == TAB_OVERVIEW) overviewPage.refresh();
+                        }
+                    });
+                    return;
+                }
+                final String err = su("killall " + pkg + "; sleep 1; input keyevent 3", 25000L);
+                runOnUiThread(new Runnable() {
                     @Override
-                    public void onConfirm() {
-                        settingsPage.setRestarting(true);
-                        settingsPage.setStatus("正在重启" + label + "……若弹出 root 授权请允许。");
-                        new Thread(new Runnable() {
-                            @Override
-                            public void run() {
-                                final String err = su("killall " + pkg + "; sleep 1; input keyevent 3", 25000L);
-                                runOnUiThread(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        settingsPage.setRestarting(false);
-                                        if (err == null) {
-                                            settingsPage.setStatus("已结束" + label + "，钩子会在它重启后重新注入。");
-                                            toast("已重启" + label);
-                                        } else {
-                                            broadcastAction("reload");
-                                            settingsPage.setStatus("没有 root：" + err);
-                                            toast("重启失败");
-                                        }
-                                        if (current == TAB_OVERVIEW) {
-                                            overviewPage.refresh();
-                                        }
-                                    }
-                                });
-                            }
-                        }).start();
+                    public void run() {
+                        settingsPage.setRestarting(false);
+                        if (err == null) {
+                            settingsPage.setStatus("已结束" + label + "，钩子会在它重启后重新注入。");
+                            toast("已重启" + label);
+                        } else {
+                            // 已确认有 root，命令本身失败才走 reload 兜底。
+                            broadcastAction("reload");
+                            settingsPage.setStatus("root 命令执行失败：" + err);
+                            toast("重启失败");
+                        }
+                        if (current == TAB_OVERVIEW) {
+                            overviewPage.refresh();
+                        }
                     }
                 });
+            }
+        }).start();
     }
 
     private void broadcastAction(String action) {
@@ -853,11 +940,26 @@ public class MainActivity extends ComponentActivity {
 
     private void doRestart() {
         settingsPage.setRestarting(true);
-        settingsPage.setStatus("正在重启系统界面与桌面……若弹出 root 授权请允许。");
+        settingsPage.setStatus("正在检查 root 权限……若弹出授权请允许。");
         final int keepTab = current;
         new Thread(new Runnable() {
             @Override
             public void run() {
+                // 【未授权 root 不允许重启】没有 root 就直接中止：既不 killall，也不再
+                // fallback 到 broadcastAction("reload") 让系统界面自行重启。
+                if (!hasRoot()) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            settingsPage.setRestarting(false);
+                            settingsPage.setStatus("未获得 root 权限，已取消重启。请先在 KernelSU / Magisk "
+                                    + "里授予 HyperHand 超级用户权限后重试。");
+                            toast("没有 root，未执行重启");
+                            if (keepTab == TAB_OVERVIEW) overviewPage.refresh();
+                        }
+                    });
+                    return;
+                }
                 final String err = su("killall com.android.systemui; killall com.miui.home; "
                         + "sleep 1; input keyevent 3", 25000L);
                 runOnUiThread(new Runnable() {
@@ -869,8 +971,10 @@ public class MainActivity extends ComponentActivity {
                                     + "现在可以下滑底部区域试试。");
                             toast("已重启");
                         } else {
+                            // 已确认有 root，但 killall 执行失败（权限已给、命令环境问题）。
+                            // 这里保留 reload 兜底——与"未授权"无关，属于另一类失败。
                             broadcastAction("reload");
-                            settingsPage.setStatus("没有 root：" + err
+                            settingsPage.setStatus("root 命令执行失败：" + err
                                     + "\n已改为让系统界面自行重启（桌面侧钩子未刷新，可稍后手动重启）。");
                             toast("已请求系统界面重启");
                         }
@@ -881,6 +985,38 @@ public class MainActivity extends ComponentActivity {
                 });
             }
         }).start();
+    }
+
+    /**
+     * 是否已获得 root（su）授权：跑一条无害的 {@code id -u}，只有输出为 0 才算有 root。
+     * 不能只判断"su 文件存在"——授权被拒时 su 也在，但命令会以非 0 退出。
+     *
+     * <p>首次 su 会弹授权框、需要等待，所以【必须在后台线程调用】，不要放 UI 线程。
+     * 等待授权最多 10s，超时按"无 root"处理（不允许重启）。
+     */
+    private boolean hasRoot() {
+        final String[] bins = new String[] {"su", "/system/bin/su", "/debug_ramdisk/su", "/sbin/su"};
+        for (String bin : bins) {
+            Process p = null;
+            try {
+                p = Runtime.getRuntime().exec(new String[] {bin, "-c", "id -u"});
+                if (!p.waitFor(10000L, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                    return false;   // 等授权超时 → 视为无 root
+                }
+                String out = readStream(p.getInputStream()).trim();
+                int code = p.exitValue();
+                // su 存在但被拒绝 / 不是 root shell：不要再去试其它路径（都是同一个 su），
+                // 直接判定无 root。只有 exec 本身抛异常（该路径没有 su）才继续试下一个。
+                return code == 0 && "0".equals(out);
+            } catch (Throwable t) {
+                // 该路径没有可用的 su，继续试下一个
+            } finally {
+                if (p != null) {
+                    try { p.destroy(); } catch (Throwable ignored) { }
+                }
+            }
+        }
+        return false;
     }
 
     /**

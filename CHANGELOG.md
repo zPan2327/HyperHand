@@ -2,7 +2,62 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [3.3.4] - 2026-11-20 - 正式版
+
+> GitHub tag `v3.3.4`，LSPosed 模块仓库 tag `30304-3.3.4`；versionCode 30304，
+> 可直接覆盖安装 3.3.3（30303），无需卸载。
+
+### 调整
+- **设置改动即时保存生效，去掉二次确认**：任何开关 / 数值 / 下拉改动后立刻全量广播给
+  SystemUI 写入 `Settings.Global`，不再需要点「保存并立即生效」。移除设置页底部保存
+  按钮与悬浮保存胶囊；状态栏改为「改动自动保存并立即生效」。动画曲线 / 时长仍额外
+  即时下发。重启对话框移除「未保存会丢失」的提示。
+- **设置页排版按 SonyPods / MIUIX 规范重整**：每组分一个 Card、组间靠 SmallTitle 间距，
+  所有 summary 精简为一句话短句（8–20 字、无句号），移除卡片内 2 段大段静态说明块，
+  校准提示 / 实测时长两个动态信息块文案缩短。配置项与数据流不变。
+- **数值设置改用 MIUIX NumberPicker（单列）**：所有带数字的设置项不再用 Dropdown 选值，
+  改为 SonyPods「临时电量岛显示时长」同款的 MIUIX `NumberPicker` 单列滚轮对话框
+  （SonyPods 原版是「数值 + 单位」双列，这里选项文本已含单位故只需单列）。沿用
+  「索引 = 值」数据流，min/max/step 生成的有限选项 + 回写链路完全不变。
+- **选择类设置行右侧箭头改为 MIUIX 上下双箭头**：触发模式 / 缓动曲线 / 拉开哪个以及所有
+  数值行右侧的 `>` 换成 MIUIX `ArrowUpDown`（逐字复制 miuix-ui 的 10×16dp 矢量，即
+  `DropdownArrowEndAction`）。只有真正跳转到新页面的行（关于页链接）才保留 `>`。
+
+### 重构
+- **设置页选择类交互统一改为 MIUIX Dropdown**：原先「触发模式 / 缓动曲线 / 拉开哪个」
+  三个单选对话框，以及约 23 个数值行的 Slider 参数子页，全部改为 MIUIX
+  `OverlayDropdownPopup`（DropdownImpl 选项行 + 勾选态 + 每项说明）。数值项由原来的
+  min/max/step 生成有限选项，索引即值，天然带范围与步长校验；选中即回写，配置键、
+  广播与 SystemUI 写入链路完全不变。
+- 通过一张全屏透明 Compose 宿主把 MIUIX popup 桥接进 Java 设置页：锚点按被点行定位，
+  空间不足自动翻到上方；无弹窗时把触摸还给下层。切页、返回、重启对话框弹出前自动收起。
+- 依赖开关的项（如慢滑所需距离、模糊半径、拉开哪个）补上 MIUIX 禁用态，值不清零，
+  重新打开开关后原值保留。
+
+### 修复
+- **底栏液态玻璃「上下冒黑块」**：`ViewBackdrop` 原先把采样区裁到 source 边界，底栏贴底时
+  折射 padding 会越出 source，被裁小后的位图铺不满 layer，透明缝被 lens/色散按 half4(0)
+  采样成纯黑。改为保留完整 layer 区域、capture 用页面底色铺底兜住未覆盖区，并对
+  `pressProgress` 做 `[0,1]` 钳制（连点/快拖时 spring 越界会叠加出错配中间态）。真机按住
+  拖动抓帧确认黑块消失。
+- **菜单开着时点背景图标误开其它 App**：记下长按宿主图标 A 的按下锚点，菜单开着时只有
+  点在 A 上才「关菜单 + 打开 A」；点背景模糊的其它图标 B 只关菜单、不再误开 B。用图标
+  矩形是否包含锚点判定（外扩 8dp 容差），不受图标重排 / View 复用影响。
+- **数值滚轮偶发只显示一个数字**：本地化 MIUIX `NumberPicker`，把 `itemHeightPx` 改为直接
+  由 `itemHeight × density` 取整派生，去掉依赖 `onSizeChanged` 的二次测量；修复首次打开时
+  动画测量异常导致候选项挤成单个数字（第二次打开才正常）的问题。
+- **重启作用域去掉第二个确认框**：第一个对话框点确定后直接重启对应进程，不再弹二次确认。
+
+### 视觉
+- **概览状态卡改为 SonyPods 同款按压反馈**：从 Java 手写 FrameLayout 换成真正的 MIUIX
+  `Card`（`PressFeedbackType.Tilt` + `showIndication`），倾斜 / 高亮 / 回正全由 MIUIX 原生
+  实现，按住边角持续形变、松手回正；颜色与右下角图标位置按原版逐像素还原。概览副标题
+  移除「单手模式增强」只留「概览」，两处状态值字重加粗。
+- **关于页对话框与许可**：信息类对话框统一改 MIUIX `OverlayDialog`；MIT 许可说明改为中文
+  翻译在前、英文原文在后，保留 `HyperHand · MIT License` 字标。字标字重 800（不识别数值
+  字重的 ROM 回退 Bold），Logo 用 G2 连续曲率圆角。
+- **复选框形状对齐 MIUIX**：26dp 圆形 `CircleShape`、未选中 secondary 实心、勾路径取
+  miuix viewport(23f) 三点坐标，按物理弹簧在 secondary/primary 间过渡。
 
 ## [3.3.3] - 2026-11-18 - 正式版
 

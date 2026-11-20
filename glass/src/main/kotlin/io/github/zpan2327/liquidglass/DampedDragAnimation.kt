@@ -97,7 +97,10 @@ internal class DampedDragAnimation(
     }
     /** 是否正被外部（宿主横滑页面）直接驱动。 */
     val isExternallyDriven: Boolean get() = !externalValue.isNaN()
-    val pressProgress: Float get() = pressProgressAnimation.value
+    // 连点/快速来回拖时 press/release 协程互相 cancel，spring 可能短暂越过 [0,1]；
+    // 不 clamp 会让折射量、高光 alpha、内阴影半径取到错配的中间态，叠加出黑边。
+    // 与 InteractiveHighlight 的取值保持一致。
+    val pressProgress: Float get() = pressProgressAnimation.value.coerceIn(0f, 1f)
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
     val velocity: Float get() = velocityAnimation.value

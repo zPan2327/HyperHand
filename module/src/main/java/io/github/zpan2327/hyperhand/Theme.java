@@ -62,6 +62,7 @@ final class Theme {
         // 次级按钮
         int fill;           // secondaryVariant
         int onFill;         // onSecondaryVariant
+        int secondary;      // secondary：未选中 Checkbox 的实心底色（light #E6E6E6 / dark #505050）
 
         // 状态
         int successBg;
@@ -108,6 +109,7 @@ final class Theme {
 
             p.fill = 0xFF434343;
             p.onFill = 0xFFD9D9D9;
+            p.secondary = 0xFF505050;   // miuix darkColorScheme.secondary
 
             p.successBg = 0xFF16301F;
             p.onSuccess = 0xFFB8E8C5;
@@ -141,6 +143,7 @@ final class Theme {
 
             p.fill = 0xFFF0F0F0;
             p.onFill = 0xFF303030;
+            p.secondary = 0xFFE6E6E6;   // miuix lightColorScheme.secondary
 
             p.successBg = 0xFFDFFAE4;
             p.onSuccess = 0xFF1E7B41;
@@ -215,6 +218,23 @@ final class Theme {
     private static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
     private static final Typeface SEMI = Typeface.create("sans-serif", 600);
     private static final Typeface BOLD = Typeface.create("sans-serif", Typeface.BOLD);
+    /**
+     * 字标（HyperHand）专用 ExtraBold 800：介于 Bold 700 与 Black 900 之间。
+     *
+     * <p>真机（小米 14 / HyperOS 3，带 RobotoFlex、MiSans VF 可变字体）能精确命中
+     * 数值字重 800，实测 Black 900 偏粗、Bold 700 偏细，800 是中间的甜点档。
+     * <p>少数 ROM 不识别数值字重、会回退成 Regular(400)：此时退回 BOLD(700)，
+     * 绝不会出现「想加粗反而更细」。
+     */
+    private static final Typeface EXTRA_BOLD = buildWordmark();
+
+    private static Typeface buildWordmark() {
+        Typeface t = Typeface.create("sans-serif", 800);
+        if (android.os.Build.VERSION.SDK_INT >= 28 && t.getWeight() < 750) {
+            return BOLD;
+        }
+        return t;
+    }
 
     static Typeface regular() {
         return BASE;
@@ -233,6 +253,11 @@ final class Theme {
     /** Bold（700）：SmallTitle 段落标题。 */
     static Typeface bold() {
         return BOLD;
+    }
+
+    /** ExtraBold（800）：关于页 HyperHand 字标，比 Black 900 稍细、比 Bold 700 稍粗。 */
+    static Typeface wordmark() {
+        return EXTRA_BOLD;
     }
 
     // ---------------------------------------------------------------- 工具

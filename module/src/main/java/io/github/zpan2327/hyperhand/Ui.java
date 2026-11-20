@@ -246,6 +246,19 @@ final class Ui {
         row.addView(cv, lp);
     }
 
+    /**
+     * MIUIX「选择类」设置行右侧的上下双箭头（ArrowUpDown，10×16dp）。
+     * 规范的语义区分：选择 / 弹层类行用这个双箭头；真正跳转到新页面的行（关于页链接等）
+     * 才用 {@link #addChevron} 的 ArrowRight。
+     */
+    static void addDropdownArrow(Context c, LinearLayout row, Theme.Colors p) {
+        android.view.View v = Icons.arrowUpDownView(c, p.chevron);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                Theme.dp(c, 10), Theme.dp(c, 16));
+        lp.leftMargin = Theme.dp(c, 8);
+        row.addView(v, lp);
+    }
+
     // ---------------------------------------------------------------- 行
 
     /**
@@ -281,6 +294,10 @@ final class Ui {
         final String unit;
         final int decimals;
         float value;
+        private float min;
+        private float max;
+        private float step;
+        private float[] options;
 
         ValueRow(LinearLayout row, TextView label, Theme.Colors pal, String unit, int decimals,
                  Context c, float min, float max, float step, Runnable onChange) {
@@ -289,11 +306,54 @@ final class Ui {
             this.pal = pal;
             this.unit = unit;
             this.decimals = decimals;
+            configure(min, max, step);
+        }
+
+        /** 数值行不再弹 Slider 子页：min/max/step 决定 Dropdown 的有限选项集。 */
+        void configure(float minValue, float maxValue, float stepValue) {
+            min = minValue;
+            max = maxValue;
+            step = stepValue;
+            options = null;
+        }
+
+        float[] options() {
+            if (options == null) {
+                if (step <= 0f || max < min) {
+                    options = new float[] { value };
+                } else {
+                    int count = Math.min(512, Math.round((max - min) / step) + 1);
+                    options = new float[count];
+                    for (int i = 0; i < count; i++) {
+                        options[i] = Math.min(max, min + i * step);
+                    }
+                }
+            }
+            return options;
+        }
+
+        /** 预设值 / 存档值可能不在 step 网格上：找最近的一项，保证当前值始终可见。 */
+        int indexOf(float v) {
+            float[] all = options();
+            int best = 0;
+            float diff = Math.abs(all[0] - v);
+            for (int i = 1; i < all.length; i++) {
+                float d = Math.abs(all[i] - v);
+                if (d < diff) {
+                    diff = d;
+                    best = i;
+                }
+            }
+            return best;
         }
 
         void set(float v) {
             value = v;
             label.setText(valueSpan(pal, fmt(v, decimals), unit));
+        }
+
+        void setEnabled(boolean enabled) {
+            rowEnabled(row, enabled);
         }
     }
 
@@ -327,13 +387,21 @@ final class Ui {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         llp.leftMargin = Theme.dp(c, 12);
         row.addView(label, llp);
-        addChevron(c, row, p);
+        addDropdownArrow(c, row, p);
 
         ValueRow vr = new ValueRow(row, label, p, unit, decimals,
                 c, min, max, step, onChange);
         vr.value = value;
         addRow(c, card, p, row);
         return vr;
+    }
+
+    /** 数值行 + 明确的取值范围：Dropdown 的选项就由 min/max/step 生成。 */
+    static ValueRow valueRow(Context c, LinearLayout card, Theme.Colors p,
+                             String title, String summary, String unit,
+                             float value, int decimals, float min, float max, float step) {
+        return valueRow(c, card, p, title, summary, unit, value, decimals,
+                min, max, step, 0, null);
     }
 
     static final class ChoiceRow {
@@ -344,6 +412,31 @@ final class Ui {
         ChoiceRow(LinearLayout row, TextView label) {
             this.row = row;
             this.label = label;
+        }
+
+        void setEnabled(boolean enabled) {
+            rowEnabled(row, enabled);
+        }
+    }
+
+    /** MIUIX 禁用态：整行降到 50% 透明度且不再可点，选项里的同值行也同步禁用。 */
+    static void rowEnabled(View row, boolean enabled) {
+        row.setEnabled(enabled);
+        if (row instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) row;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View child = g.getChildAt(i);
+                child.setEnabled(enabled);
+                child.setAlpha(enabled ? 1f : 0.5f);
+                if (child instanceof ViewGroup) {
+                    ViewGroup cg = (ViewGroup) child;
+                    for (int j = 0; j < cg.getChildCount(); j++) {
+                        View grand = cg.getChildAt(j);
+                        grand.setEnabled(enabled);
+                        grand.setAlpha(enabled ? 1f : 0.5f);
+                    }
+                }
+            }
         }
     }
 
@@ -364,7 +457,7 @@ final class Ui {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         llp.leftMargin = Theme.dp(c, 12);
         row.addView(label, llp);
-        addChevron(c, row, p);
+        addDropdownArrow(c, row, p);
 
         final ChoiceRow cr = new ChoiceRow(row, label);
         cr.value = idx;
@@ -804,127 +897,42 @@ final class Ui {
 
     // ---------------------------------------------------------------- 对话框
 
-    // ---------------------------------------------------------------- 对话框
+    // ---------------------------------------------------------------- 选择 / Dropdown
     //
-    // 全应用的弹窗只走 MiuixDialog（miuix Dialog / WindowDialog 组件）。
-    // 旧的 dialogShell / dialogTitle / dialogButtons / sliderTrack / dialogTextButton
-    // 各自 new Dialog，popupMenu 用 PopupWindow，隐藏调试页用 root overlay ——
-    // 四条不同的子窗口路径全部收敛到同一个组件，规格见 MiuixDialog。
+    // 单选、数值范围与其它有限选项配置统一使用 MIUIX OverlayDropdownPopup：
+    // Java 行只显示当前值并把锚点矩形交给 MainActivity 的 Compose 宿主，
+    // 选项行、勾选态、禁用态、震动、定位与退场动画全部由 MIUIX 组件负责。
+    // Dialog 只保留两类真正需要它的场景：破坏性操作确认、长文本阅读。
 
-    /** 概览右上角的锚点菜单已改为 MiuixDialog + MiuixCheckbox（见 MainActivity）。 */
-
-    /**
-     * 参数详情子页：点一级设置页的数值行之后才打开，miuix Slider 只在这一层出现。
-     *
-     * <p>一级页面现在只有「标题 + 当前值 + 箭头」，不再把 SliderPreference 的
-     * bottomAction 内联滑杆挂在行下面。子页本身由 MiuixDialog 承载 ——
-     * 所有弹出式子窗口统一用 Dialog 组件。
-     */
-    static void sliderPageDialog(final Activity a, final Theme.Colors p,
-                                 String title, String summary, final String unit,
-                                 final float min, final float max, final float step,
-                                 final int decimals, float current, final OnNumber cb) {
-        final MiuixDialog d = new MiuixDialog(a, p);
-        d.title(title);
-        d.summary(summary);
-
-        LinearLayout body = new LinearLayout(a);
-        body.setOrientation(LinearLayout.VERTICAL);
-
-        final int inset = MiuixDialog.pad(a);
-        final TextView big = text(a, "", 30, p.title, Theme.medium());
-        big.setGravity(Gravity.CENTER);
-        big.setPadding(inset, Theme.dp(a, 2), inset, 0);
-        body.addView(big);
-
-        TextView u = text(a, unit == null || unit.length() == 0 ? " " : unit,
-                13, p.summary, Theme.regular());
-        u.setGravity(Gravity.CENTER);
-        u.setPadding(inset, Theme.dp(a, 2), inset, Theme.dp(a, 6));
-        body.addView(u);
-
-        final float[] result = {current};
-        // 子页里用 miuix Slider，和一级页面彻底解耦
-        final MiuixSlider sb = new MiuixSlider(a, p, min, max, step, current);
-        sb.setOnValue(new MiuixSlider.OnValue() {
-            @Override
-            public void onValue(float v) {
-                result[0] = v;
-                big.setText(fmt(v, decimals));
-                Haptics.get(a).step();
-            }
-        });
-        sb.setPadding(inset, Theme.dp(a, 12), inset, Theme.dp(a, 6));
-        // 高度 = 轨道 28dp + 上下 padding，轨道才是完整的 28dp
-        body.addView(sb, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(a, 28 + 18)));
-        result[0] = sb.value();
-        big.setText(fmt(result[0], decimals));
-        d.content(body);
-
-        d.buttons("确定", new MiuixDialog.OnClick() {
-            @Override
-            public void onClick(MiuixDialog dlg) {
-                cb.onNumber(result[0]);
-                dlg.dismiss();
-            }
-        }, "取消", new MiuixDialog.OnClick() {
-            @Override
-            public void onClick(MiuixDialog dlg) {
-                dlg.dismiss();
-            }
-        });
-        d.show();
+    /** 单选下拉：右侧显示当前值，点击弹出 MIUIX Dropdown，选中即回写。 */
+    static void choiceDropdown(final Activity a, final ChoiceRow row,
+                               final String[] optionLabels, final String[] summaries,
+                               final OnChoice cb) {
+        ((MainActivity) a).showDropdown(row.row, optionLabels, summaries, row.value, cb);
     }
 
-    /** 单选对话框（MiuixDialog）：标题 + 选项列表，选中项高亮 + 勾。 */
-    static void singleChoiceDialog(final Activity a, final Theme.Colors p, String title,
-                                   String summary, final String[] options, int selected,
-                                   final OnChoice cb) {
-        final MiuixDialog d = new MiuixDialog(a, p);
-        d.title(title);
-        d.summary(summary);
-
-        LinearLayout list = new LinearLayout(a);
-        list.setOrientation(LinearLayout.VERTICAL);
-        for (int i = 0; i < options.length; i++) {
-            final int idx = i;
-            LinearLayout row = new LinearLayout(a);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            int inset = MiuixDialog.pad(a);
-            row.setMinimumHeight(Theme.dp(a, 46));
-            row.setPadding(inset, Theme.dp(a, 7), inset, Theme.dp(a, 7));
-            row.setBackground(new RippleDrawable(ColorStateList.valueOf(
-                    p.night ? 0x14FFFFFF : 0x0D000000), null, new ColorDrawable(Color.TRANSPARENT)));
-            row.setClickable(true);
-            TextView label = text(a, options[i], 15,
-                    i == selected ? p.primary : p.title, Theme.regular());
-            row.addView(label, new LinearLayout.LayoutParams(0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            if (i == selected) {
-                Icons.IconView check = Icons.view(a, Icons.CHECK, 18, p.primary, 0f);
-                row.addView(check, new LinearLayout.LayoutParams(
-                        Theme.dp(a, 18), Theme.dp(a, 18)));
-            }
-            row.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    cb.onChoice(idx);
-                    d.dismiss();
-                }
-            });
-            list.addView(row, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    /**
+     * 数值项：MIUIX 单列 NumberPicker（SonyPods 电量岛时长同款，只是单列）。
+     * min/max/step 生成有限选项，索引即值，天然满足范围与步长校验；索引回写仍走
+     * values[index]，配置键 / 广播链路与旧 Dropdown 完全一致。
+     */
+    static void numericPicker(final Activity a, final ValueRow row, final String title,
+                              final String unit, final int decimals, final OnNumber cb) {
+        final float[] values = row.options();
+        final String[] labels = new String[values.length];
+        for (int i = 0; i < values.length; i++) {
+            String s = fmt(values[i], decimals);
+            labels[i] = unit == null || unit.length() == 0 ? s : s + " " + unit;
         }
-        d.content(list);
-        d.button("取消", false, new MiuixDialog.OnClick() {
-            @Override
-            public void onClick(MiuixDialog dlg) {
-                dlg.dismiss();
-            }
-        });
-        d.show();
+        ((MainActivity) a).showNumberPicker(title, labels, row.indexOf(row.value),
+                new OnChoice() {
+                    @Override
+                    public void onChoice(int index) {
+                        if (index >= 0 && index < values.length) {
+                            cb.onNumber(values[index]);
+                        }
+                    }
+                });
     }
 
     /** 确认对话框（MiuixDialog）：用于重启作用域这类破坏性操作。 */
@@ -964,29 +972,18 @@ final class Ui {
         }
     }
 
-    /** 长文本对话框（MiuixDialog）：引用 / 许可 / 使用说明 / 运行状态，内容可滚动。 */
+    /**
+     * 长文本信息对话框：引用 / 许可 / 使用说明 / 运行状态，内容可滚动。
+     *
+     * <p>界面严格走 MIUIX 原生 OverlayDialog——委托给 MainActivity 的
+     * {@link MainActivity#showInfoDialog(String, String)}，它把
+     * {@code InfoDialogHost}（Compose 桥）叠到 Activity 根容器渲染。
+     * 不再用 Java 手写的 MiuixDialog 仿制品。
+     */
     static void infoDialog(final Activity a, final Theme.Colors p, String title, String body) {
-        final MiuixDialog d = new MiuixDialog(a, p);
-        d.title(title);
-
-        int maxH = Math.min(Theme.dp(a, 340),
-                (int) (a.getResources().getDisplayMetrics().heightPixels * 0.50f));
-        ScrollView sc = new MaxScrollView(a, maxH);
-        sc.setVerticalScrollBarEnabled(false);
-        TextView bodyView = text(a, body, 13, p.summary, Theme.regular());
-        bodyView.setLineSpacing(Theme.dp(a, 3), 1f);
-        int inset = MiuixDialog.pad(a);
-        bodyView.setPadding(inset, 0, inset, Theme.dp(a, 12));
-        sc.addView(bodyView);
-        d.content(sc);
-
-        d.button("知道了", true, new MiuixDialog.OnClick() {
-            @Override
-            public void onClick(MiuixDialog dlg) {
-                dlg.dismiss();
-            }
-        });
-        d.show();
+        if (a instanceof MainActivity) {
+            ((MainActivity) a).showInfoDialog(title, body);
+        }
     }
 
     /** 通用弹簧：半隐式欧拉 + 子步长，避免大 stiffness 下数值爆炸。 */

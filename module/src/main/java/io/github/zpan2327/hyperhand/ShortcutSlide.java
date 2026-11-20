@@ -166,6 +166,12 @@ final class ShortcutSlide {
     private long lastIconTapDownAt;     // 时间去重：区分"新点击"与同一手势的重复 DOWN
     private volatile boolean iconTapCancelled; // 本次 DOWN 的点击判定是否被 MOVE/长按打断
 
+    // 弹出当前菜单的【宿主图标 A】的按下锚点。菜单开着时只有点在 A 上才
+    // "关菜单 + 打开 A 的 App"；点背景模糊的其它图标 B 不能再走同一路径（否则误开 B 的 App）。
+    // onMenuShown 时 downX/downY 还是长按 A 的锚点，记下它；判定时看目标图标矩形是否
+    // 包含该锚点——比持有 View 引用更可靠，不受图标重排 / View 复用影响。
+    private float hostAnchorX = Float.NaN, hostAnchorY = Float.NaN;
+
     private final List<Field> menuGroupFields = new ArrayList<Field>();
     private Method getLauncher;
     private Method getStateManager;
@@ -503,6 +509,10 @@ final class ShortcutSlide {
         cancelPendingIconTap();   // 菜单（重新）弹出 = 本次是长按，不是"点击图标"
         state = MENU_OPEN;
         menuShowing = true;
+        // 菜单刚弹出，此刻 downX/downY 正是长按宿主图标 A 的按下锚点。记下来用于
+        // 之后区分"点 A"（打开 A）和"点背景图标 B"（只关菜单，不打开 B）。
+        hostAnchorX = downX;
+        hostAnchorY = downY;
         headingToMenu = false;
         clearHighlight();
         guardUntil = 0L;
@@ -575,6 +585,16 @@ final class ShortcutSlide {
             }
             View icon = findIconViewAt((ViewGroup) dragLayer, downX, downY);
             if (icon != null) {
+                // 【只认宿主 A】菜单开着时点的是背景模糊的其它图标 B → 不打开 B。
+                // 判定：目标图标矩形是否包含本次长按的锚点（onMenuShown 时记下的 A 位置）。
+                // 背景 B 的矩形不含该锚点，直接放弃本次"补点打开"；菜单关闭仍由原生处理。
+                if (!isHostIcon(icon)) {
+                    cancelPendingIconTap();
+                    if (cfg.debug) log("MENU_OPEN_ICON_TAP skipped: non-host icon ("
+                            + (int) downX + "," + (int) downY + ") anchor=("
+                            + (int) hostAnchorX + "," + (int) hostAnchorY + ")");
+                    break;
+                }
                 long now = System.currentTimeMillis();
                 // 时间去重：SuperDraglayer 会把同一手势的 DOWN 重复分发十几次。
                 // 只有间隔 >100ms 才算"新的点击"，重复 DOWN 不重置取消标志、不重新 arm。
@@ -1028,6 +1048,32 @@ final class ShortcutSlide {
             log("findIconViewAt error: " + t);
         }
         return null;
+    }
+
+    /**
+     * icon 是否就是弹出当前菜单的宿主图标 A：其屏幕矩形包含长按锚点即为宿主。
+     * 菜单开着时点背景图标 B，B 的矩形不含 A 的锚点 → 返回 false，不打开 B。
+     * 锚点无效（异常情况没记到）时保守返回 true，避免出现"点 A 却打不开"的回归。
+     */
+    private boolean isHostIcon(View icon) {
+        if (icon == null) return false;
+        if (Float.isNaN(hostAnchorX) || Float.isNaN(hostAnchorY)) return true;
+        try {
+            Rect r = new Rect();
+            if (!icon.getGlobalVisibleRect(r) || r.width() <= 0 || r.height() <= 0) return true;
+            // 向外扩 8dp 容差，容忍菜单弹出动画带来的小幅位移；远小于图标间距，不会误判相邻图标。
+            int pad = (int) (8f * Cfg.Screen.get(ctx).density);
+            r.inset(-pad, -pad);
+            boolean inside = r.contains((int) hostAnchorX, (int) hostAnchorY);
+            if (Cfg.get(ctx).debug) {
+                log("isHostIcon " + icon.getClass().getSimpleName() + " rect=" + r.toShortString()
+                        + " anchor=(" + (int) hostAnchorX + "," + (int) hostAnchorY
+                        + ") -> " + inside);
+            }
+            return inside;
+        } catch (Throwable t) {
+            return true;   // 反射/几何异常时宁可放行，不破坏原有"点 A 打开"功能
+        }
     }
 
     /**

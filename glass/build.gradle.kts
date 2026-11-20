@@ -38,6 +38,8 @@ dependencies {
     api("androidx.compose.ui:ui")
     api("androidx.compose.foundation:foundation")
     api("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-rc01")
+    // OverlayDropdownPopup / OverlayDropdownPreference 在独立的 preference 构件里
+    api("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-rc01")
     api("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4-rc01")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4-rc01")
 }

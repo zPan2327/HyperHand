@@ -111,8 +111,9 @@ class HyperGlassBarView @JvmOverloads constructor(
     }
 
     /** Marks the view whose pixels the glass samples. Replaces `GlassBar.setBackdropSource`. */
-    fun setBackdropSource(source: View?) {
+    fun setBackdropSource(source: View?, fallbackColor: Int) {
         backdrop.source = source
+        backdrop.fallbackColor = fallbackColor
     }
 
     /** Called when the page scrolls so the sampled backdrop follows. */

@@ -8,6 +8,8 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.View
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -32,6 +34,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal class ViewBackdrop : Backdrop {
     var source: View? = null
+    /**
+     * 采样位图的兜底底色（ARGB）。source（contentHost）自身透明，越出页面内容或在
+     * 页面滚动露出透明根容器的地方，capture 会采到透明；lens/色散 shader 把透明像素
+     * 当 half4(0) 累加 = 黑。按住/拖动时指示器放大、折射带越界，越界区就落在这里，
+     * 表现为「被选中项上下冒出黑色填充」（有概率，取决于那一帧的形变越界量）。
+     * 先把整张位图铺成页面底色，再 draw source，越界处就不会是透明/黑。
+     */
+    var fallbackColor: Int = 0xFFF7F7F7.toInt()
 
     private var buffer: Bitmap? = null
     private var canvas: Canvas? = null
@@ -89,12 +99,23 @@ internal class ViewBackdrop : Backdrop {
             Math.ceil((layerLeft + layerWidth).toDouble()).toInt(),
             Math.ceil((layerTop + layerHeight).toDouble()).toInt(),
         )
-        wanted.intersect(0, 0, source.width, source.height)
-        if (wanted.isEmpty) return
+        // 不能把 wanted 裁到 source 边界：底栏贴屏幕底，layer（含 40dp 折射 padding）会向下
+        // 越出 source。一旦裁小，capture 就按裁小后的尺寸建位图，drawImage 铺不满整个 layer，
+        // 胶囊上下缘外侧就露出透明 —— lens/色散把透明像素按 half4(0) 采样 = 纯黑，正是
+        // 「选中项上下冒黑边」（真机录屏实测：纯黑 (0,0,0)、沿胶囊上下缘的弧线）。
+        // 保持完整 layer 区域，越出 source 的部分由 capture 里的 fallbackColor 铺底兜住。
+        // 仅当整个采样区与 source 完全不相交时才放弃这一帧。
+        if (wanted.right <= 0 || wanted.bottom <= 0
+                || wanted.left >= source.width || wanted.top >= source.height) return
 
         val bitmap = capture(source, wanted, 1f / ds) ?: return
         // 每帧最多重抓一次：下一个渲染帧开始时让缓存失效。
         Choreographer.getInstance().postFrameCallback(invalidateNextFrame)
+
+        // 先把整个 layer 铺成页面底色：位图按 wanted 取整 + 1/ds 降采样，drawImage 平移后
+        // 边缘可能与 layer 边界差几个亚像素；lens 折射带在放大态正好采到这条缝，透明→纯黑
+        // （选中项上下黑弧线）。铺底后任何未覆盖的缝隙都是不透明的页面底色，不会变黑。
+        drawRect(color = Color(fallbackColor), size = Size(size.width, size.height))
 
         // 位图按 1/ds 采样（1 位图像素 = 1 个采样像素 = ds 个源像素），绘制坐标系是
         // 「源像素 / ds」，所以两者是 1:1，只平移、不缩放；平移量相对胶囊左上角算。
@@ -124,7 +145,9 @@ internal class ViewBackdrop : Backdrop {
         }
         val c = canvas ?: return null
         c.save()
-        c.drawColor(0, PorterDuff.Mode.CLEAR)
+        // 先铺页面底色而不是清成透明：source.draw 没覆盖到的越界区必须是不透明的，
+        // 否则被折射/色散采样成黑色（按住放大时选中项上下冒黑块）。
+        c.drawColor(fallbackColor, PorterDuff.Mode.SRC)
         c.scale(sampleScale, sampleScale)
         c.translate(-region.left.toFloat(), -region.top.toFloat())
         c.clipRect(region)

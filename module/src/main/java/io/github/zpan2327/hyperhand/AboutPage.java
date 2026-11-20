@@ -333,10 +333,9 @@ final class AboutPage {
                 });
         page.add(cardProj, Ui.cardLp(c, Theme.CARD_GAP));
 
-        TextView foot = Ui.text(c, "HyperHand · MIT License\n为小米 14 / HyperOS 3 打造的单手模式增强",
+        TextView foot = Ui.text(c, "HyperHand · MIT License",
                 Theme.T_CAP, pal.section, false);
         foot.setGravity(Gravity.CENTER);
-        foot.setLineSpacing(Theme.dp(c, 3), 1f);
         foot.setPadding(0, Theme.dp(c, 24), 0, 0);
         page.add(foot);
 
@@ -713,7 +712,9 @@ final class AboutPage {
             float gs = s - inset * 2;
             Path hand = Icons.glyph(Icons.HAND, inset, inset, gs);
             shape.reset();
-            shape.addRoundRect(box, r, r, Path.Direction.CW);
+            // G2 连续曲率圆角（Kyant0/Shapes 算法逐行移植）：角部到直边曲率连续，
+            // 比 addRoundRect 的圆弧拼接更接近 iOS 图标的平滑观感。
+            G2RoundedRect.addToPath(shape, s, s, r);
             // 圆角方块减去手掌轮廓 —— 图形是镂空洞，透出下层背景
             shape.op(hand, Path.Op.DIFFERENCE);
 
@@ -757,7 +758,7 @@ final class AboutPage {
             super(c);
             text = s;
             fallback = fallbackColor;
-            tp.setTypeface(Theme.bold());
+            tp.setTypeface(Theme.wordmark());  // Black 900：实机反馈 Bold 偏细
             tp.setTextSize(sizePx);
             tp.setColor(fallbackColor);
             Paint.FontMetrics fm = tp.getFontMetrics();
@@ -861,13 +862,28 @@ final class AboutPage {
     private static final String USAGE =
             "• 在 Vector / LSPosed 里启用 HyperHand 即可：作用域已经静态声明，\n"
                     + "  不用手动勾「系统界面 / 小米桌面」，也没法挂到别的应用上。\n\n"
-                    + "• 保存后立即生效，不需要重启；改动由系统界面进程写入 Settings.Global。\n\n"
+                    + "• 改动后立即自动保存并生效，不需要重启；由系统界面进程写入 Settings.Global。\n\n"
                     + "• 自然模式：底部连续下滑即可，不要求甩；灵敏模式门槛更低；防误触模式更保守。\n\n"
                     + "• 速度单位是 dp/s，与屏幕密度无关；旧版的 px/s 参数会自动折算过来。\n\n"
                     + "• 想完全恢复原状：关掉「启用模块」，或在管理器里停用模块。";
 
     private static final String LICENSE =
-            "MIT License\n\n"
+            "MIT 许可证（中文翻译）\n\n"
+                    + "版权所有 (c) 2026 zPan2327\n\n"
+                    + "特此授予任何获得本软件及相关文档文件（以下简称“软件”）副本的人，\n"
+                    + "免费、不受限制地处理本软件，包括但不限于使用、复制、修改、合并、\n"
+                    + "发布、分发、再许可和/或出售本软件副本的权利，并允许被授予者这样操作，\n"
+                    + "但须满足以下条件：\n\n"
+                    + "上述版权声明和本许可声明应包含在本软件的所有副本或实质部分中。\n\n"
+                    + "本软件按“原样”提供，不提供任何形式的担保，无论是明示的、暗示的，\n"
+                    + "还是其他的，包括但不限于对适销性、特定用途适用性和不侵权的担保。\n"
+                    + "在任何情况下，作者或版权持有人均不对任何索赔、损害或其他责任负责，\n"
+                    + "无论是在合同、侵权或其他诉讼中，因本软件或与使用本软件、\n"
+                    + "本软件的其他交易有关的或由此产生的。\n\n"
+                    + "——————————————————\n"
+                    + "以下为英文原文\n"
+                    + "——————————————————\n\n"
+                    + "MIT License\n\n"
                     + "Copyright (c) 2026 zPan2327\n\n"
                     + "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
                     + "of this software and associated documentation files (the \"Software\"), to deal\n"

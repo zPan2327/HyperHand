@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.3.3"
+val defaultVersionName = "3.3.4"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -42,7 +42,8 @@ val derivedVersionCode: Int = run {
 // 3.3.1 正式版 = 30301（文档/发布说明整理，无功能变动）。
 // 3.3.2 正式版 = 30302（修复关于页浅色 logo 渐变卡顿）。
 // 3.3.3 正式版 = 30303（去掉滑选进入/抬手的两处多余震动）。
-val minVersionCode = 30303
+// 3.3.4 正式版 = 30304（设置交互 MIUIX 化、自动保存、状态卡 Tilt 按压、黑块/误触修复）。
+val minVersionCode = 30304
 
 val versionCodeValue = fromEnvOrProperty("VERSION_CODE")?.toIntOrNull()
     ?: maxOf(derivedVersionCode, minVersionCode)

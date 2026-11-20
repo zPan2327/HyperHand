@@ -62,6 +62,61 @@ final class Icons {
             "M393-132q-103-29-168-113.5T160-440q0-57 19-108.5t54-94.5q11-12 27-12.5t29 12.5q11 11 11.5 27T290-586q-24 31-37 68t-13 78q0 81 47.5 144.5T410-209q13 4 21.5 15t8.5 24q0 20-14 31.5t-33 6.5Zm174 0q-19 5-33-7t-14-32q0-12 8.5-23t21.5-15q75-24 122.5-87T720-440q0-100-70-170t-170-70h-3l16 16q11 11 11 28t-11 28q-11 11-28 11t-28-11l-84-84q-6-6-8.5-13t-2.5-15q0-8 2.5-15t8.5-13l84-84q11-11 28-11t28 11q11 11 11 28t-11 28l-16 16h3q134 0 227 93t93 227q0 109-65 194T567-132Z",
     };
 
+    /**
+     * MIUIX {@code MiuixIcons.Basic.ArrowUpDown} 的原始矢量路径（viewBox 10×16，y 向下），
+     * 逐字复制自 miuix-ui 的 ArrowUpDown.kt。MIUIX 所有「选择类」设置行右侧都用这个
+     * 上下双箭头（DropdownArrowEndAction），而「跳转类」行才用 ArrowRight。
+     */
+    private static final String PATH_UP_DOWN =
+            "M2.397 4.7384 L4.5688 2.5665 L5.0075 2.1278 L5.4266 2.5469 L7.5985 4.7187 L8.531 5.6512 " +
+            "C8.8282 5.9485 9.3102 5.9485 9.6075 5.6512 C9.9047 5.354 9.9047 4.872 9.6075 4.5747 " +
+            "L8.675 3.6423 L6.5031 1.4704 L5.5706 0.5379 C5.3595 0.3267 5.0551 0.2656 4.7899 0.3544 " +
+            "C4.6561 0.3855 4.5291 0.4532 4.4248 0.5575 L3.4924 1.49 L1.3205 3.6619 L0.388 4.5943 " +
+            "C0.0907 4.8916 0.0907 5.3736 0.388 5.6708 C0.6853 5.9681 1.1672 5.9681 1.4645 5.6708 " +
+            "L2.397 4.7384 Z " +
+            "M2.397 11.257 L4.5688 13.4289 L5.0075 13.8675 L5.4266 13.4485 L7.5985 11.2766 L8.531 10.3441 " +
+            "C8.8282 10.0468 9.3102 10.0468 9.6075 10.3441 C9.9047 10.6414 9.9047 11.1233 9.6075 11.4206 " +
+            "L8.675 12.3531 L6.5031 14.525 L5.5706 15.4574 C5.3594 15.6686 5.0551 15.7298 4.7899 15.6409 " +
+            "C4.6561 15.6098 4.5291 15.5421 4.4248 15.4378 L3.4924 14.5053 L1.3205 12.3335 L0.388 11.401 " +
+            "C0.0907 11.1037 0.0907 10.6217 0.388 10.3245 C0.6853 10.0272 1.1672 10.0272 1.4645 10.3245 " +
+            "L2.397 11.257 Z";
+
+    /** MIUIX DropdownDefaults.ArrowSize = 10×16dp，非正方形，单独一个 View 保持原始比例。 */
+    static android.view.View arrowUpDownView(Context c, int color) {
+        return new ArrowUpDownView(c, color);
+    }
+
+    static final class ArrowUpDownView extends View {
+        private final int color;
+        private static Path cached;
+
+        ArrowUpDownView(Context c, int color) {
+            super(c);
+            this.color = color;
+            setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                    Theme.dp(c, 10), Theme.dp(c, 16)));
+        }
+
+        @Override
+        protected void onMeasure(int widthSpec, int heightSpec) {
+            setMeasuredDimension(
+                    resolveSize(Theme.dp(getContext(), 10), widthSpec),
+                    resolveSize(Theme.dp(getContext(), 16), heightSpec));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            if (cached == null) cached = parse(PATH_UP_DOWN);
+            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(color);
+            canvas.save();
+            canvas.scale(getWidth() / 10f, getHeight() / 16f);
+            canvas.drawPath(cached, paint);
+            canvas.restore();
+        }
+    }
+
     private static final float VB = 960f;
     private static final Path[] CACHE = new Path[PATHS.length];
     private static final float[] CACHE_SIZE = new float[PATHS.length];

@@ -15,8 +15,8 @@ import android.widget.TextView;
  * Row(12dp 间距)
  *   ├─ StatusCard  weight 1, aspectRatio 1   ← 状态色底 + 右下角压着大图标
  *   └─ Column(12dp)
- *        ├─ StatCard weight 1  触发模式
- *        └─ StatCard weight 1  触发区高度
+ *        ├─ StatCard weight 1  单手模式增强（已启用/已禁用）
+ *        └─ StatCard weight 1  快捷菜单滑选（已启用/已禁用）
  * InfoCard：标签 17sp Medium 在上、值 14sp 在下，条目间距 24dp，无分隔线
  * </pre>
  *
@@ -29,9 +29,7 @@ final class OverviewPage {
     private final Context c;
     private final Ui.Page page;
 
-    private FrameLayout hero;
-    private TextView heroTitle;
-    private TextView heroSummary;
+    private io.github.zpan2327.hyperhand.glass.dialogs.StatusCardHost hero;
     private Icons.IconView heroIcon;
 
     private TextView modeValue;
@@ -89,35 +87,15 @@ final class OverviewPage {
      * SonyPods StatusCard：状态色底 + 右下角压着 136dp 的大图标（offset 34,38），
      * 标题 title3 20sp SemiBold、摘要 body2 14sp Medium。
      */
-    private FrameLayout statusCard() {
-        hero = new FrameLayout(c);
-        hero.setClipToOutline(true);
-        // 状态卡不可点击（产品约定：无论模块是否启用，都不弹「运行状态」对话框）。
-        // 静态圆角底即可，别用 clickableCard —— 涟漪 + 按压缩放会暗示「可点」。
-        hero.setBackground(Theme.round(pal.successBg, Theme.dp(c, Theme.CARD_RADIUS)));
-
+    private View statusCard() {
+        // 逐字照抄 SonyPods StatusCard：真正的 MIUIX Card + pressFeedbackType=Tilt +
+        // showIndication=true，倾斜/高亮/回正全由 MIUIX 原生实现，手感与 SonyPods 100% 一致。
+        // 不再用 Java 手写 rotationX/rotationY/cameraDistance 复刻（在该 546px 大卡上会透视爆炸）。
+        hero = new io.github.zpan2327.hyperhand.glass.dialogs.StatusCardHost(c);
+        // module 侧的 Canvas 图标 View 交给 Compose 侧 AndroidView 原样嵌入，零视觉差异。
+        // 保留引用，applyHero() 里按状态更新图标颜色（与原版一致）。
         heroIcon = Icons.view(c, Icons.HAND, 96, pal.onSuccess, 0f);
-        FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(
-                Theme.dp(c, 96), Theme.dp(c, 96));
-        iconLp.gravity = Gravity.BOTTOM | Gravity.END;
-        iconLp.rightMargin = Theme.dp(c, -22);
-        iconLp.bottomMargin = Theme.dp(c, -24);
-        hero.addView(heroIcon, iconLp);
-
-        LinearLayout col = new LinearLayout(c);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(Theme.dp(c, 16), Theme.dp(c, 16), Theme.dp(c, 16), Theme.dp(c, 16));
-        hero.addView(col, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        heroTitle = Ui.text(c, "", Theme.T_HERO, pal.title, Theme.semibold());
-        col.addView(heroTitle);
-
-        heroSummary = Ui.text(c, "", Theme.T_SUM, pal.onSuccess, Theme.medium());
-        heroSummary.setPadding(0, Theme.dp(c, 2), 0, 0);
-        heroSummary.setLineSpacing(Theme.dp(c, 3), 1f);
-        heroSummary.setMaxLines(2);
-        col.addView(heroSummary);
+        hero.provideIconView(heroIcon);
         return hero;
     }
 
@@ -138,9 +116,9 @@ final class OverviewPage {
         card.addView(col, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        col.addView(Ui.text(c, mode ? "触发模式" : "触发区高度", 13, pal.summary, Theme.medium()));
+        col.addView(Ui.text(c, mode ? "单手模式增强" : "快捷菜单滑选", 13, pal.summary, Theme.medium()));
 
-        TextView value = Ui.text(c, "", Theme.T_STAT, pal.title, Theme.semibold());
+        TextView value = Ui.text(c, "", Theme.T_STAT, pal.title, Theme.bold());
         value.setPadding(0, Theme.dp(c, 2), 0, 0);
         col.addView(value);
         if (mode) {
@@ -151,12 +129,19 @@ final class OverviewPage {
         return card;
     }
 
+    /** 功能状态值：沿用上一版配色（statCard 的 pal.title），只用文字区分状态。 */
+    private void applyState(TextView v, boolean enabled) {
+        v.setText(enabled ? "已启用" : "已禁用");
+    }
+
     void refresh() {
         Cfg cfg = host.cfg();
         applyHero();
 
-        modeValue.setText(Cfg.MODE_SHORT[Math.max(0, Math.min(Cfg.MODE_SHORT.length - 1, cfg.mode))]);
-        zoneValue.setText(Ui.fmt(cfg.zoneDp, 0) + " dp");
+        // 两张卡改为直接呈现两个功能的启用状态（单手模式增强 / 快捷菜单滑选），
+        // 沿用上一版配色，只用「已启用 / 已禁用」文字区分。
+        applyState(modeValue, cfg.enabled);
+        applyState(zoneValue, cfg.slideEnabled);
 
         if (dynamic != null) {
             // 系统信息区里全是进程生命周期内不变的值（机型、版本、安装时间），
@@ -189,7 +174,7 @@ final class OverviewPage {
         Ui.infoText(c, infoBody, pal, "安装时间", installTime(), false);
         dynamic.addView(cardInfo, Ui.cardLp(c, Theme.CARD_GAP));
 
-        TextView foot = Ui.text(c, "所有参数都在「设置」里，改动保存后立即生效。",
+        TextView foot = Ui.text(c, "所有参数都在「设置」里，改动后立即生效。",
                 Theme.T_CAP, pal.section, Theme.regular());
         foot.setGravity(Gravity.CENTER);
         foot.setPadding(0, Theme.dp(c, 20), 0, Theme.dp(c, 8));
@@ -238,10 +223,11 @@ final class OverviewPage {
             summary = level == 0 ? "总开关关闭" : "未在 LSPosed 启用或作用域未注入";
         }
 
-        hero.setBackground(Theme.round(bg, Theme.dp(c, Theme.CARD_RADIUS)));
-        heroTitle.setText(title);
-        heroSummary.setText(summary);
-        heroSummary.setTextColor(summaryColor);
+        // 状态卡由 MIUIX Compose Card 承载按压反馈，但配色完全沿用本页原有逻辑：
+        // 背景、标题、摘要、图标颜色都由这里精确计算后传入，不在 Compose 宿主内另算。
+        hero.setBackground(bg);
+        hero.setTitle(title, pal.title);
+        hero.setSummary(summary, summaryColor);
         heroIcon.setIconColor(Theme.alpha(iconTint, 0.78f));
     }
 

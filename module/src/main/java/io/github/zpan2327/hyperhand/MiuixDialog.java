@@ -77,14 +77,17 @@ final class MiuixDialog {
         int maxW = Math.min(Theme.dp(a, MAX_WIDTH_DP), screenW - 2 * outside);
         FrameLayout.LayoutParams boxLp = new FrameLayout.LayoutParams(
                 maxW, ViewGroup.LayoutParams.WRAP_CONTENT);
-        boxLp.gravity = Gravity.CENTER;
+        // miuix DialogContentLayout 手机端 contentAlignment = Alignment.BottomCenter：
+        // 贴屏幕底部、水平居中（大屏才居中）。SonyPods 所有 OverlayDialog 都走这条。
+        boxLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         root.addView(box, boxLp);
 
         dialog.setContentView(root);
         Window w = dialog.getWindow();
         if (w != null) {
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            w.setLayout(Math.min(screenW, maxW + 2 * outside),
+            w.setGravity(Gravity.BOTTOM);
+            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
             // miuix windowDimming：浅色黑 α0.3 / 深色黑 α0.6
             w.setDimAmount(p.night ? 0.6f : 0.3f);

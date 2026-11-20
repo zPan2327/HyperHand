@@ -69,9 +69,12 @@ final class PagePager extends ViewGroup {
      */
     private boolean following;
     /**
-     * 按下这一下是否把一段吸附动画掐断了。
+     * 按下这一下是否发生在切页/吸附动画进行中。
      *
-     * 掐断后若只是按住没横滑就松手，页面会永远停在两页中间 —— 必须在抬手时把吸附续上。
+     * 旧实现在 ACTION_DOWN 直接把 {@code animating/settling} 置 false 掐断动画，
+     * 若这次按下随后被判定为纵向滚动，事件被 ScrollView 消费，本类收不到 ACTION_UP，
+     * 原本挂在 UP 分支的「续上吸附」永远不会执行 —— 页面就永远卡在两页之间。
+     * 现在 DOWN 不掐断动画：只有确认是横向拖动时才接管，纵向滚动时让 tween 自己跑完。
      */
     private boolean settleInterrupted;
     private float downX;
@@ -202,13 +205,19 @@ final class PagePager extends ViewGroup {
                 downX = e.getX();
                 downY = e.getY();
                 lastX = downX;
-                settleInterrupted = settling;
+                // 只记录「动画进行中」，此处绝不掐断 animating/settling：
+                // 若这次按下随后被判为纵向滚动，事件被 ScrollView 消费，本类收不到 UP，
+                // 挂在 UP 上的续上逻辑永远不执行 —— offset 就永久停在两页之间。
+                // 让 tween 自己跑完；只有确认横向拖动时才在 takeOverAnimation() 里接管。
+                settleInterrupted = animating;
                 dragging = false;
-                settling = false;
                 verticalGesture = false;
-                animating = false;   // 手指从当前 offset 接管，不跳位
                 edgeRebound = false;
-                rawOffset = rawFromVisual(offset);  // 形变中段被按下：从当前形变接着拉
+                if (!animating) {
+                    // 形变中段被按下：从当前形变接着拉（动画在跑时 rawOffset 已被逐帧同步，
+                    // 这里再覆盖会破坏 tween 的中间态）。
+                    rawOffset = rawFromVisual(offset);
+                }
                 track(e);
                 scrollAtDown = scrollYOfCurrent();
                 return false;
@@ -229,6 +238,8 @@ final class PagePager extends ViewGroup {
                 if (Math.abs(dx) > touchSlop && Math.abs(dx) > Math.abs(dy) * 1.4f) {
                     // 页面正在纵向滚动时不要抢：等它停（拖得很斜时也归滚动）
                     if (Math.abs(dy) < touchSlop * 2 || Math.abs(dy) < Math.abs(dx) * 0.4f) {
+                        // 确认要横向拖动了，此刻才掐断正在跑的切页动画并从当前 offset 接管。
+                        takeOverAnimation();
                         dragging = true;
                         lastX = e.getX();
                         return true;
@@ -252,8 +263,12 @@ final class PagePager extends ViewGroup {
                 downX = e.getX();
                 downY = e.getY();
                 lastX = downX;
-                edgeRebound = false;
-                rawOffset = rawFromVisual(offset);
+                // 与 onInterceptTouchEvent 保持一致：动画进行中不碰 rawOffset/edgeRebound，
+                // 否则正在跑的切页 tween 或边界回弹会被这一按改掉参数、卡在中间。
+                if (!animating) {
+                    edgeRebound = false;
+                    rawOffset = rawFromVisual(offset);
+                }
                 track(e);
                 return true;
             case MotionEvent.ACTION_MOVE: {
@@ -265,6 +280,7 @@ final class PagePager extends ViewGroup {
                     float dx = e.getX() - downX;
                     float dy = e.getY() - downY;
                     if (Math.abs(dx) > touchSlop && Math.abs(dx) > Math.abs(dy) * 1.4f) {
+                        takeOverAnimation();
                         dragging = true;
                         lastX = e.getX();
                     } else {
@@ -292,17 +308,34 @@ final class PagePager extends ViewGroup {
                     return true;
                 }
                 if (settleInterrupted) {
-                    // 按住把吸附掐断了但没滑动：续上，别停在两页中间。
+                    // 这一按没转成横向拖动：tween 全程没被掐断，早就自己跑完了，
+                    // 这里只清标志，绝不能再 setCurrentPage —— 那会把已落定的动画
+                    // 从中途重启，表现为点一下页面突然又飞回去。
                     settleInterrupted = false;
-                    if (Math.abs(offset - current) > 0.01f) {
-                        setCurrentPage(current, true);
-                    }
                 }
                 return true;
             }
             default:
                 return super.onTouchEvent(e);
         }
+    }
+
+    /**
+     * 确认是横向拖动时，把正在跑的切页/吸附动画从当前可见位置交给手指。
+     *
+     * <p>与旧实现在 ACTION_DOWN 就掐断不同：这里只在横向手势确凿时才置位，
+     * 纵向滚动的那一按不会中断 tween，也就不会出现「卡在两页之间」。
+     */
+    private void takeOverAnimation() {
+        if (!settleInterrupted) {
+            return;
+        }
+        settleInterrupted = false;
+        animating = false;
+        settling = false;
+        edgeRebound = false;
+        // 手指从当前 offset 接管，不跳位；形变段用反解回推 rawOffset。
+        rawOffset = rawFromVisual(offset);
     }
 
     private void track(MotionEvent e) {
@@ -518,11 +551,12 @@ final class PagePager extends ViewGroup {
     }
 
     private int scrollYOfCurrent() {
-        View v = getChildAt(current);
-        if (v instanceof android.widget.ScrollView) {
-            return ((android.widget.ScrollView) v).getScrollY();
-        }
-        return 0;
+        // 用当前「可见」的页，而不是 current：tween 期间 current 已是目标页、
+        // 但屏幕上还是旧页，拿 current 判「内容在滚」会读错页。
+        int visible = Math.max(0, Math.min(pageCount - 1, Math.round(offset)));
+        // 统一走 MainActivity.scrollOf，兼容关于页的 AboutPage.Root（不是裸 ScrollView）。
+        android.widget.ScrollView sv = MainActivity.scrollOf(getChildAt(visible));
+        return sv != null ? sv.getScrollY() : 0;
     }
 
     // ---------------------------------------------------------------- 布局

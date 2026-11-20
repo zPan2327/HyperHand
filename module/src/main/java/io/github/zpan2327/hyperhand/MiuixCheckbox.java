@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.RectF;
 import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
@@ -24,11 +23,13 @@ import android.widget.TextView;
  * Checkbox(state = state, onClick = { ... })
  * CheckboxDefaults.checkboxColors()  →  checkedBackground = primary
  *                                      checkedForeground = onPrimary
- *                                      uncheckedBackground = 透明 + outline 描边
+ *                                      uncheckedBackground = secondary（实心灰，非描边）
  * </pre>
  *
- * 状态切换用物理弹簧（987 / 0.6，和 miuix Switch/Slider 的 ThumbScale 同族），
- * 不是固定时长的补间。
+ * 形状严格对齐 miuix Checkbox.kt：{@code capsuleShape = CircleShape}、组件
+ * {@code requiredSize(26.dp)}、勾路径取 viewport(23f) 的三点坐标按比例换算、
+ * 描边宽 {@code size.width * 0.09f}。选中/未选中用物理弹簧（987 / 0.6）在
+ * secondary 与 primary 之间过渡，和 miuix Switch/Slider 的 ThumbScale 同族。
  */
 final class MiuixCheckbox extends View {
 
@@ -56,13 +57,12 @@ final class MiuixCheckbox extends View {
         }
     }
 
-    private static final int BOX_DP = 22;
-    private static final int HIT_DP = 40;
-    private static final float CORNER_DP = 6f;
+    private static final int BOX_DP = 26;   // miuix Checkbox requiredSize = 26dp
+    private static final int HIT_DP = 40;   // 触摸命中区，视觉仍是 26dp 的圆
+    private static final float VIEWPORT = 23f; // miuix 勾路径的 viewport 边长
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF box = new RectF();
     private final Path check = new Path();
     private final Theme.Colors pal;
     private final Ui.Spring fill = new Ui.Spring(0f);
@@ -147,38 +147,36 @@ final class MiuixCheckbox extends View {
     protected void onDraw(Canvas canvas) {
         float cx = getWidth() / 2f;
         float cy = getHeight() / 2f;
-        float half = Theme.dpf(getContext(), BOX_DP) / 2f;
-        float radius = Theme.dpf(getContext(), CORNER_DP);
+        float size = Theme.dpf(getContext(), BOX_DP);      // 26dp 圆直径
+        float radius = size / 2f;
         float t = Theme.clamp01(fill.value);
-        box.set(cx - half, cy - half, cx + half, cy + half);
 
-        // 未选中：outline 描边；选中：primary 底。两者按弹簧进度交叉淡入淡出。
-        stroke.setColor(pal.outline);
-        stroke.setAlpha(Math.round(255 * (1f - t)));
-        if (stroke.getAlpha() > 0) {
-            canvas.drawRoundRect(box, radius, radius, stroke);
-        }
+        // miuix Checkbox：CircleShape，未选中 secondary 实心、选中 primary 实心，
+        // 按弹簧进度在两色之间过渡（不是描边，也不是圆形缩成一点）。
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(pal.primary);
-        paint.setAlpha(Math.round(255 * t));
-        if (paint.getAlpha() > 0) {
-            canvas.drawRoundRect(box, radius, radius, paint);
-        }
+        paint.setColor(Theme.blend(pal.secondary, pal.primary, t));
+        canvas.drawCircle(cx, cy, radius, paint);
 
+        // 勾：viewport(23f) 三点坐标按比例换算到 26dp 圆内，描边宽 = size * 0.09。
+        stroke.setStrokeWidth(size * 0.09f);
+        stroke.setColor(pal.onPrimary);
+        stroke.setAlpha(Math.round(255 * t));
         if (t <= 0.01f) {
             return;
         }
-        stroke.setColor(pal.onPrimary);
-        stroke.setAlpha(Math.round(255 * t));
-        float d = Theme.dpf(getContext(), 1f);
+        float scale = size / VIEWPORT;
+        float vpC = VIEWPORT / 2f;                          // 11.5
         if (state == State.INDETERMINATE) {
             // 半选中：一条横线（与 On 共用颜色）
-            canvas.drawLine(cx - 5f * d, cy, cx + 5f * d, cy, stroke);
+            float half = 6f * Theme.dpf(getContext(), 1f);
+            canvas.drawLine(cx - half, cy, cx + half, cy, stroke);
         } else if (state == State.ON) {
+            // miuix Checkbox.kt 的 start / middle / end：
+            //   (5, 9.4) → (10.3, 14.9) → (17.9, 5.1)
             check.reset();
-            check.moveTo(cx - 5f * d, cy - 0.5f * d);
-            check.lineTo(cx - 1.5f * d, cy + 3.5f * d);
-            check.lineTo(cx + 5.5f * d, cy - 4f * d);
+            check.moveTo(cx + (5f - vpC) * scale, cy + (9.4f - vpC) * scale);
+            check.lineTo(cx + (10.3f - vpC) * scale, cy + (14.9f - vpC) * scale);
+            check.lineTo(cx + (17.9f - vpC) * scale, cy + (5.1f - vpC) * scale);
             canvas.drawPath(check, stroke);
         }
     }
@@ -203,33 +201,49 @@ final class MiuixCheckbox extends View {
         return super.onTouchEvent(e);
     }
 
-    /** miuix 风格的 checkbox 行：整行可点，点击即切换。 */
-    static Row row(Context c, Theme.Colors p, String title, String summary,
+    /**
+     * miuix {@code RestartScopeDialog.RestartScopeRow} 的原生 View 移植，1:1 对齐：
+     * <pre>
+     * Row(fillMaxWidth, clip(RoundedCornerShape(12.dp)),
+     *     clickable, padding(horizontal=12.dp, vertical=12.dp), CenterVertically) {
+     *   Column(weight=1f) { Text(label, onSurface, headline1) }   // 文字在左，单行
+     *   Spacer(12.dp)
+     *   Checkbox(state)                                            // 圆勾在右
+     * }
+     * </pre>
+     * 整行可点，点击即切换——与 SonyPods 的 {@code .clickable(role=Checkbox)} 一致。
+     */
+    static Row row(Context c, Theme.Colors p, String title,
                    State initial, final OnStateChange l) {
-        LinearLayout row = Ui.rowShell(c);
-        // 窄对话框里收紧行高与左右内边距，避免三行 checkbox 把 Dialog 撑得过高
-        int inset = MiuixDialog.pad(c);
-        row.setMinimumHeight(Theme.dp(c, 48));
-        row.setPadding(inset, Theme.dp(c, 6), inset, Theme.dp(c, 6));
-        Ui.rowRipple(row, p);
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        // miuix: Row 无常态背景（只有 clickable 的 ripple），clip(RoundedCornerShape(12.dp))，
+        // padding(horizontal=12.dp, vertical=12.dp)。SonyPods 截图里行是透明的。
+        android.content.res.ColorStateList ripple = android.content.res.ColorStateList.valueOf(
+                p.night ? 0x14FFFFFF : 0x0D000000);
+        row.setBackground(new android.graphics.drawable.RippleDrawable(ripple, null,
+                Theme.round(0xFFFFFFFF, Theme.dp(c, 12))));
+        row.setPadding(Theme.dp(c, 12), Theme.dp(c, 12),
+                Theme.dp(c, 12), Theme.dp(c, 12));
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        // 文字在左，weight(1f)，headline1 = 17sp Medium，onSurface
+        TextView label = Ui.text(c, title, Theme.T_ROW, p.title, Theme.medium());
+        row.addView(label, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // Spacer(12.dp)
+        View spacer = new View(c);
+        row.addView(spacer, new LinearLayout.LayoutParams(Theme.dp(c, 12), 1));
+
+        // 圆勾在右
         final MiuixCheckbox cb = new MiuixCheckbox(c, p);
         cb.setState(initial, false);
         cb.setOnStateChange(l);
         row.addView(cb, new LinearLayout.LayoutParams(
                 Theme.dp(c, HIT_DP), Theme.dp(c, HIT_DP)));
-
-        LinearLayout col = new LinearLayout(c);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(Ui.text(c, title, 15, p.title, Theme.medium()));
-        if (summary != null && summary.length() > 0) {
-            TextView s = Ui.text(c, summary, 12, p.summary, Theme.regular());
-            s.setPadding(0, Theme.dp(c, 2), 0, 0);
-            col.addView(s);
-        }
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lp.leftMargin = Theme.dp(c, 10);
-        row.addView(col, lp);
         row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

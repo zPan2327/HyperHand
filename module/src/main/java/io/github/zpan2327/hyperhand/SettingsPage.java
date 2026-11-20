@@ -11,8 +11,8 @@ import android.widget.TextView;
  * 「设置」页：项目现有的全部参数，按"模块 / 识别 / 触发区 / 外观 / 动效 /
  * 模糊区手势 / 互斥 / 高级"重新分组（调试模块已移除，见关于页隐藏入口）。
  *
- * 交互与 2.9 完全一致：所有值先在本地改，点「保存并立即生效」后通过广播
- * 交给 SystemUI 进程写入 Settings.Global；动画曲线与时长例外，改完即时下发。
+ * 交互：所有改动即时通过广播交给 SystemUI 进程写入 Settings.Global，
+ * 无需二次确认；动画曲线与时长额外即时下发，方便"改一点、滑一下"地试手感。
  */
 final class SettingsPage {
 
@@ -66,7 +66,6 @@ final class SettingsPage {
     private TextView animInfo;
     private TextView downGap;
     private TextView restartBtn;
-    private TextView saveBtn;
     private TextView statusText;
 
     SettingsPage(MainActivity host) {
@@ -92,24 +91,27 @@ final class SettingsPage {
         page.add(Ui.section(c, pal, "模块"));
         LinearLayout cardModule = Ui.card(c, pal);
         swEnabled = Ui.switchRow(c, cardModule, pal, "启用模块",
-                "总开关。关闭后所有钩子立即失效，系统恢复原生行为", cur.enabled);
+                "关闭后恢复系统原生行为", cur.enabled);
         swMonitor = Ui.switchRow(c, cardModule, pal, "扩展触发",
-                "在系统的一手模式监视通道上判定底部下滑", cur.monitorEnabled);
+                "用一手模式通道判定下滑", cur.monitorEnabled);
         dirty(swEnabled);
         dirty(swMonitor);
         page.add(cardModule);
 
         // ---------------------------------------------------------- 识别
         page.add(Ui.section(c, pal, "识别"));
-        LinearLayout cardMode = Ui.card(c, pal);
-        cMode = Ui.choiceRow(c, cardMode, pal, "触发模式",
-                "切换模式会填入一组推荐敏感度，保存后生效",
+        LinearLayout cardJudge = Ui.card(c, pal);
+        cMode = Ui.choiceRow(c, cardJudge, pal, "触发模式",
+                "一键填入该模式的推荐参数",
                 Cfg.MODE_SHORT, cur.mode, new Ui.OnChoice() {
                     @Override
                     public void onChoice(int index) {
-                        Ui.singleChoiceDialog(host, pal, "触发模式",
-                                "切换会把该模式的推荐值填进下面的参数，保存后生效",
-                                Cfg.MODE_NAMES, index, new Ui.OnChoice() {
+                        Ui.choiceDropdown(host, cMode, Cfg.MODE_NAMES,
+                                new String[] {
+                                        "短促快甩，接近原生手感",
+                                        "更快触发，适合连续操作",
+                                        "判定保守，减少误触",
+                                }, new Ui.OnChoice() {
                                     @Override
                                     public void onChoice(int picked) {
                                         applyMode(picked);
@@ -117,72 +119,66 @@ final class SettingsPage {
                                 });
                     }
                 });
-        page.add(cardMode);
-
-        LinearLayout cardJudge = Ui.card(c, pal);
-        rMinDy = numberRow(cardJudge, "最小下滑距离", "短促快甩所需的最小位移", "dp",
+        rMinDy = numberRow(cardJudge, "最小下滑距离", "快甩触发的最小位移", "dp",
                 cur.minDyDp, 0, 1, 60, 1);
-        swEndBoost = Ui.switchRow(c, cardJudge, pal, "贴底才算单手模式",
-                "抬手点必须拖到屏幕最底边；没到底就当成页面滑动，不再抢手势",
-                cur.endBoost);
+        swEndBoost = Ui.switchRow(c, cardJudge, pal, "贴底才算",
+                "没拖到底边就当页面滑动", cur.endBoost);
         dirty(swEndBoost);
-        rEndZone = numberRow(cardJudge, "贴底判定距离", "抬手点距屏幕底边小于这个值就算\"到底了\"", "dp",
+        rEndZone = numberRow(cardJudge, "贴底判定距离", "距底边小于此值算到底", "dp",
                 cur.endZoneDp, 0, 8, 80, 1);
-        rVelocity = numberRow(cardJudge, "起效速度", "快甩路径的峰值速度门限，0 表示只看距离", "dp/s",
+        rVelocity = numberRow(cardJudge, "起效速度", "0 表示只看距离", "dp/s",
                 cur.minVelDp, 0, 0, 800, 10);
         swSlow = Ui.switchRow(c, cardJudge, pal, "慢滑识别",
-                "连续慢速下拉也能触发（长距离路径）", cur.slowEnabled);
+                "慢速长距离下拉也能触发", cur.slowEnabled);
         dirty(swSlow);
-        rSlowDy = numberRow(cardJudge, "慢滑所需距离", "慢滑路径要求的最小位移", "dp",
+        rSlowDy = numberRow(cardJudge, "慢滑所需距离", "慢滑的最小位移", "dp",
                 cur.slowDyDp, 0, 1, 120, 1);
-        rSlowVel = numberRow(cardJudge, "慢滑速度下限", "慢滑路径的平均速度门限", "dp/s",
+        rSlowVel = numberRow(cardJudge, "慢滑速度下限", "慢滑的平均速度门限", "dp/s",
                 cur.minAvgVelDp, 0, 0, 400, 5);
-        rConf = numberRow(cardJudge, "判定置信度", "综合得分门槛，越低越灵敏、越高越保守", "",
+        rConf = numberRow(cardJudge, "判定置信度", "越低越灵敏，越高越保守", "",
                 cur.minConfidence, 2, 0.10f, 1.0f, 0.02f);
-        page.add(cardJudge, Ui.cardLp(c, Theme.CARD_GAP));
+        page.add(cardJudge);
 
         // ---------------------------------------------------------- 触发区
         page.add(Ui.section(c, pal, "触发区"));
         LinearLayout cardZone = Ui.card(c, pal);
-        swZoneRatio = Ui.switchRow(c, cardZone, pal, "延伸到 dock 栏上方",
-                "按屏幕高度比例算触发区，覆盖整个 dock；这块区域里的下拉不会打开通知/控制中心",
-                cur.zoneRatioMode);
+        swZoneRatio = Ui.switchRow(c, cardZone, pal, "延伸到 dock 上方",
+                "按屏高比例算，覆盖整个 dock", cur.zoneRatioMode);
         dirty(swZoneRatio);
-        rZoneRatio = numberRow(cardZone, "屏幕占比", "默认 15%，大约就是 dock 栏上沿的高度", "%",
+        rZoneRatio = numberRow(cardZone, "屏幕占比", "默认 15%，约 dock 上沿高度", "%",
                 cur.zoneRatio * 100f, 0, 5, 30, 1);
-        rZone = numberRow(cardZone, "触发区高度", "固定高度模式（上面的开关关闭时生效）", "dp",
+        rZone = numberRow(cardZone, "触发区高度", "固定高度（上开关关闭时生效）", "dp",
                 cur.zoneDp, 0, 20, 200, 1);
-        rWidth = numberRow(cardZone, "有效宽度占比", "触发区在屏幕水平方向上的占比，居中", "%",
+        rWidth = numberRow(cardZone, "宽度占比", "触发区水平宽度，居中", "%",
                 cur.widthRatio * 100f, 0, 20, 100, 5);
-        rBias = numberRow(cardZone, "左右偏置", "把有效区域中心左右移动，配合左右手落指习惯", "%",
+        rBias = numberRow(cardZone, "左右偏置", "按左右手习惯移动中心", "%",
                 cur.zoneBias * 100f, 0, -40, 40, 5);
         downGap = Ui.hintBlock(c, pal, downGapText(), pal.primary);
         cardZone.addView(downGap);
-        page.add(cardZone, Ui.cardLp(c, Theme.CARD_GAP));
+        page.add(cardZone);
 
         // ---------------------------------------------------------- 外观
         page.add(Ui.section(c, pal, "外观"));
         LinearLayout cardLook = Ui.card(c, pal);
         swBlur = Ui.switchRow(c, cardLook, pal, "模糊壁纸背景",
-                "把上方米白遮罩换成高斯模糊的当前壁纸", cur.blurBg);
+                "用模糊壁纸替代米白遮罩", cur.blurBg);
         dirty(swBlur);
-        rBlurRadius = numberRow(cardLook, "模糊半径", "越大越糊；0 近似纯壁纸原图", "dp",
+        rBlurRadius = numberRow(cardLook, "模糊半径", "越大越糊，0 为原图", "dp",
                 cur.blurRadiusDp, 0, 0, 60, 1);
-        rBlurDim = numberRow(cardLook, "压暗程度", "在模糊壁纸上叠一层黑，拉开与缩小窗口的层次", "%",
+        rBlurDim = numberRow(cardLook, "压暗程度", "在模糊壁纸上叠暗色", "%",
                 cur.blurDim, 0, 0, 60, 1);
-        page.add(cardLook, Ui.cardLp(c, Theme.CARD_GAP));
+        page.add(cardLook);
 
         // ---------------------------------------------------------- 动效
         page.add(Ui.section(c, pal, "动效"));
         LinearLayout cardAnim = Ui.card(c, pal);
         cAnimCurve = Ui.choiceRow(c, cardAnim, pal, "缓动曲线",
-                "按起步速度从慢到快排列；改完即时生效，可来回对比",
+                "从慢到快排列，改完即时生效",
                 Cfg.ANIM_CURVE_SHORT, cur.animCurve, new Ui.OnChoice() {
                     @Override
                     public void onChoice(int index) {
-                        Ui.singleChoiceDialog(host, pal, "缓动曲线",
-                                Cfg.ANIM_CURVE_RAW_DESC + "\n\n" + Cfg.ANIM_CURVE_SUMMARIES[index],
-                                Cfg.ANIM_CURVE_NAMES, index, new Ui.OnChoice() {
+                        Ui.choiceDropdown(host, cAnimCurve, Cfg.ANIM_CURVE_NAMES,
+                                Cfg.ANIM_CURVE_SUMMARIES, new Ui.OnChoice() {
                                     @Override
                                     public void onChoice(int picked) {
                                         cAnimCurve.value = picked;
@@ -194,31 +190,32 @@ final class SettingsPage {
                     }
                 });
         rAnimScale = Ui.valueRow(c, cardAnim, pal, "动画时长",
-                "1.00 = 系统原生 600ms；越大越慢，改动即时生效", "×", cur.animScale, 2);
-        realTime(rAnimScale, "动画时长", "1.00 = 系统原生 600ms；越大越慢，改动即时生效",
+                "1.00 为原生 600ms，越大越慢", "×", cur.animScale, 2);
+        realTime(rAnimScale, "动画时长", "1.00 为原生 600ms，越大越慢",
                 "×", 0.60f, 2.00f, 0.05f, 2);
         animInfo = Ui.block(c, pal, animInfoText());
         Ui.addRow(c, cardAnim, pal, animInfo);
-        page.add(cardAnim, Ui.cardLp(c, Theme.CARD_GAP));
+        page.add(cardAnim);
 
         // ---------------------------------------------------------- 模糊区手势
         page.add(Ui.section(c, pal, "模糊区手势"));
         LinearLayout cardTop = Ui.card(c, pal);
-        swTopShade = Ui.switchRow(c, cardTop, pal, "下滑展开通知/控制中心",
-                "在模糊区任意位置下滑即可拉开面板并退出单手模式；"
-                        + "不触发时点一下仍然是原生的\"退出单手模式\"",
-                cur.topShade);
+        swTopShade = Ui.switchRow(c, cardTop, pal, "下滑展开面板",
+                "下滑模糊区拉开通知/控制中心", cur.topShade);
         dirty(swTopShade);
-        rTopShadeDy = numberRow(cardTop, "触发距离", "下滑多少 dp 才算数，防止把\"点一下\"误判成下拉", "dp",
+        rTopShadeDy = numberRow(cardTop, "触发距离", "下滑多少算数，防误判成下拉", "dp",
                 cur.topShadeDyDp, 0, 8, 80, 1);
         cTopShadeSide = Ui.choiceRow(c, cardTop, pal, "拉开哪个",
-                "左侧下滑出通知中心，右侧下滑出控制中心（HyperOS 习惯）",
+                "左通知中心，右控制中心",
                 Cfg.TOP_SIDE_SHORT, cur.topShadeSide, new Ui.OnChoice() {
                     @Override
                     public void onChoice(int index) {
-                        Ui.singleChoiceDialog(host, pal, "拉开哪个",
-                                "决定模糊区下滑时展开哪一块面板", Cfg.TOP_SIDE_NAMES, index,
-                                new Ui.OnChoice() {
+                        Ui.choiceDropdown(host, cTopShadeSide, Cfg.TOP_SIDE_NAMES,
+                                new String[] {
+                                        "左通知中心，右控制中心",
+                                        "固定展开通知中心",
+                                        "固定展开控制中心",
+                                }, new Ui.OnChoice() {
                                     @Override
                                     public void onChoice(int picked) {
                                         cTopShadeSide.value = picked;
@@ -228,52 +225,43 @@ final class SettingsPage {
                                 });
                     }
                 });
-        cardTop.addView(Ui.block(c, pal,
-                "单手模式把整个系统界面向下平移了约 40% 屏高，状态栏也跟着下移到缩小窗口的顶部。"
-                        + "这块模糊区原本没有任何手势，现在整个模糊区都可以当\"状态栏\"用：\n"
-                        + "左半屏下滑 → 通知中心；右半屏下滑 → 控制中心（可在上面改成固定一个）"));
-        page.add(cardTop, Ui.cardLp(c, Theme.CARD_GAP));
+        page.add(cardTop);
 
         // ---------------------------------------------------------- 快捷菜单滑选
         page.add(Ui.section(c, pal, "快捷菜单滑选"));
         LinearLayout cardSlide = Ui.card(c, pal);
         swSlide = Ui.switchRow(c, cardSlide, pal, "长按滑选菜单项",
-                "iOS 式操作：长按图标弹出菜单后手指不松，直接滑到某项上抬手即打开；"
-                        + "原来的\"长按后点一下\"照常可用", cur.slideEnabled);
+                "滑到菜单项抬手即打开，改后重启桌面生效", cur.slideEnabled);
         dirty(swSlide);
         rSlideAngle = numberRow(cardSlide, "滑选判定夹角",
-                "手指方向与\"图标→菜单\"方向的夹角上限；调小更保守，避免误伤拖图标排序", "°",
+                "与菜单方向的夹角上限，越小越保守", "°",
                 cur.slideAngleDeg, 0, 15, 90, 5);
         rSlideSlop = numberRow(cardSlide, "命中容差",
-                "菜单项可被命中的外扩范围，也作为\"确实朝菜单靠近\"的最小位移", "dp",
+                "菜单项外扩的命中范围", "dp",
                 cur.slideSlopDp, 0, 2, 40, 1);
         rSlideTravel = numberRow(cardSlide, "起判位移",
-                "手指至少移动这么远才开始判定，过滤手抖；系统约 33dp 时就会取消菜单", "dp",
+                "滑多远才开始判定，过滤手抖", "dp",
                 cur.slideMinTravelDp, 0, 4, 60, 1);
-        cardSlide.addView(Ui.block(c, pal,
-                "只在你确实朝菜单方向滑动时才接管：手指滑向菜单 → 菜单保持、图标不会被拖动；"
-                        + "滑向别处 → 完全交给原生（照常拖动排序）。"
-                        + "改动需重启桌面进程生效。"));
-        page.add(cardSlide, Ui.cardLp(c, Theme.CARD_GAP));
+        page.add(cardSlide);
 
         // ---------------------------------------------------------- 互斥
         page.add(Ui.section(c, pal, "互斥"));
         LinearLayout cardGuard = Ui.card(c, pal);
         swShadeGuard = Ui.switchRow(c, cardGuard, pal, "与下拉手势互斥",
-                "手势中出现通知/控制中心意图就放弃单手模式", cur.shadeGuard);
-        swClaimZone = Ui.switchRow(c, cardGuard, pal, "底部区域优先单手模式",
-                "触发区内的桌面下拉让位，不再打开通知/控制中心", cur.claimZone);
-        rHotDp = numberRow(cardGuard, "原生胶囊条高度", "覆盖系统 25dp 的底部窗口，0 表示不改动", "dp",
+                "识别到面板意图就放弃单手", cur.shadeGuard);
+        swClaimZone = Ui.switchRow(c, cardGuard, pal, "底部区域优先单手",
+                "触发区内下拉让位给单手", cur.claimZone);
+        rHotDp = numberRow(cardGuard, "原生胶囊条高度", "0 表示不改动", "dp",
                 cur.launcherHotDp, 0, 0, 40, 1);
         dirty(swShadeGuard);
         dirty(swClaimZone);
-        page.add(cardGuard, Ui.cardLp(c, Theme.CARD_GAP));
+        page.add(cardGuard);
 
         // ---------------------------------------------------------- 高级
         page.add(Ui.section(c, pal, "高级"));
         LinearLayout cardToggle = Ui.card(c, pal);
         swAdvanced = Ui.switchRow(c, cardToggle, pal, "显示高级参数",
-                "速度采样窗口、轨迹稳定性、冷却等", false);
+                "采样窗口、轨迹稳定性、冷却等", false);
         page.add(cardToggle);
 
         advancedBox = new LinearLayout(c);
@@ -281,20 +269,20 @@ final class SettingsPage {
         advancedBox.setVisibility(View.GONE);
 
         LinearLayout cardAdv = Ui.card(c, pal);
-        rWindow = numberRow(cardAdv, "速度采样窗口", "用多长的滑动窗口估速度，越大越稳、越小越灵敏", "ms",
+        rWindow = numberRow(cardAdv, "速度采样窗口", "越大越稳，越小越灵敏", "ms",
                 cur.velWindowMs, 0, 20, 200, 5);
-        rMaxVel = numberRow(cardAdv, "速度上限", "超过该值按噪声截断，防止单帧抖动误判", "dp/s",
+        rMaxVel = numberRow(cardAdv, "速度上限", "超过按噪声截断", "dp/s",
                 cur.maxVelocityDp, 0, 300, 8000, 100);
-        rMono = numberRow(cardAdv, "轨迹稳定度", "净位移占路程的比例下限，低于它判为来回蹭", "",
+        rMono = numberRow(cardAdv, "轨迹稳定度", "净位移占路程的下限", "",
                 cur.minMonotonic, 2, 0.40f, 1.0f, 0.02f);
-        rSlope = numberRow(cardAdv, "最大横向偏移", "|dx| / dy 超过该值视为斜滑，不触发", "倍",
+        rSlope = numberRow(cardAdv, "最大横向偏移", "超过视为斜滑", "倍",
                 cur.maxSlope, 1, 0.5f, 4.0f, 0.1f);
-        rCooldown = numberRow(cardAdv, "触发冷却", "两次触发之间的最小间隔", "ms",
+        rCooldown = numberRow(cardAdv, "触发冷却", "两次触发的最小间隔", "ms",
                 cur.cooldownMs, 0, 0, 2000, 50);
         swAdaptive = Ui.switchRow(c, cardAdv, pal, "自适应阈值",
-                "干脆利落的快手势略放宽，拖沓的长手势略收紧", cur.adaptive);
+                "快手势放宽，慢手势收紧", cur.adaptive);
         dirty(swAdaptive);
-        advancedBox.addView(cardAdv, Ui.cardLp(c, Theme.CARD_GAP));
+        advancedBox.addView(cardAdv);
         page.add(advancedBox);
 
         swAdvanced.setOnCheckedChange(new Ui.SwitchView.OnCheckedChange() {
@@ -305,19 +293,10 @@ final class SettingsPage {
         });
 
         // ---------------------------------------------------------- 底部操作
+        // 改动即时保存并生效，不再需要「保存并立即生效」按钮 / 胶囊二次确认。
         LinearLayout actions = new LinearLayout(c);
         actions.setOrientation(LinearLayout.VERTICAL);
         actions.setPadding(0, Theme.dp(c, 20), 0, 0);
-
-        saveBtn = Ui.primaryButton(c, pal, "保存并立即生效");
-        saveBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                host.save();
-            }
-        });
-        actions.addView(saveBtn, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(c, 48)));
 
         TextView reset = Ui.secondaryButton(c, pal, "恢复默认参数");
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
@@ -345,18 +324,20 @@ final class SettingsPage {
         actions.addView(restartBtn, slp);
 
         TextView restartHint = Ui.text(c,
-                "重启系统界面与桌面进程，让新装/新改的钩子重新注入。需要 root 授权（首次会弹授权框）。",
+                "让新钩子重新注入，需 root 授权。",
                 Theme.T_CAP, pal.summary, false);
         restartHint.setPadding(Theme.dp(c, 4), Theme.dp(c, 10), Theme.dp(c, 4), 0);
         restartHint.setLineSpacing(Theme.dp(c, 3), 1f);
         actions.addView(restartHint);
         page.add(actions);
 
-        statusText = Ui.text(c, "当前值来自系统设置，修改后点上方按钮提交。",
+        statusText = Ui.text(c, "改动自动保存并立即生效。",
                 Theme.T_CAP, pal.section, false);
         statusText.setPadding(Theme.dp(c, 4), Theme.dp(c, 12), Theme.dp(c, 4), 0);
         statusText.setLineSpacing(Theme.dp(c, 3), 1f);
         page.add(statusText);
+
+        applyEnabledStates();
     }
 
     // ---------------------------------------------------------------- 行工厂
@@ -366,47 +347,76 @@ final class SettingsPage {
             @Override
             public void onCheckedChanged(boolean checked) {
                 markDirty();
+                applyEnabledStates();
             }
         });
     }
 
-    /** 数值行：一级页面只有标题 + 当前值 + 箭头，点行才进参数子页看 miuix Slider。 */
+    /**
+     * 依赖开关的设置项同步禁用态：MIUIX 的禁用行不接收点击、文字降到次要色。
+     * 值本身不清除，重新打开开关后原值还在，数据流与以前完全一致。
+     */
+    private void applyEnabledStates() {
+        rEndZone.setEnabled(swEndBoost.isChecked());
+        rSlowDy.setEnabled(swSlow.isChecked());
+        rSlowVel.setEnabled(swSlow.isChecked());
+        rZoneRatio.setEnabled(swZoneRatio.isChecked());
+        rZone.setEnabled(!swZoneRatio.isChecked());
+        rBlurRadius.setEnabled(swBlur.isChecked());
+        rBlurDim.setEnabled(swBlur.isChecked());
+        rTopShadeDy.setEnabled(swTopShade.isChecked());
+        cTopShadeSide.setEnabled(swTopShade.isChecked());
+        rSlideAngle.setEnabled(swSlide.isChecked());
+        rSlideSlop.setEnabled(swSlide.isChecked());
+        rSlideTravel.setEnabled(swSlide.isChecked());
+    }
+
+    /**
+     * 数值行：min/max/step 决定 MIUIX NumberPicker 的有限选项集（单列滚轮）。
+     * 点行弹单列数值选择器，选中即回写；不再打开 Slider 或 Dropdown。
+     */
     private Ui.ValueRow numberRow(LinearLayout card, final String title, final String summary,
                                   final String unit, float value, final int dec,
                                   final float min, final float max, final float step) {
-        final Ui.ValueRow row = Ui.valueRow(c, card, pal, title, summary, unit, value, dec);
+        final Ui.ValueRow row = Ui.valueRow(c, card, pal, title, summary, unit,
+                value, dec, min, max, step);
         row.row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Ui.sliderPageDialog(host, pal, title, summary, unit, min, max, step, dec, row.value,
-                        new Ui.OnNumber() {
-                            @Override
-                            public void onNumber(float nv) {
-                                row.set(nv);
-                                markDirty();
-                            }
-                        });
+                if (!row.row.isEnabled()) {
+                    return;
+                }
+                Ui.numericPicker(host, row, title, unit, dec, new Ui.OnNumber() {
+                    @Override
+                    public void onNumber(float nv) {
+                        row.set(nv);
+                        markDirty();
+                    }
+                });
             }
         });
         return row;
     }
 
-    /** 即时生效的数值行（动画时长）：同样不在一级页面挂滑杆。 */
+    /** 即时生效的数值行（动画时长）：同样走 NumberPicker，只是提交后额外即时下发。 */
     private void realTime(final Ui.ValueRow row, final String title, final String summary,
                           final String unit, final float min, final float max,
                           final float step, final int dec) {
+        row.configure(min, max, step);
         row.row.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Ui.sliderPageDialog(host, pal, title, summary, unit, min, max, step, dec, row.value,
-                        new Ui.OnNumber() {
-                            @Override
-                            public void onNumber(float nv) {
-                                row.set(nv);
-                                markDirty();
-                                applyAnimNow();
-                            }
-                        });
+                if (!row.row.isEnabled()) {
+                    return;
+                }
+                Ui.numericPicker(host, row, title, unit, dec, new Ui.OnNumber() {
+                    @Override
+                    public void onNumber(float nv) {
+                        row.set(nv);
+                        markDirty();
+                        applyAnimNow();
+                    }
+                });
             }
         });
     }
@@ -431,20 +441,18 @@ final class SettingsPage {
 
     // ---------------------------------------------------------------- 行为
 
+    /** 任何改动即时提交：把当前整页配置打包广播给 SystemUI 写入 Settings.Global。 */
     void markDirty() {
-        if (statusText != null) {
-            statusText.setText("有未保存的更改，点「保存并立即生效」提交。");
-        }
-        host.markDirty();
+        host.save();
     }
 
     void onSaved() {
         if (statusText != null) {
-            statusText.setText("已提交到系统界面进程，立即生效。可下滑底部区域测试，点「最近手势」查看判定结果。");
+            statusText.setText("已自动保存并生效。可下滑底部区域测试，点「最近手势」查看判定结果。");
         }
     }
 
-    /** 切换模式：把该模式的推荐值填进参数行（保存后才提交）。 */
+    /** 切换模式：把该模式的推荐值填进参数行，并立即提交。 */
     private void applyMode(int mode) {
         cMode.value = mode;
         cMode.label.setText(Cfg.MODE_SHORT[mode]);
@@ -500,6 +508,7 @@ final class SettingsPage {
         rSlideAngle.set(Cfg.DEF_SLIDE_ANGLE_DEG);
         rSlideSlop.set(Cfg.DEF_SLIDE_SLOP_DP);
         rSlideTravel.set(Cfg.DEF_SLIDE_MIN_TRAVEL_DP);
+        applyEnabledStates();
     }
 
     private void switchWithoutMark(Ui.SwitchView sw, boolean v) {
@@ -570,7 +579,7 @@ final class SettingsPage {
                 }, 400);
             }
         } catch (Throwable t) {
-            // 纯外观，发不出去就等下次保存
+            // 纯外观，发不出去不影响其余已即时提交的配置
         }
     }
 
@@ -591,7 +600,7 @@ final class SettingsPage {
             // 下面走静态说明
         }
         return "系统原生 " + Cfg.SYSTEM_ANIM_MS + "ms · " + Cfg.ANIM_CURVE_RAW_DESC
-                + "\n保存并在底部下滑一次后，这里会显示实际生效的时长。";
+                + "\n下滑一次后显示实测时长。";
     }
 
     private String downGapText() {
@@ -604,8 +613,7 @@ final class SettingsPage {
         } catch (Throwable ignored) {
             // 走默认提示
         }
-        return "在屏幕底部附近按一下，这里会显示那次起手离底边多少 dp，"
-                + "用来判断上面的触发区高度该调大还是调小。";
+        return "在底部按一下，这里显示起手离底边多少 dp，用来校准触发区高度。";
     }
 
 

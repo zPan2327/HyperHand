@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.3.5"
+val defaultVersionName = "3.4.2"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -53,7 +53,7 @@ val derivedVersionCode: Int = run {
 // 3.4.0 = 30400（长容器折叠改用 ω=10/480ms；横滑松手改成 decay 滑行 + spring 吸附两段）。
 // 3.4.1 = 30401（横滑回退为单段临界阻尼弹簧：OverScroller 的 decay 无法与页位对齐）。
 // 3.4.2 = 30402（折叠动画改为只对「屏幕内可见高度」做动画，修单手模式卡的「先卡住后突消」）。
-val minVersionCode = 30305
+val minVersionCode = 30402
 
 val versionCodeValue = fromEnvOrProperty("VERSION_CODE")?.toIntOrNull()
     ?: maxOf(derivedVersionCode, minVersionCode)

@@ -17,7 +17,8 @@ import android.view.ViewGroup;
  *   <li>纵向手势一律不拦截，交给页面里的 ScrollView，避免抢滚动；</li>
  *   <li>横向判定要求 {@code |dx| > touchSlop && |dx| > |dy| * 1.4}，
  *       斜向滑动明显偏竖直时仍然算滚动；</li>
- *   <li>第一页右拖、最后一页左拖时按 miuix 的抛物线橡皮筋阻尼，跟手且可原路撤回；</li>
+ *   <li>第一页右拖、最后一页左拖时**硬止**（不做 miuix 的抛物线橡皮筋）——用户要求
+ *       关闭横向回弹，边界处页面完全不动；</li>
  *   <li>切页过程中回调连续位置，底栏指示器据此跟手。</li>
  * </ul>
  */
@@ -56,8 +57,6 @@ final class PagePager extends ViewGroup {
      * 复合压缩：越拉越拉不动，往回拖也不沿原路返回 —— 这就是「不跟手」的根因。
      */
     private float rawOffset;
-    /** 当前弹簧动画是否为边界橡皮筋回弹（软弹簧、只回边界、不做页吸附）。 */
-    private boolean edgeRebound;
     private boolean dragging;
     private boolean settling;
     /**
@@ -91,37 +90,31 @@ final class PagePager extends ViewGroup {
 
     // ---------------------------------------------------------------- 切页动画
     //
-    // 与 SonyPods 对齐的两套手感（其 MainTabsPagerState.animateToPage + HorizontalPager 默认 fling）：
-    //   点底栏/代码切页 → 300ms EaseInOut（100 × max(2, 距离) + 100，相邻页恒 300ms）；
-    //   松手吸附       → 带初速的阻尼弹簧（略欠阻尼 ζ≈0.8，能感到弹性但不来回晃）；
-    //   边界橡皮筋回弹 → 与 MiuixScrollView 同一组软弹簧（k=190、ζ=0.9）+ 甩速限幅。
-    // 旧实现统一用 OverScroller 匀减速 260/280ms：没有弹性，且甩动速度不参与动画，
-    // 快甩和慢拖走完的时间一样 —— 就是「切换速度不对」的来源。
+    // 松手 / 点底栏 / 代码切页统一走**同一条临界阻尼弹簧**：
+    //   甩动松手 → 手指速度作为弹簧初速，目标取「朝甩动方向的那个邻页」；
+    //   慢拖松手 → 初速很小，就近吸附；
+    //   点底栏   → 初速 0（对应 animateScrollToPage）；
+    //   一次手势只翻一页 → Compose `PagerDefaults.flingBehavior` 的默认
+    //                    `pagerSnapDistance = PagerSnapDistance.atMost(1)`，
+    //                    LSPosed 用的就是这个默认值：甩多快都只前进/后退一页。
+    //
+    // 【2026-11-26 回退记录】曾按 Compose flingBehavior 的形状试过
+    // 「decay 惯性滑行 + spring 吸附」两段（先 OverScroller 自由滑行、越过目标页再切弹簧），
+    // 真机上明显更难用：decay 不设边界会一路滑过目标页，越过那一帧再把位置直接赋成页位，
+    // 表现为「滑一截 → 啪地跳到位」；若把 min/max 设成目标页，OverScroller 又会在一帧内
+    // 直接跳到边界（更硬）。两条路都不如单段弹簧，已回退。
+    // 想真正复刻 LSPosed 的手感只能上 Compose HorizontalPager，而三页是 Android View
+    // （MiuixScrollView 在 DOWN 就消费触摸），塞进 AndroidView 会让 pager 收不到横滑手势。
     private boolean animating;
-    private boolean tweenMode;        // true = 300ms EaseInOut；false = 阻尼弹簧
-    private float animFrom;
     private float animTarget;
     private float animVelocity;       // 弹簧初速，单位「页/秒」
-    private long animStartAt;         // tween 起点
     private long animLastFrameAt;     // 弹簧积分上一帧
 
-    private static final int TWEEN_MS = 300;
-    private static final float SPRING_K = 300f;
-    private static final float SPRING_DAMPING =
-            2f * (float) Math.sqrt(300f) * 0.8f;
-    /**
-     * 边界橡皮筋回弹用 {@link MiuixScrollView} 的同一组软弹簧。miuix 原本是
-     * {@code springStiff=280f, springDamp=1f}（临界阻尼，ω≈16.7），项目里按用户
-     * 「稍微软一点」的要求已降为 190/0.9；横滑与纵向必须保持一致。k=300 的切页
-     * 弹簧用来吸附合适，但拿它收越界形变会「啪」地绷回去 —— 这是「太硬」的来源。
-     */
-    private static final float EDGE_SPRING_K = 190f;
-    private static final float EDGE_SPRING_DAMPING =
-            2f * (float) Math.sqrt(EDGE_SPRING_K) * 0.9f;
-    /** 边界回弹的甩速上限（页/秒）：不把整段 fling 速度灌进弹簧，否则像撞墙。 */
-    private static final float EDGE_MAX_VELOCITY = 0.9f;
-    /** 页内吸附的甩速上限（页/秒），避免极快甩动把页面甩出边界再猛拉回来。 */
-    private static final float SETTLE_MAX_VELOCITY = 2.2f;
+    private static final float SPRING_K = 400f;          // Compose StiffnessMediumLow
+    /** ζ = 1.0：临界阻尼，不过冲（Compose spring 的默认 dampingRatio）。 */
+    private static final float SPRING_DAMPING = 2f * (float) Math.sqrt(SPRING_K);
+    /** 松手吸附的初速上限（页/秒）：极快甩动时不至于一帧就冲过半页。 */
+    private static final float SETTLE_MAX_VELOCITY = 2.4f;
 
     PagePager(Context c) {
         super(c);
@@ -173,17 +166,16 @@ final class PagePager extends ViewGroup {
             rawOffset = target;
             animating = false;
             settling = false;
-            edgeRebound = false;
             applyScroll();
             notifyScrolled();
             return;
         }
         settling = true;
-        tweenMode = true;
-        edgeRebound = false;
-        animFrom = offset;
+        // 与 Compose animateScrollToPage 一致：初速 0 的临界阻尼弹簧。
+        // 距离越远则整体速度越快，落定时间仍约 250ms —— 不是固定时长的匀速 tween。
         animTarget = target;
-        animStartAt = SystemClock.uptimeMillis();
+        animVelocity = 0f;
+        animLastFrameAt = SystemClock.uptimeMillis();
         animating = true;
         postInvalidateOnAnimation();
     }
@@ -212,7 +204,6 @@ final class PagePager extends ViewGroup {
                 settleInterrupted = animating;
                 dragging = false;
                 verticalGesture = false;
-                edgeRebound = false;
                 if (!animating) {
                     // 形变中段被按下：从当前形变接着拉（动画在跑时 rawOffset 已被逐帧同步，
                     // 这里再覆盖会破坏 tween 的中间态）。
@@ -266,7 +257,6 @@ final class PagePager extends ViewGroup {
                 // 与 onInterceptTouchEvent 保持一致：动画进行中不碰 rawOffset/edgeRebound，
                 // 否则正在跑的切页 tween 或边界回弹会被这一按改掉参数、卡在中间。
                 if (!animating) {
-                    edgeRebound = false;
                     rawOffset = rawFromVisual(offset);
                 }
                 track(e);
@@ -333,7 +323,6 @@ final class PagePager extends ViewGroup {
         settleInterrupted = false;
         animating = false;
         settling = false;
-        edgeRebound = false;
         // 手指从当前 offset 接管，不跳位；形变段用反解回推 rawOffset。
         rawOffset = rawFromVisual(offset);
     }
@@ -358,10 +347,12 @@ final class PagePager extends ViewGroup {
             return;
         }
         following = true;
-        // 手指位移 1:1 记在 rawOffset 上，只有「超出页面的那一段」才过阻尼曲线。
-        // 这样往回拖严格沿原路收回，且退出越界时视觉位置连续、零跳变。
-        rawOffset -= dxPx / w;
-        offset = visualFromRaw(w);
+        // 【不再越界回弹】首/末页继续往外拖时，位移直接夹在 [0, count-1]：
+        // 页面纹丝不动，不会出现「拉出一段再弹回去」的橡皮筋。
+        // 这是用户明确要求的效果——横滑只做页与页之间的切换，边界硬止。
+        float last = pageCount - 1;
+        rawOffset = Math.max(0f, Math.min(last, rawOffset - dxPx / w));
+        offset = rawOffset;
         applyScroll();
         notifyScrolled();
     }
@@ -372,13 +363,8 @@ final class PagePager extends ViewGroup {
      * 起步近似 1:1 跟手，越拉越沉，自然饱和在 20% 屏宽。
      */
     private float visualFromRaw(int w) {
-        float last = pageCount - 1;
-        float clamped = Math.max(0f, Math.min(last, rawOffset));
-        float over = rawOffset - clamped;
-        if (over == 0f) {
-            return clamped;
-        }
-        return clamped + MiuixScrollView.defaultParabolaScrollEasing(over * w, w) / w;
+        // 边界不再有阻尼形变：可见位置恒等于手指位置（越界已被夹住）。
+        return Math.max(0f, Math.min(pageCount - 1, rawOffset));
     }
 
     /**
@@ -386,47 +372,31 @@ final class PagePager extends ViewGroup {
      * 避免按下瞬间形变跳回 0 或突然弹开（同 MiuixScrollView#inverseEasing）。
      */
     private float rawFromVisual(float visual) {
-        float last = pageCount - 1;
-        if (visual >= 0f && visual <= last) {
-            return visual;
-        }
-        int w = Math.max(1, getWidth());
-        float base = visual < 0f ? 0f : last;
-        float easedPx = (visual - base) * w;
-        float want = Math.abs(easedPx);
-        float lo = 0f;
-        float hi = w * 3f;
-        for (int i = 0; i < 24; i++) {
-            float mid = (lo + hi) * 0.5f;
-            if (MiuixScrollView.defaultParabolaScrollEasing(mid, w) < want) {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        return base + Math.copySign(lo / w, easedPx);
+        // 同 visualFromRaw：没有形变了，反解就是夹住原值。
+        return Math.max(0f, Math.min(pageCount - 1, visual));
     }
 
     private void settle(int velocityPx, boolean cancel) {
         float last = pageCount - 1;
-        // 越界松手：只走橡皮筋回弹，不参与页吸附，更不能被 fling 甩到别的页。
-        if (rawOffset < 0f || rawOffset > last) {
-            startEdgeRebound(velocityPx, rawOffset < 0f ? 0f : last, cancel);
-            return;
-        }
+        // 手指位置已被夹在 [0, last]，不存在越界松手，只做页吸附。
         int target = Math.round(offset);
         if (!cancel && Math.abs(velocityPx) > minFlingVelocity) {
-            target = velocityPx < 0 ? (int) Math.ceil(offset) : (int) Math.floor(offset);
+            // 一次手势只翻一页：Compose `PagerDefaults.flingBehavior` 的默认
+            // `pagerSnapDistance = PagerSnapDistance.atMost(1)`，LSPosed 也是这个默认值。
+            // 甩得再快也只是「当前页 → 相邻页」，不存在一甩跨两页。
+            // 目标取「朝甩动方向的那个邻页」的整页位：offset 恰为整数时也能前进一页。
+            boolean forward = velocityPx < 0;
+            target = forward ? (int) Math.floor(offset) + 1 : (int) Math.ceil(offset) - 1;
         }
         target = clampPage(target);
         if (cancel) {
             target = current;
         }
-        // 带初速的阻尼弹簧：甩得快就冲过去（甚至过冲一点再回），慢拖就缓缓收拢 —— 这就是
-        // SonyPods HorizontalPager 松手后的手感。速度换算成「页/秒」进弹簧。
+        // 带初速的**临界阻尼**弹簧：甩得快就走得快、慢拖就缓缓收拢，到位既不过冲也不回弹。
+        // 速度换算成「页/秒」灌进弹簧，限幅避免极快甩动一帧冲过半页。
         float v = cancel ? 0f : -velocityPx / Math.max(1, getWidth());
-        // 甩到首/末页时把「继续朝界外」的分量砍掉：Compose Pager 的 fling 在边界会被
-        // clamp，弹簧若带着全速冲出去再硬拉回，就是「撞墙式」的硬回弹。
+        // 甩到首/末页时把「继续朝界外」的分量砍掉：目标已经在边界上，
+        // 弹簧若带着全速冲出去再拉回，就是「撞墙式」的硬回弹。
         if (target == 0 && v < 0f) {
             v *= 0.25f;
         }
@@ -434,9 +404,6 @@ final class PagePager extends ViewGroup {
             v *= 0.25f;
         }
         animVelocity = Math.max(-SETTLE_MAX_VELOCITY, Math.min(SETTLE_MAX_VELOCITY, v));
-        tweenMode = false;
-        edgeRebound = false;
-        animFrom = offset;
         animTarget = target;
         rawOffset = offset;
         animLastFrameAt = SystemClock.uptimeMillis();
@@ -450,22 +417,6 @@ final class PagePager extends ViewGroup {
      * 目标是最近的可视边界，初速限幅后只留一点点惯性。旧实现把整段 fling 速度
      * 灌进 k=300 的切页弹簧，越界时会先大幅外冲再猛绷回 —— 又硬又不跟手。
      */
-    private void startEdgeRebound(int velocityPx, float target, boolean cancel) {
-        float w = Math.max(1, getWidth());
-        float v = cancel ? 0f : -velocityPx / w;
-        boolean outward = (target == 0f && v < 0f) || (target > 0f && v > 0f);
-        v *= outward ? 0.45f : 0.65f;
-        animVelocity = Math.max(-EDGE_MAX_VELOCITY, Math.min(EDGE_MAX_VELOCITY, v));
-        tweenMode = false;
-        edgeRebound = true;
-        animFrom = offset;
-        animTarget = target;
-        animLastFrameAt = SystemClock.uptimeMillis();
-        settling = true;
-        animating = true;
-        postInvalidateOnAnimation();
-    }
-
     private void applyScroll() {
         int w = getWidth();
         for (int i = 0; i < getChildCount(); i++) {
@@ -486,32 +437,15 @@ final class PagePager extends ViewGroup {
         if (!animating) {
             return;
         }
-        if (tweenMode) {
-            // 300ms EaseInOut —— 与 SonyPods animateToPage 的 tween(EaseInOut, 300) 逐点一致。
-            long t = SystemClock.uptimeMillis() - animStartAt;
-            if (t >= TWEEN_MS) {
-                offset = animTarget;
-                rawOffset = animTarget;
-                finishSettle();
-                return;
-            }
-            float u = t / (float) TWEEN_MS;
-            float e = u < 0.5f ? 4f * u * u * u : 1f - (float) Math.pow(-2f * u + 2f, 3) / 2f;
-            offset = animFrom + (animTarget - animFrom) * e;
-            rawOffset = offset;
-            applyScroll();
-            notifyScrolled();
-            postInvalidateOnAnimation();
-            return;
-        }
 
         // 阻尼弹簧：x'' = -k(x - target) - c·x'。半隐式欧拉，步长取真实帧间隔。
-        // 边界回弹换成软弹簧；页内吸附仍是 k=300 / ζ≈0.8 的切页手感。
+        // k=400 时半隐式欧拉要求 ω·dt < 2（ω=20 → dt < 0.1），夹到 0.032 留足余量：
+        // 掉帧到 30fps 也不会数值发散（发散的表现是页面自己抖起来）。
         long now = SystemClock.uptimeMillis();
-        float dt = Math.min(0.05f, Math.max(1f / 240f, (now - animLastFrameAt) / 1000f));
+        float dt = Math.min(0.032f, Math.max(1f / 240f, (now - animLastFrameAt) / 1000f));
         animLastFrameAt = now;
-        float k = edgeRebound ? EDGE_SPRING_K : SPRING_K;
-        float c = edgeRebound ? EDGE_SPRING_DAMPING : SPRING_DAMPING;
+        float k = SPRING_K;
+        float c = SPRING_DAMPING;
         float x = offset - animTarget;
         float a = -k * x - c * animVelocity;
         animVelocity += a * dt;
@@ -531,7 +465,6 @@ final class PagePager extends ViewGroup {
     private void finishSettle() {
         animating = false;
         settling = false;
-        edgeRebound = false;
         int landed = Math.round(offset);
         offset = clampPage(landed);
         rawOffset = offset;

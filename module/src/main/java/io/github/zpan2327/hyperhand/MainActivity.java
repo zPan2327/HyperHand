@@ -59,6 +59,8 @@ public class MainActivity extends ComponentActivity {
      * LSPosed 当前真的启用了模块，否则一律显示红色的「模块未启用」。
      */
     private long lastProbeAt;
+    /** 上一次得出的结论（0 / 2），探测在途时状态卡沿用它，避免闪出中间态。-1 = 还没有。 */
+    private int lastKnownStatus = -1;
     private final Runnable probeRefresh = new Runnable() {
         @Override
         public void run() {
@@ -75,7 +77,8 @@ public class MainActivity extends ComponentActivity {
     private io.github.zpan2327.hyperhand.glass.dialogs.MiuixDropdownHost dropdownHost;
     private io.github.zpan2327.hyperhand.glass.dialogs.MiuixNumberPickerHost numberPickerHost;
     private PagePager pager;
-    private TopBar topBar;
+    /** 每页一条独立顶栏（挂在 {@link PageHost} 里，随页面一起横移）。 */
+    private final TopBar[] pageBars = new TopBar[3];
     private HyperGlassBarView nav;
     private FrameLayout.LayoutParams navLp;
 
@@ -174,9 +177,31 @@ public class MainActivity extends ComponentActivity {
 
         // 三页平级：横向容器同时承载，靠左右滑动或点底栏切换。
         // 三页常驻（不销毁重建），滚动位置与各页状态都留住。
+        //
+        // 每页再包一层 PageHost，把「这一页的顶栏」放进去：顶栏因此是页面的一部分，
+        // 横滑时跟着页面整体平移。旧实现只有一条全屏顶栏、按浮点页位置同时画两页标题，
+        // 两页折叠状态不同时会出现非预期的中间态。
         pager = new PagePager(this);
+        String[] titles = {"概览", "设置", "关于"};
+        String[] subs = {"", "改动后立即生效", ""};
+        boolean[] showLarge = {true, true, false};
+        // 关于页自带整屏渐变：顶栏不压模糊带，滚到底才化底色。
+        boolean[] plainBar = {false, false, true};
         for (int i = 0; i < pages.length; i++) {
-            pager.addView(pages[i], new ViewGroup.LayoutParams(
+            TopBar bar = new TopBar(this, pal);
+            bar.setStatusInset(statusInset);
+            int icon = i == TAB_OVERVIEW ? Icons.RESTART : -1;
+            TopBar.OnAction action = i == TAB_OVERVIEW ? new TopBar.OnAction() {
+                @Override
+                public void onAction() {
+                    showRestartDialog();
+                }
+            } : null;
+            bar.setPage(titles[i], subs[i], showLarge[i], plainBar[i], icon, action);
+            // 模糊的素材就是本页内容：录它不会把顶栏自己录进去（顶栏是它的兄弟节点）。
+            bar.setBlurTarget(pages[i]);
+            pageBars[i] = bar;
+            pager.addView(new PageHost(this, pages[i], bar), new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
         pager.setPageCount(pages.length);
@@ -206,29 +231,17 @@ public class MainActivity extends ComponentActivity {
                     nav.clearPagePosition();
                 }
                 nav.onContentScrolled();
-                if (topBar != null) {
-                    topBar.setPagePosition(position);
-                    // 横向拖动改变了顶栏背后的内容，必须重采样，否则渐进模糊会停在拖动前那一帧。
-                    topBar.invalidate();
+                // 顶栏已随页面整体平移，不需要按浮点位置再画一遍；
+                // 横滑时背后内容在动，模糊层跟着标脏即可。
+                for (TopBar bar : pageBars) {
+                    if (bar != null) {
+                        bar.onContentScrolled();
+                    }
                 }
             }
         });
         contentHost.addView(pager, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // 折叠大标题栏：浮在内容之上，随当前页的滚动位置折叠
-        topBar = new TopBar(this, pal);
-        // 一次性注册三页文案：横滑时要同时画「滑出的页」和「滑入的页」，
-        // 索引与 pager 的子 View 顺序一致。关于页 showLarge = false（自带渐变英雄区）。
-        topBar.setPages(
-                new String[] {"概览", "设置", "关于"},
-                new String[] {"", "改动后立即生效", ""},
-                new boolean[] {true, true, false},
-                // 关于页的顶栏不加渐进模糊：它自带整屏渐变，压一条模糊带会把渐变切出边。
-                // 参考版式也是「滚动时顶栏透明，快到底才化成页面底色」。
-                new boolean[] {false, false, true});
-        root.addView(topBar, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         nav = new HyperGlassBarView(this);
         // 强调色沿用应用的 accent（原 GlassBar 里写死的 0xFF0088FF 与这里并非同一个值）。
@@ -268,7 +281,11 @@ public class MainActivity extends ComponentActivity {
                 android.graphics.Insets topBars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 statusInset = topBars.top;
-                topBar.setStatusInset(topBars.top);
+                for (TopBar bar : pageBars) {
+                    if (bar != null) {
+                        bar.setStatusInset(topBars.top);
+                    }
+                }
 
                 navLp.bottomMargin = Theme.dp(MainActivity.this, 12) + bars.bottom;
                 navLp.leftMargin = Theme.dp(MainActivity.this, 20);
@@ -277,7 +294,6 @@ public class MainActivity extends ComponentActivity {
 
                 applyInsets();
                 nav.setBackdropSource(contentHost, pal.bg);
-                topBar.setBackdropSource(contentHost);
                 return insets;
             }
         });
@@ -305,7 +321,9 @@ public class MainActivity extends ComponentActivity {
 
     /** 内容顶部留给折叠标题栏（展开高度），底部留给悬浮底栏。 */
     private void applyInsets() {
-        int top = topBar.expandedHeight();
+        int top = pageBars[0] == null
+                ? statusInset + Theme.dp(this, Theme.BAR_H + Theme.HEADER_BLOCK)
+                : pageBars[0].expandedHeight();
         // 底栏自身 78dp（64 + 上下 7 的溢出）+ 12dp 外边距 + 16dp 呼吸
         int bottom = navLp.bottomMargin + Theme.dp(this, 78 + 16);
         // 关于页的 hero 顶距也要状态栏高度：页面是在 insets 下发之前构建的，
@@ -325,19 +343,18 @@ public class MainActivity extends ComponentActivity {
                             child.getPaddingRight(), bottom);
                 }
                 final int pageIndex = i;
-                // miuix overScrollVertical()：橡皮筋位移期间 backdrop 一直在变，
-                // 顶栏的渐进式模糊和玻璃底栏都要跟着重画，否则会停在拖动前那一帧。
+                // miuix overScrollVertical()：橡皮筋位移期间内容一直在动，
+                // 玻璃底栏要跟着重采样，否则会停在拖动前那一帧。
+                // 顶栏不做模糊了，它的底色条与折叠进度无关，这里不需要再重画。
                 if (sv instanceof MiuixScrollView) {
                     ((MiuixScrollView) sv).setOnOverScroll(new MiuixScrollView.OnOverScroll() {
                         @Override
                         public void onOverScroll(float offset) {
-                            // 每帧都刷新，保证「实时」。采样位图已降到 0.20×，
-                            // 单帧成本足够低，不再需要靠降帧换性能。
-                            if (topBar != null) {
-                                topBar.invalidate();
-                            }
                             if (nav != null) {
                                 nav.onContentScrolled();
+                            }
+                            if (pageIndex == current && pageBars[pageIndex] != null) {
+                                pageBars[pageIndex].onContentScrolled();
                             }
                         }
                     });
@@ -345,20 +362,22 @@ public class MainActivity extends ComponentActivity {
                 sv.setOnScrollChangeListener(new View.OnScrollChangeListener() {
                     @Override
                     public void onScrollChange(View v, int x, int y, int ox, int oy) {
-                        if (pageIndex == current && topBar != null) {
-                            if (pageIndex == TAB_ABOUT && aboutPage != null) {
-                                // 关于页的顶栏不吃「120dp 折叠预算」，直接跟 hero 的
-                                // 滚动进度 —— SonyPods 里 title 的 alpha 也是
-                                // ((scrollProgress - 0.35) / 0.65)，两页才对得上。
-                                aboutPage.onScrolled(y);
-                                topBar.setCollapse(aboutPage.progress());
-                            } else {
-                                topBar.setScroll(y);
+                        if (pageIndex == current) {
+                            TopBar bar = pageBars[pageIndex];
+                            if (bar != null) {
+                                if (pageIndex == TAB_ABOUT && aboutPage != null) {
+                                    // 关于页的顶栏不吃「120dp 折叠预算」，直接跟 hero 的
+                                    // 滚动进度 —— SonyPods 里 title 的 alpha 也是
+                                    // ((scrollProgress - 0.35) / 0.65)。
+                                    aboutPage.onScrolled(y);
+                                    bar.setCollapse(aboutPage.progress());
+                                } else {
+                                    bar.setScroll(y);
+                                }
+                                // 折叠进度没变时 setCollapse 会提前返回，但条体下面的内容
+                                // 还在动：这里必须显式标脏，否则模糊会停在上一帧。
+                                bar.onContentScrolled();
                             }
-                            // collapse 到 1 饱和后 setCollapse 会提前 return、不再 invalidate，
-                            // 但内容仍在滚动 —— 顶栏的 backdrop 必须每帧重采样，否则渐进
-                            // 模糊会永久定格在「刚折叠完」那一帧。这里无条件补一次重绘。
-                            topBar.invalidate();
                         }
                         // 玻璃要"实时"透出背后的内容：页面滚动不会让底栏自己重绘，
                         // 不主动重画就会停在滚动前那一帧上（旧 GlassBar 也有这个毛病）。
@@ -403,22 +422,17 @@ public class MainActivity extends ComponentActivity {
         }
     }
 
-    /** 每一页的右上角动作；标题文案在启动时由 {@code TopBar.setPages} 一次给全。 */
+    /** 切到某一页时，把该页顶栏的折叠进度同步到它自己的滚动位置。 */
     private void applyTopBar(int index) {
-        int icon = index == TAB_OVERVIEW ? Icons.RESTART : -1;
-        TopBar.OnAction act = index == TAB_OVERVIEW ? new TopBar.OnAction() {
-            @Override
-            public void onAction() {
-                showRestartDialog();
+        TopBar bar = index >= 0 && index < pageBars.length ? pageBars[index] : null;
+        if (bar != null) {
+            if (index == TAB_ABOUT && aboutPage != null) {
+                aboutPage.onScrolled(scrollYOf(index));
+                bar.setCollapse(aboutPage.progress());
+            } else {
+                bar.setScroll(scrollYOf(index));
             }
-        } : null;
-        topBar.setCurrentPage(index, icon, act);
-        topBar.setPagePosition(index);
-        if (index == TAB_ABOUT && aboutPage != null) {
-            aboutPage.onScrolled(scrollYOf(index));
-            topBar.setCollapse(aboutPage.progress());
-        } else {
-            topBar.setScroll(scrollYOf(index));
+            bar.onContentScrolled();
         }
         applyInsets();
     }
@@ -435,6 +449,7 @@ public class MainActivity extends ComponentActivity {
      * 不再是裸 ScrollView，所以所有按类型判断的地方都改走这里。
      */
     static android.widget.ScrollView scrollOf(View page) {
+        page = PageHost.contentOf(page);
         if (page instanceof android.widget.ScrollView) {
             return (android.widget.ScrollView) page;
         }
@@ -545,6 +560,11 @@ public class MainActivity extends ComponentActivity {
 
         final java.util.List<io.github.zpan2327.hyperhand.glass.dialogs.RestartScope> scopes =
                 new java.util.ArrayList<>();
+        // 条目必须与 LSPosed 里勾选的作用域一一对应（见 META-INF/xposed/scope.list）：
+        // system（system_server，按键 Hook 所在地）+ 系统界面 + 小米桌面。
+        // 之前这里只写了后两项，新增 system 作用域后对话框里就缺了「系统框架」。
+        scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
+                "system", "系统框架"));
         scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
                 "com.android.systemui", "系统界面"));
         scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
@@ -562,16 +582,23 @@ public class MainActivity extends ComponentActivity {
                 new io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost.OnConfirm() {
                     @Override
                     public void onConfirm(java.util.List<String> selected) {
+                        boolean system = selected.contains("system");
                         boolean sysui = selected.contains("com.android.systemui");
                         boolean home = selected.contains("com.miui.home");
                         dismissRestartDialog(host);
                         // 第一个对话框点确定即直接重启，不再弹第二个确认框。
-                        if (sysui && home) {
+                        if (system) {
+                            // system_server 一重启，zygote 会连它带上所有应用一起重启，
+                            // 系统界面与桌面自然也在其中，不必再单独 kill 一遍。
+                            restartScopeNow("system");
+                        } else if (sysui && home) {
                             doRestart();
                         } else if (sysui) {
                             restartScopeNow("sysui");
                         } else if (home) {
                             restartScopeNow("home");
+                        } else {
+                            toast("未选择任何作用域");
                         }
                     }
                 });
@@ -716,9 +743,36 @@ public class MainActivity extends ComponentActivity {
         return 1;
     }
 
-    /** 探测结果还没回来：状态卡显示「检测中」，避免先闪一下红色再变绿。 */
-    boolean probing() {
-        // 总开关关掉时结论已经确定，不要拿「检测中」盖住红色的未启用状态。
+    /**
+     * 状态卡显示用的结论：**只有 0（未启用）/ 2（已激活）两种**，不再有「检测中」。
+     *
+     * <p>每次切页都会重新探测（{@link #refreshPage}），探测在途期间若把卡片改成中性态，
+     * 左右滑页就会看到「模块已激活 → 检测中 → 模块已激活」闪一下 —— 用户明确要求
+     * 去掉这个中间态。做法：探测在途时继续沿用上一次结论，等探测回来再更新。
+     * 进程内还没有任何结论时（冷启动第一帧），用「有没有注入心跳」作初值，
+     * 避免把已经激活的模块先画成红色再翻绿；探测回来会立刻纠正。
+     */
+    int displayStatus() {
+        int level = statusLevel();
+        if (level == 2) {
+            lastKnownStatus = 2;
+            return 2;
+        }
+        if (probePending()) {
+            if (lastKnownStatus < 0) {
+                long ts = Math.max(Cfg.aliveTs(this, Cfg.K_ALIVE_SYSUI),
+                        Cfg.aliveTs(this, Cfg.K_ALIVE_LAUNCHER));
+                lastKnownStatus = ts > 0 ? 2 : 1;
+            }
+            return lastKnownStatus;
+        }
+        lastKnownStatus = level;
+        return level;
+    }
+
+    /** 上一次探测之后还没得出结论的时间窗（广播回写需要几十毫秒）。 */
+    private boolean probePending() {
+        // 总开关关掉时结论已经确定，不需要等探测。
         if (!cfg().enabled || statusLevel() == 2) {
             return false;
         }
@@ -739,10 +793,10 @@ public class MainActivity extends ComponentActivity {
         if (overviewPage != null) {
             View v = overviewPage.view();
             v.removeCallbacks(probeRefresh);
-            // 180ms 常规回写、650ms 兜底慢机广播排队；关键是最末这一发必须落在
-            // probing() 的 700ms 窗口之外（取 850ms），否则刷新时窗口还没结束、
-            // 状态卡会永远停在「检测中」——LSPosed 没启用模块/没勾作用域时无人应答，
-            // 就靠这一发把结论落成红色「模块未启用」。
+            // 180ms 常规回写、650ms 兜底慢机广播排队；最末这一发（850ms）必须落在
+            // probePending() 的 700ms 窗口之外，否则窗口结束时结论还没刷新、卡片会一直
+            // 沿用上一次结论 —— LSPosed 没启用模块/没勾作用域时无人应答，就靠这一发
+            // 把结论落成红色「模块未启用」。
             v.postDelayed(probeRefresh, 180);
             v.postDelayed(probeRefresh, 650);
             v.postDelayed(probeRefresh, 850);
@@ -885,12 +939,30 @@ public class MainActivity extends ComponentActivity {
                 });
     }
 
-    /** 单作用域直接重启（第一个对话框点确定后调用，不再弹第二个确认框）。scope = "sysui" / "home"。 */
+    /**
+     * 单作用域直接重启（第一个对话框点确定后调用，不再弹第二个确认框）。
+     *
+     * <p>scope = {@code "system"}（system_server，按键 Hook 所在地）/ {@code "sysui"} /
+     * {@code "home"}。system_server 与其他两类不是一个量级：杀掉它等于软重启整机
+     * （zygote 连带所有应用进程重建，黑屏十几秒后自动回到桌面），所以命令、超时与
+     * 失败兜底都单独处理。
+     */
     void restartScopeNow(final String scope) {
-        final String label = "sysui".equals(scope) ? "系统界面" : "小米桌面";
-        final String pkg = "sysui".equals(scope) ? "com.android.systemui" : "com.miui.home";
+        final boolean system = "system".equals(scope);
+        final String label = system ? "系统框架"
+                : ("sysui".equals(scope) ? "系统界面" : "小米桌面");
+        final String pkg = system ? "system_server"
+                : ("sysui".equals(scope) ? "com.android.systemui" : "com.miui.home");
+        final String cmd = system
+                ? "killall system_server"
+                : "killall " + pkg + "; sleep 1; input keyevent 3";
         settingsPage.setRestarting(true);
-        settingsPage.setStatus("正在检查 root 权限……若弹出授权请允许。");
+        settingsPage.setStatus(system
+                ? "正在软重启系统框架，屏幕会短暂黑屏、约 20 秒后自动恢复，请不要手动操作。"
+                : "正在检查 root 权限……若弹出授权请允许。");
+        if (system) {
+            toast("正在软重启系统…");
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -908,11 +980,25 @@ public class MainActivity extends ComponentActivity {
                     });
                     return;
                 }
-                final String err = su("killall " + pkg + "; sleep 1; input keyevent 3", 25000L);
+                final String err = su(cmd, system ? 15000L : 25000L);
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         settingsPage.setRestarting(false);
+                        if (system) {
+                            // system_server 一死，本进程通常跟着被回收，这个回调多数时候
+                            // 根本执行不到。真执行到了只可能是命令没生效 —— 此时**不要**
+                            // broadcastAction("reload") 兜底：那是给系统界面用的，对
+                            // system_server 无意义，还会把失败原因盖掉。
+                            if (err != null) {
+                                settingsPage.setStatus("重启系统框架失败：" + err);
+                                toast("重启失败");
+                            } else {
+                                settingsPage.setStatus("已请求重启系统框架，系统即将软重启。");
+                            }
+                            if (current == TAB_OVERVIEW) overviewPage.refresh();
+                            return;
+                        }
                         if (err == null) {
                             settingsPage.setStatus("已结束" + label + "，钩子会在它重启后重新注入。");
                             toast("已重启" + label);

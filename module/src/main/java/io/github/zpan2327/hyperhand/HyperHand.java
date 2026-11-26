@@ -151,6 +151,16 @@ public class HyperHand extends XposedModule {
     public void onModuleLoaded(ModuleLoadedParam param) {
         Log.i(TAG, "module loaded: " + getFrameworkName() + " " + getFrameworkVersion()
                 + " (api " + getApiVersion() + "), process=" + param.getProcessName());
+        // 智能按键映射 PoC：system_server 进程内 Hook 音量键。
+        // 用 isSystemServer() 作为第一入口 —— framework 类必须用系统 ClassLoader 加载。
+        if (param.isSystemServer()) {
+            try {
+                new io.github.zpan2327.hyperhand.smartkey.hook.KeyHookEntry(this)
+                        .install(ClassLoader.getSystemClassLoader());
+            } catch (Throwable t) {
+                Log.w(TAG, "smartkey install (onModuleLoaded) failed: " + t);
+            }
+        }
     }
 
     @Override
@@ -160,6 +170,15 @@ public class HyperHand extends XposedModule {
             hookSystemUi(param.getDefaultClassLoader());
         } else if (PKG_LAUNCHER.equals(pkg)) {
             hookLauncher(param.getDefaultClassLoader());
+        } else if ("android".equals(pkg)) {
+            // system_server 在 libxposed 里以 "android" 包名回调，作为第二入口兜底。
+            // KeyHookEntry 内部幂等，双入口不会重复 Hook。
+            try {
+                new io.github.zpan2327.hyperhand.smartkey.hook.KeyHookEntry(this)
+                        .install(param.getDefaultClassLoader());
+            } catch (Throwable t) {
+                Log.w(TAG, "smartkey install (onPackageLoaded) failed: " + t);
+            }
         }
     }
 

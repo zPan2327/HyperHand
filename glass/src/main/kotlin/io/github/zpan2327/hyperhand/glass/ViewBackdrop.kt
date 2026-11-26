@@ -50,6 +50,9 @@ internal class ViewBackdrop : Backdrop {
 
     private val warned = AtomicBoolean(false)
 
+    /** 复用坐标数组：这里每帧都要跑，`IntArray(2)` 的分配在滚动时是实打实的 GC 压力。 */
+    private val locationOnScreen = IntArray(2)
+
     override val isCoordinatesDependent: Boolean = true
     override val offsetResidualX: Float = 0f
     override val offsetResidualY: Float = 0f
@@ -83,7 +86,8 @@ internal class ViewBackdrop : Backdrop {
         val padX = (layerWidth - node.size.width) / 2f
         val padY = (layerHeight - node.size.height) / 2f
 
-        val sourceOnScreen = IntArray(2).also { source.getLocationInWindow(it) }
+        val sourceOnScreen = locationOnScreen
+        source.getLocationInWindow(sourceOnScreen)
         val nodeOnScreen = node.positionInWindow()
         val surfaceInSource = Offset(
             x = nodeOnScreen.x - sourceOnScreen[0],
@@ -129,8 +133,7 @@ internal class ViewBackdrop : Backdrop {
         }
     }
 
-    private fun capture(source: View, region: Rect, sampleScale: Float): Bitmap? {
-        // 同一帧里容器与指示器都会调一次，区域有包含关系：命中缓存直接复用。
+    private fun capture(source: View, region: Rect, sampleScale: Float): Bitmap? {        // 同一帧里容器与指示器都会调一次，区域有包含关系：命中缓存直接复用。
         if (bufferValid && buffer != null && bufferRect.contains(region)) {
             return buffer
         }

@@ -170,7 +170,7 @@ final class OverviewPage {
                 dm.widthPixels + " × " + dm.heightPixels + " · " + dm.densityDpi + " dpi");
         Ui.infoText(c, infoBody, pal, "模块版本", moduleVersion());
         Ui.infoText(c, infoBody, pal, "作用域",
-                "系统界面 com.android.systemui\n桌面 com.miui.home");
+                "系统框架 system（按键映射）\n系统界面 com.android.systemui\n桌面 com.miui.home");
         Ui.infoText(c, infoBody, pal, "安装时间", installTime(), false);
         dynamic.addView(cardInfo, Ui.cardLp(c, Theme.CARD_GAP));
 
@@ -191,13 +191,12 @@ final class OverviewPage {
      * 状态卡配色与 SonyPods {@code StatusCard} 逐值一致：
      * 已激活 = 绿 {@code #36D167}/{@code #DFFAE4}，未启用 = 红 {@code #FF5A52}/{@code #FFE5E3}。
      *
-     * <p>只有 {@link MainActivity#statusLevel()} 主动探测到作用域进程回写心跳（level 2）
-     * 才是绿色；LSPosed 里没启用模块 / 作用域没重启时一律红色「模块未启用」，
-     * 不再拿 7 天内的历史心跳冒充「已激活」。探测在途用中性色，避免红→绿闪一下。
+     * <p><b>只有两种状态，没有「检测中」</b>：{@link MainActivity#displayStatus()} 在探测
+     * 在途时沿用上一次结论，因此左右滑页不会看到「已激活 → 检测中 → 已激活」的闪动。
      * 卡不可点击（见 {@link #statusCard()}）。
      */
     private void applyHero() {
-        int level = host.statusLevel();
+        int level = host.displayStatus();
         int bg;
         int iconTint;
         int summaryColor;
@@ -209,12 +208,6 @@ final class OverviewPage {
             summaryColor = Theme.alpha(pal.night ? 0xFFB8E8C5 : 0xFF2F3A32, 0.78f);
             title = "模块已激活";
             summary = "钩子已在系统界面生效";
-        } else if (host.probing()) {
-            bg = pal.card;
-            iconTint = pal.summary;
-            summaryColor = pal.summary;
-            title = "检测中";
-            summary = "正在查询模块运行状态…";
         } else {
             bg = pal.night ? 0xFF3A201E : 0xFFFFE5E3;
             iconTint = pal.night ? 0xFFFF8A82 : 0xFFFF5A52;

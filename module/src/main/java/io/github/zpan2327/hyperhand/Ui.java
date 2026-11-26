@@ -93,6 +93,20 @@ final class Ui {
         return t;
     }
 
+    /**
+     * 卡内分段标题：一张卡片内部再分段时用（例如「单手模式增强」这张卡里的
+     * 「触发与识别 / 触发区 / 外观 / 动效」）。
+     *
+     * <p>与 {@link #section} 的区别：左边距取 16dp —— 和卡片内每一行的文字左边界对齐，
+     * 不再叠加页面级 26dp 缩进；上下留白也更小，读起来仍是同一张卡里的一个段落，
+     * 而不是把卡片切开。
+     */
+    static TextView cardSection(Context c, Theme.Colors p, String s) {
+        TextView t = text(c, s, Theme.T_SECTION, p.section, Theme.bold());
+        t.setPadding(Theme.dp(c, 16), Theme.dp(c, 16), Theme.dp(c, 16), Theme.dp(c, 4));
+        return t;
+    }
+
     // ---------------------------------------------------------------- 卡片
 
     /** miuix Card：16dp squircle 底，无内边距（行自己带 16dp）。 */

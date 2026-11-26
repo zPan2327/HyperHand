@@ -49,27 +49,27 @@ import java.lang.reflect.Method;
  * 这些常量是"效果 id"而不是时长/振幅，所以出来的手感是线性马达的短促脉冲，
  * 不是转子马达的嗡嗡声。
  */
-final class Haptics {
+public final class Haptics {
 
     // 澎湃 OS 触感常量（miui.view.MiuiHapticFeedbackConstants，已反编译核对）
-    static final int TAP_LIGHT = 268435457;
-    static final int TAP_NORMAL = 268435456;
-    static final int SWITCH = 268435459;
-    static final int MESH_LIGHT = 268435462;
-    static final int MESH_NORMAL = 268435461;
-    static final int POPUP_LIGHT = 268435465;
-    static final int SCROLL_EDGE = 268435467;
-    static final int FLICK_LIGHT = 268435469;
-    static final int BUTTON_SMALL = 268435475;
-    static final int BUTTON_MIDDLE = 268435474;
-    static final int BUTTON_LARGE = 268435473;
-    static final int ALERT = 268435479;
+    public static final int TAP_LIGHT = 268435457;
+    public static final int TAP_NORMAL = 268435456;
+    public static final int SWITCH = 268435459;
+    public static final int MESH_LIGHT = 268435462;
+    public static final int MESH_NORMAL = 268435461;
+    public static final int POPUP_LIGHT = 268435465;
+    public static final int SCROLL_EDGE = 268435467;
+    public static final int FLICK_LIGHT = 268435469;
+    public static final int BUTTON_SMALL = 268435475;
+    public static final int BUTTON_MIDDLE = 268435474;
+    public static final int BUTTON_LARGE = 268435473;
+    public static final int ALERT = 268435479;
 
     private static final long THROTTLE_MS = 32L;
 
     private static Haptics sInstance;
 
-    static synchronized Haptics get(Context c) {
+    public static synchronized Haptics get(Context c) {
         if (sInstance == null) {
             sInstance = new Haptics(c.getApplicationContext());
         }
@@ -85,7 +85,7 @@ final class Haptics {
     private Method compatPerform;
     private boolean compatTried;
 
-    private View hostView;
+    private final java.util.ArrayList<View> hosts = new java.util.ArrayList<>();
     private long lastAt;
     private int lastEffect;
 
@@ -107,8 +107,28 @@ final class Haptics {
     }
 
     /** 提供一个 View 作为 performHapticFeedback 的宿主（通常是 Activity 根 View）。 */
-    void attach(View v) {
-        hostView = v;
+    public void attach(View v) {
+        if (v == null) {
+            return;
+        }
+        synchronized (hosts) {
+            if (!hosts.contains(v)) {
+                hosts.add(v);
+            }
+        }
+    }
+
+    /**
+     * 解除宿主绑定。
+     *
+     * <p>多个页面/Activity 会共用同一个 {@link Haptics} 单例，所以宿主是一个列表而不是
+     * 单个引用：任一页面销毁只移除自己那个 View，不会把别人的宿主一起清掉。
+     * {@link #playView(int)} 会从最新的宿主往前挑一个仍然 attached 的来用。</p>
+     */
+    public void detach(View v) {
+        synchronized (hosts) {
+            hosts.remove(v);
+        }
     }
 
     private boolean enabled() {
@@ -130,7 +150,7 @@ final class Haptics {
     // ---------------------------------------------------------------- 语义入口
 
     /** 轻点：列表行、底栏 tab、二级菜单项。 */
-    void tick() {
+    public void tick() {
         play(TAP_LIGHT);
     }
 
@@ -142,7 +162,7 @@ final class Haptics {
      * 紧叠一发满强度 {@code PRIMITIVE_CLICK}（实体"咔"的力量感），两者无延迟叠加，
      * 得到 iOS 开关/选择器那种干净利落的一记脆响，不拖尾、不嗡嗡。</p>
      */
-    void crispTick() {
+    public void crispTick() {
         // 用独立 id 做节流，避免和其它 effect 共用节流槽互相干扰。
         if (!enabled() || isThrottled(0x43524950)) return; // 'CRIP'
         playCrispClick();
@@ -157,7 +177,7 @@ final class Haptics {
      * 201 是 MIUI 预烘焙的边界回弹 effect，用 {@link VibrationEffect#createPredefined(int)}
      * 即可原样拿到；直接打原语（TICK+CLICK）做不出这个"弹一下"的感觉。</p>
      */
-    void rebound() {
+    public void rebound() {
         if (!enabled() || isThrottled(0x52454231)) return; // 'REB1'
         try {
             VibrationEffect e = VibrationEffect.createPredefined(201);
@@ -202,41 +222,41 @@ final class Haptics {
     }
 
     /** 按钮：主按钮更实、次按钮更轻。 */
-    void click() {
+    public void click() {
         play(BUTTON_SMALL);
     }
 
-    void clickPrimary() {
+    public void clickPrimary() {
         play(BUTTON_MIDDLE);
     }
 
     /** 开关切换。 */
-    void toggle() {
+    public void toggle() {
         play(SWITCH);
     }
 
     /** 滑杆每格。 */
-    void step() {
+    public void step() {
         play(MESH_LIGHT);
     }
 
     /** 滚动到顶/底的边界。 */
-    void edge() {
+    public void edge() {
         play(SCROLL_EDGE);
     }
 
     /** 左右滑动翻页。 */
-    void flip() {
+    public void flip() {
         play(FLICK_LIGHT);
     }
 
     /** 弹出菜单 / 对话框出现。 */
-    void popup() {
+    public void popup() {
         play(POPUP_LIGHT);
     }
 
     /** 破坏性操作确认、失败。 */
-    void alert() {
+    public void alert() {
         play(ALERT);
     }
 
@@ -289,15 +309,28 @@ final class Haptics {
 
     /** View#performHapticFeedback(int)：MIUI 的 DecorView 识别 FLAG_MIUI_HAPTIC。 */
     private boolean playView(int effect) {
-        View v = hostView;
-        if (v == null) {
-            return false;
+        java.util.ArrayList<View> snapshot;
+        synchronized (hosts) {
+            if (hosts.isEmpty()) {
+                return false;
+            }
+            snapshot = new java.util.ArrayList<>(hosts);
         }
-        try {
-            return v.performHapticFeedback(effect);
-        } catch (Throwable t) {
-            return false;
+        // 从最新注册的宿主往前找：优先当前可见的 Activity，跳过已经销毁的。
+        for (int i = snapshot.size() - 1; i >= 0; i--) {
+            View v = snapshot.get(i);
+            if (v == null || !v.isAttachedToWindow()) {
+                continue;
+            }
+            try {
+                if (v.performHapticFeedback(effect)) {
+                    return true;
+                }
+            } catch (Throwable ignored) {
+                // 换下一个宿主
+            }
         }
+        return false;
     }
 
     /** 最后兜底：Composition 原语或 one-shot 波形。 */

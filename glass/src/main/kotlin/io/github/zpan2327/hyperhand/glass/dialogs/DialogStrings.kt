@@ -18,7 +18,7 @@ internal object S {
 
     // RestartScopeDialog
     const val restart_scope_title = "重启作用域"
-    const val restart_scope_summary = "选择要使用 root 重启的应用。"
+    const val restart_scope_summary = "选择要用 root 重启的进程。勾选「系统框架」会软重启整个系统，约 20 秒后自动恢复。"
 
     // PowerOffDialog
     const val power_off_title = "关闭耳机电源？"

@@ -1,4 +1,9 @@
 # HyperHand · libxposed API 102
 minApiVersion=102
 targetApiVersion=102
-staticScope=true
+# 智能按键映射需要用户自行勾选作用域：
+# 1) system —— system_server 虚拟作用域，Hook PhoneWindowManager 拦截物理按键（必需）
+# 2) com.android.systemui / com.miui.home —— 原有单手模式功能所需
+# 3) 音乐软件（如 com.netease.cloudmusic）—— 预留，供后续按包名识别媒体会话
+# 故改为非静态作用域。
+staticScope=false

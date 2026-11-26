@@ -13,30 +13,33 @@ import android.widget.ScrollView;
  * <pre>
  * overScrollVertical(
  *     scrollEasing = { distance, range -> DefaultParabolaScrollEasing(distance, range) },
- *     springStiff = 280f, springDamp = 1f
+ *     springStiff = 190f, springDamp = 0.9f     // miuix 原值 280 / 1.0，按手感调软
  * )
- * overscrollEffect = null         // 关掉系统 EdgeEffect，避免和橡皮筋打架
+ * overscrollEffect = null                        // 关掉系统 EdgeEffect，避免和橡皮筋打架
  * </pre>
  *
- * <p><b>设计要点（这一版重写的三个原因）</b>
+ * <h3>只有一套逻辑（2026-11 重写）</h3>
  *
- * <p>1. <b>滚动源永远由系统处理，橡皮筋只做叠加位移</b>。旧实现进入 band 后就不再把
- * MOVE 交给 {@code super}，ScrollView 的 {@code mLastMotionY} / {@code mIsBeingDragged} /
- * {@code VelocityTracker} 全部停在旧的帧上，退出 band 的第一帧位移量按「当前 y − 过期 y」
- * 算，内容会猛跳一下；再次按下时也要重新过一遍 touchSlop，手感就是「卡一下」。
- * 现在每个 MOVE 都原样转发给系统（等价于 NestedScroll 的
- * {@code onPreScroll} 先让滚动源消费），再用 {@code getScrollY()} 的前后差值求出
- * 「没被吃下的余量」，只把这份余量转成 {@code translationY}。状态机始终同步，切换零跳变。
+ * <p>旧实现里有四条路径同时改同一个 {@code offset}：手指拖动、形变回收、惯性冲量
+ * （{@code impulseTick} 自己一套逐帧衰减）、弹簧回弹；而且拖动到「形变归零」时会
+ * 就地 {@code startRebound()}，于是弹簧和手指在同一段时间里各写一次位移 —— 这就是
+ * 「下拉回弹不干净、像有多套逻辑」的来源。
  *
- * <p>2. <b>越界距离必须累加</b>。旧实现每帧 {@code rawDistance = -available}（覆盖），
- * 每次只反映单帧增量，手指匀速拖动时位移反而一顿一顿的。现在累加，并且反向拖动时先把
- * 形变收回 0，不让它穿过 0 变成另一侧的拉伸。
+ * <p>现在只有两个量和一个弹簧：
+ * <ul>
+ *   <li>{@link #rawDistance}：手指空间里的越界距离（正 = 底部方向，负 = 顶部方向）；</li>
+ *   <li>{@link #offset}：实际施加在内容上的 {@code translationY}，恒等于
+ *       {@code -easing(rawDistance)}；</li>
+ *   <li>{@link #spring}：只在手指抬起后运行，唯一目标是把 {@code offset} 收回 0。</li>
+ * </ul>
  *
- * <p>3. <b>惯性（fling）也要能撞出橡皮筋</b>。快速滑动后在手指抬起之后才到达边界，
- * 此时滚动完全由 {@link #computeScroll()} 里的 {@code Scroller} 驱动，根本不经过
- * {@code onTouchEvent} —— 这就是「滚动到底部要再滚一次才出现橡皮筋」的真正原因。
- * 现在在 {@code computeScroll()} 里监测「scroller 还在跑但 scrollY 已不再变化」，
- * 把上一帧的滚动增量当作冲量转成越界位移，再交给弹簧带着初速度弹回，惯性是连续的。
+ * <p>每帧 MOVE 只做一件事：把这帧的手指位移按「先收形变、再滚内容」的顺序分配。
+ * 系统滚动照常先跑（保持 {@code mLastMotionY} / {@code mIsBeingDragged} /
+ * {@code VelocityTracker} 的状态机同步，切换零跳变），但一旦处在越界形变中，
+ * 就把系统这一帧滚掉的量原样撤销，位移全部按上面的口径重新分配。
+ *
+ * <p>惯性撞边界也只喂给同一个弹簧：不再单独跑一条「冲出」动画，而是给弹簧一个朝外的
+ * 初速度，让它自己冲出去、再收回来 —— 一次积分、一个曲线，没有接缝。
  *
  * <p>不含任何触感反馈（页面切换 / 滚动边界的震动已按要求移除）。
  */
@@ -56,80 +59,60 @@ class MiuixScrollView extends ScrollView {
     private static final float SPRING_DAMP_RATIO = 0.9f;
     /** 橡皮筋饱和上限（占视高比例），miuix 的 parabola 会自然收敛到这里。 */
     private static final float MAX_OVERSCROLL_RATIO = 0.20f;
-    /** 惯性撞边界：把单帧滚动增量换成 spring 的初速度（px/帧 → px/秒，再按撞墙损耗衰减）。 */
-    private static final float FLING_VELOCITY_SCALE = 12f;
+    /** 抬手时喂给弹簧的手指速度上限：再大就会从 10% 屏高一路冲到 25% 以上，像失控。 */
+    private static final float MAX_RELEASE_VELOCITY = 2600f;
     /**
-     * 回弹初速度上限。spring 的 ω = √280 ≈ 16.7 rad/s，临界阻尼下过冲量约
-     * {@code v / ω / e}，2600 px/s 对应约 57px 的继续外冲 —— 有惯性但不夸张。
-     * 再大就会从 10% 屏高的位移一路冲到 25% 以上，看着像失控。
+     * 惯性撞边界的初始速度上限。ζ=0.9 / ω=13.8 时峰值位移 ≈ 0.0286 × v，
+     * 5600 px/s 对应约 160px（约 6% 屏高），有惯性但不夸张。
      */
-    private static final float MAX_VELOCITY = 2600f;
+    private static final float MAX_FLING_VELOCITY = 5600f;
+    /** 惯性速度 → 弹簧初速度的折算系数（实测倍率，配合上面的峰值关系定标）。 */
+    private static final float FLING_VELOCITY_SCALE = 0.7f;
+    /** 调试开关：打印每一次非零形变与来源（定位「中段回弹」用，发布置 false）。 */
+    private static final boolean DEBUG_OVERSCROLL = false;
 
     private final Ui.Spring spring = new Ui.Spring(0f);
 
     private OnOverScroll listener;
 
-    /** 上一帧的触摸 y，用于算逐帧位移。 */
+    /** 上一次 MOVE 的触摸 y。 */
     private float lastY;
-    /** 手指越界的累计距离（正 = 顶部下拉，负 = 底部上推）。 */
+    /** 按下点 y 与「是否已越过 touchSlop」。没过 slop 的微小位移不能起步橡皮筋。 */
+    private float downY;
+    /** 本次手势是否已经拿到起点（DOWN 可能被子 View 吃掉，见 onInterceptTouchEvent）。 */
+    private boolean gestureStarted;
+    /** 本次手势是否已经接管形变（停了弹簧、从当前 offset 接着拉）。 */
+    private boolean tookOver;
+    /** 仅调试：最近一次位移来源。 */
+    private String why = "";
+    private boolean dragging;
+    private final int touchSlop = android.view.ViewConfiguration.get(
+            getContext()).getScaledTouchSlop();
+    /** 手指空间里的越界累计距离：负 = 顶部下拉，正 = 底部上推。 */
     private float rawDistance;
-    /** 映射之后真正施加在内容上的位移。 */
+    /** 实际施加的 translationY。 */
     private float offset;
-    /** 手指速度（px/秒，正 = 手指上移），抬手时喂给弹簧做惯性。 */
+    /** 手指速度（px/s，正 = 手指上移），抬手时喂给弹簧。 */
     private float fingerVelocity;
     private long lastMoveAt;
 
-    /** 上一帧 fling 的 scrollY 增量，用来检测「惯性撞边界」。 */
-    private int lastFlingDelta;
+    /** 弹簧是否在跑（手指抬起后的唯一动画）。 */
+    private boolean settling;
     private long lastFrameAt;
+    private int settleFrames;
 
+    /** 上一次 fling 的 scrollY 增量，用来检测「惯性撞边界」。 */
+    private int lastFlingDelta;
+    /** watchdog 上一帧看到的 scrollY。 */
+    private int watchScrollY;
     /**
-     * 是否处于 fling（惯性）期间。{@code computeScroll()} 是每帧都被框架调用的，
-     * 非 fling 状态下 {@code delta} 同样为 0，如果不显式跟踪生命周期，就会把上一次
-     * 滚动留下的旧增量误判成「撞边界」，在正常滚动到边界时提前弹一下。
+     * 是否处于 fling（惯性）期间。{@code computeScroll()} 每帧都会被调，
+     * 非 fling 时增量同样为 0，不显式跟踪就会把上一次滚动留下的旧增量误判成撞边界。
      */
     private boolean flinging;
     private int flingIdleFrames;
     /** 本次 fling 的初始速度（px/s），用于「一帧都没滚过」时折算冲量。 */
     private int flingVelocityY;
-
-    /** 惯性冲出的当前速度（px/帧），逐帧衰减到 0 后交给弹簧。 */
-    private float impulseV;
-    /** 两个动画循环的帧计数，只作死循环兜底。 */
-    private int reboundFrames;
-    private int impulseFrames;
-
-    private final Runnable rebound = new Runnable() {
-        @Override
-        public void run() {
-            // 硬上限兜底：弹簧在极端数值下若不收敛，这里也绝不会变成常驻循环。
-            if (++reboundFrames > 180) {
-                finishRebound();
-                return;
-            }
-            long now = SystemClock.uptimeMillis();
-            float dt = lastFrameAt == 0 ? 0.016f : Math.min(0.048f, (now - lastFrameAt) / 1000f);
-            lastFrameAt = now;
-            spring.step(dt);
-            apply(spring.value);
-            // 这里不用 Spring#settled()：它的阈值是 0.0008px，对像素位移过严，
-            // 会在已经看不出来的位置上多跑十几帧。
-            boolean done = Math.abs(spring.value) < 0.4f && Math.abs(spring.velocity) < 26f;
-            if (done) {
-                finishRebound();
-            } else {
-                postOnAnimation(this);
-            }
-        }
-    };
-
-    private void finishRebound() {
-        spring.value = 0f;
-        spring.velocity = 0f;
-        lastFrameAt = 0;
-        reboundFrames = 0;
-        apply(0f);
-    }
 
     MiuixScrollView(Context c) {
         super(c);
@@ -173,135 +156,169 @@ class MiuixScrollView extends ScrollView {
         return Math.copySign(lo, target);
     }
 
+    // ------------------------------------------------------------------ 触摸
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent e) {
+        boolean intercept = super.onInterceptTouchEvent(e);
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            // **必须在这里也记录起点**：手指按在可点击的子 View（设置页的卡片行、
+            // 开关、下拉项……）上时，DOWN 会被子 View 消费，根本进不到 onTouchEvent，
+            // 我们第一次拿到的是「已被父类判定为滚动」的那个 MOVE。若不在这里记录起点，
+            // lastY / downY 还是上一次手势的残留值，第一帧 dy 会是一个上千 px 的假跳变：
+            // 父类照它自己的 mLastMotionY 正常滚动（moved 很小），这个假余量一旦方向
+            // 撞上边界就被当成越界起点，直接拉到抛物线饱和值（约 20% 屏高）——
+            // 表现就是「还没到边界、方向也不对，却猛地弹一下」。
+            onGestureDown(e.getY());
+        } else if (intercept) {
+            // 父类这一帧刚判定开始滚动（已越过 touchSlop），后面的 MOVE 都会交给我们。
+            dragging = true;
+            lastMoveAt = SystemClock.uptimeMillis();
+        }
+        return intercept;
+    }
+
+    /** 记录一次手势的起点。不碰形变/弹簧 —— 手指可能只是点在卡片上。 */
+    private void onGestureDown(float y) {
+        flinging = false;      // 手指按下会中止系统 fling
+        removeCallbacks(flingWatch);
+        flingIdleFrames = 0;
+        lastFlingDelta = 0;
+        lastY = y;
+        downY = y;
+        dragging = false;
+        gestureStarted = true;
+        tookOver = false;
+        lastMoveAt = SystemClock.uptimeMillis();
+        fingerVelocity = 0f;
+    }
+
+    /**
+     * 真正轮到我们处理拖动时，才停弹簧并接管当前形变。
+     *
+     * <p>不能在 DOWN 就做：DOWN 可能被子 View 吃掉（纯点击），那样会把正在回弹的
+     * 形变冻在半路（弹簧被 cancel，又没人接着跑）。这里从当前 {@code offset} 反解出
+     * 手指空间距离，手指接着往下拖不会跳。
+     */
+    private void takeOverDeformation() {
+        stopSpring();
+        if (Math.abs(offset) > 0.5f) {
+            rawDistance = inverseEasing(-offset);
+        } else {
+            rawDistance = 0f;
+            apply(0f);
+        }
+        tookOver = true;
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {
-                removeCallbacks(rebound);
-                removeCallbacks(impulseTick);   // 冲出过程中按下：立刻接管
-                impulseV = 0f;
-                flinging = false;      // 手指按下会中止系统 fling
-                flingIdleFrames = 0;
-                lastY = e.getY();
-                lastMoveAt = SystemClock.uptimeMillis();
-                fingerVelocity = 0f;
-                lastFlingDelta = 0;
-                // 上一次回弹还没走完就重新按下：接管当前位移，手指可以从这里继续，
-                // 不把形变瞬移到 0（那样会闪一下）。
-                if (Math.abs(offset) > 0.5f) {
-                    rawDistance = inverseEasing(offset);
-                    spring.value = offset;
-                    spring.velocity = 0f;
-                } else {
-                    rawDistance = 0f;
-                    apply(0f);
-                }
+                onGestureDown(e.getY());
                 return super.onTouchEvent(e);
             }
 
             case MotionEvent.ACTION_MOVE: {
-                float dy = lastY - e.getY();   // >0 手指上移（内容应下滚）
+                if (!gestureStarted) {
+                    // 理论上不会走到：DOWN 至少会在 onInterceptTouchEvent 里被看到。
+                    // 万一真丢了起点，宁可这一帧只当普通滚动，也不要拿残留坐标算出假余量。
+                    onGestureDown(e.getY());
+                    return super.onTouchEvent(e);
+                }
+                if (!tookOver) {
+                    takeOverDeformation();
+                }
+                float dy = lastY - e.getY();   // > 0 手指上移（内容应向上滚）
                 lastY = e.getY();
 
                 long now = SystemClock.uptimeMillis();
                 float dt = Math.max(1f / 240f, (now - lastMoveAt) / 1000f);
                 lastMoveAt = now;
-                float instant = dy / dt;
                 // 轻微低通，避免最后一帧的抖动被当成抬手速度
-                fingerVelocity = fingerVelocity * 0.35f + instant * 0.65f;
+                fingerVelocity = fingerVelocity * 0.35f + (dy / dt) * 0.65f;
 
-                // 滚动源永远先消费：状态机（mLastMotionY / mIsBeingDragged）保持同步。
+                // 系统滚动先跑：保持它内部状态机同步。返回它这一帧实际滚掉的量。
                 int before = getScrollY();
                 boolean handled = super.onTouchEvent(e);
-                int consumed = getScrollY() - before;
-                float available = dy - consumed;
+                int moved = getScrollY() - before;
 
-                boolean atTop = !canScrollVertically(-1);
-                boolean atBottom = !canScrollVertically(1);
-
-                // 「继续往外推」：顶部还在往下拉 / 底部还在往上推。
-                boolean pullingOut = (atTop && available < -0.01f)
-                        || (atBottom && available > 0.01f);
-                boolean hasBand = Math.abs(rawDistance) > 0.01f;
-
-                // 形变回收优先于内容滚动：手指往回收（dy 与 rawDistance 同号）时，
-                // 这一帧的位移必须全部用来收形变。但系统在上面已经把它滚成内容位移了
-                // （进入内容区间后 consumed == dy，旧公式只剩像素取整残差，形变收敛不动），
-                // 于是形变挂着跟内容滚进中段，抬手时 wasOver 判成「越界松手」，
-                // 在中段炸出一次回弹 —— 这就是「没到顶/底却出现阻尼回弹」的根因。
-                // 这里把系统滚掉的量退回（stolen），dy 全额记到形变上：形变先归零、
-                // 多出来的位移才滚内容，与 iOS 橡皮筋「先回弹、后跟手」一致。
-                boolean collapsing = hasBand && Math.abs(dy) > 0.001f
-                        && Math.signum(dy) == Math.signum(rawDistance);
-                if (collapsing) {
-                    int stolen = getScrollY() - before;
-                    if (stolen != 0) {
-                        scrollBy(0, -stolen);
+                // 没过 touchSlop 的微小位移只交给系统（点击抖动不该拉起橡皮筋）。
+                if (!dragging) {
+                    if (rawDistance == 0f && Math.abs(e.getY() - downY) <= touchSlop) {
+                        return handled;
                     }
-                    float used = Math.copySign(
-                            Math.min(Math.abs(dy), Math.abs(rawDistance)), dy);
-                    float leftover = dy - used;
-                    float next = rawDistance - used;
-                    if (Math.signum(next) != Math.signum(rawDistance)) {
-                        next = 0f;
-                    }
-                    rawDistance = next;
-                    apply(defaultParabolaScrollEasing(rawDistance, getHeight()));
-                    if (next == 0f) {
-                        startRebound(0f);
-                        if (Math.abs(leftover) > 0.5f) {
-                            // 形变已收完，这一帧没用掉的位移还给内容滚动。
-                            scrollBy(0, Math.round(leftover));
-                        }
-                    }
-                    return true;
+                    dragging = true;
                 }
 
-                // 统一成一个式子：Δ形变 = -available。
-                // 轴向约定 —— 底部外推 available > 0 → 形变变负（内容上移）；
-                // 顶部外推 available < 0 → 形变变正（内容下移）。
-                // 反向拖动时 available 与 rawDistance 同号，绝对值自然减小，形变跟着手指收回，
-                // 不会像旧实现那样「两个分支都不命中所以卡住不动」。
-                if (pullingOut || (hasBand && Math.abs(available) > 0.01f)) {
-                    float next = rawDistance - available;
-                    if (hasBand && Math.signum(next) != Math.signum(rawDistance)) {
-                        next = 0f;   // 收回穿过 0：说明手指已回到可滚动区间，剩余量交给系统
+                if (rawDistance == 0f) {
+                    // 没有形变：系统已经按普通滚动处理，它没吃下的余量才可能是越界起点。
+                    //
+                    // **必须再判一次边界**：ScrollView 在「刚越过 touchSlop」的那一帧会先把
+                    // slop 从位移里扣掉再滚，于是那一帧 moved 比 dy 少了整整一个 slop，
+                    // leftover 恒为非 0。不判边界的话，页面正中间随便一划都会被当成越界，
+                    // 起手就拉出一段形变，抬手时弹簧再把它弹回去 —— 表现就是
+                    // 「每滑一次都触发边界回弹」。只有该方向已经滚不动，余量才是真越界。
+                    float leftover = dy - moved;
+                    boolean blocked = leftover > 0f
+                            ? !canScrollVertically(1) : !canScrollVertically(-1);
+                    if (leftover != 0f && blocked) {
+                        why = "MOVE dy=" + Math.round(dy) + " moved=" + moved;
+                        rawDistance = leftover;
+                        apply(-defaultParabolaScrollEasing(rawDistance, getHeight()));
+                        return true;   // 越界手势不落到子 View 的点击上
                     }
-                    rawDistance = next;
-                    apply(defaultParabolaScrollEasing(rawDistance, getHeight()));
-                    if (next == 0f) {
-                        startRebound(0f);
-                    }
-                    // 越界手势不落到子 View 的点击上
-                    return true;
+                    apply(0f);
+                    return handled;
                 }
-                return handled;
+
+                // 已越界：撤销系统这一帧的滚动，位移统一按「先收形变、再滚内容」分配。
+                if (moved != 0) {
+                    scrollBy(0, -moved);
+                }
+                float next = rawDistance + dy;
+                if (Math.signum(next) != Math.signum(rawDistance)) {
+                    // 穿过 0：形变刚好收完，剩下的还给内容滚动。
+                    rawDistance = 0f;
+                    feedToScroll(next);
+                    if (rawDistance != 0f) {
+                        // 刚收完又在另一侧撞到边界：继续当形变，不要一帧内来回翻。
+                        apply(-defaultParabolaScrollEasing(rawDistance, getHeight()));
+                        return true;
+                    }
+                    apply(0f);
+                    return handled;
+                }
+                rawDistance = next;
+                apply(-defaultParabolaScrollEasing(rawDistance, getHeight()));
+                return true;
             }
 
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
-                // 只有贴在边界上的形变才算「越界松手」；中段残余的形变（若有）
-                // 交给已在跑的弹簧，不要在中段再起一次回弹。
-                boolean atEdge = !canScrollVertically(-1) || !canScrollVertically(1);
-                boolean wasOver = atEdge && (Math.abs(offset) > 0.5f || rawDistance != 0f);
-                if (wasOver) {
-                    // 越界状态下抬手：给 super 一个 CANCEL 收尾，避免它拿抬手的 UP
-                    // 去启动一段必然被 clamp 掉的 fling（那会和弹簧回弹抢动画）。
-                    if (e.getActionMasked() == MotionEvent.ACTION_UP) {
-                        MotionEvent cancel = MotionEvent.obtain(e);
-                        cancel.setAction(MotionEvent.ACTION_CANCEL);
-                        super.onTouchEvent(cancel);
-                        cancel.recycle();
-                    } else {
-                        super.onTouchEvent(e);
-                    }
-                    rawDistance = 0f;
-                    // 手指速度方向 = 形变继续扩张的方向，回弹因此先带惯性冲一下再收。
-                    startRebound(-fingerVelocity);
-                    return true;   // 吞掉，避免误触发子控件点击
+                gestureStarted = false;
+                tookOver = false;
+                boolean wasOver = rawDistance != 0f || Math.abs(offset) > 0.5f;
+                if (!wasOver) {
+                    fingerVelocity = 0f;
+                    return super.onTouchEvent(e);
                 }
+                // 越界状态下抬手：给 super 一个 CANCEL 收尾，避免它拿 UP 去启动一段
+                // 必然被 clamp 掉的 fling（那会和弹簧抢动画）。
+                if (e.getActionMasked() == MotionEvent.ACTION_UP) {
+                    MotionEvent cancel = MotionEvent.obtain(e);
+                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+                    super.onTouchEvent(cancel);
+                    cancel.recycle();
+                } else {
+                    super.onTouchEvent(e);
+                }
+                float v0 = Math.max(-MAX_RELEASE_VELOCITY,
+                        Math.min(MAX_RELEASE_VELOCITY, -fingerVelocity));
                 fingerVelocity = 0f;
-                return super.onTouchEvent(e);
+                // 只在形变已建立时带惯性；形变已被手指收回 0 就不要再冲出去一次。
+                startSpring(Math.abs(offset) > 0.5f ? v0 : 0f);
+                return true;
             }
 
             default:
@@ -310,52 +327,74 @@ class MiuixScrollView extends ScrollView {
     }
 
     /**
-     * 惯性撞边界：scroller 仍在跑但 {@code scrollY} 已经不再变化，说明本帧应该滚动的
-     * 距离被边界 clamp 掉了。把这份余量当冲量转成越界位移，再带初速度弹回 ——
-     * 这样「快速滑到底」和「按住拖到底」的手感是一致的，不会出现「再滑一次才弹」。
+     * 把一段手指位移交给内容滚动；滚不动（撞边界）的余量转成新的形变。
+     *
+     * <p>这是唯一一处「位移 → 形变」的转换，拖动路径与形变回收路径都走它。
      */
-    @Override
-    public void computeScroll() {
+    private void feedToScroll(float d) {
+        if (d == 0f) {
+            return;
+        }
         int before = getScrollY();
-        super.computeScroll();
-        int delta = getScrollY() - before;
-
-        if (!flinging) {
-            return;
-        }
-        if (delta != 0) {
-            lastFlingDelta = delta;
-            flingIdleFrames = 0;
-            return;
-        }
-
-        // 这一帧 scrollY 没动：撞边界，或者 scroller 根本没有可滚的余量。
-        flingIdleFrames++;
-        // 关键补丁：一帧都没滚出去时 lastFlingDelta 仍是 0，旧实现会直接跳过判定，
-        // 于是「惯性正好停在临界位置」永远弹不出来，必须再滚一次才走拖动路径 ——
-        // 这就是用户报的「卡在临界位置」。这里用初始速度折算单帧增量兜底。
-        int impulse = lastFlingDelta != 0 ? lastFlingDelta : Math.round(flingVelocityY / 60f);
-        if (impulse == 0) {
-            flinging = false;
-            flingIdleFrames = 0;
-            return;
-        }
-        int dir = impulse > 0 ? 1 : -1;
-        boolean blocked = dir > 0 ? !canScrollVertically(1) : !canScrollVertically(-1);
-        if (blocked) {
-            flinging = false;
-            flingIdleFrames = 0;
-            lastFlingDelta = 0;
-            applyImpulse(impulse);
-            return;
-        }
-        if (flingIdleFrames > 2) {
-            // 没在边界却连续几帧没有位移：scroller 已自然结束，收尾即可。
-            flinging = false;
-            flingIdleFrames = 0;
-            lastFlingDelta = 0;
+        scrollBy(0, Math.round(d));
+        float used = getScrollY() - before;
+        float leftover = d - used;
+        if (leftover != 0f) {
+            rawDistance = leftover;
         }
     }
+
+    // ------------------------------------------------------------------ 惯性
+
+    /**
+     * 惯性撞边界：每帧比较 {@code scrollY} 有没有变化，一变都没有、而且该方向已经
+     * 滚不动了，就把上一帧的增量折成弹簧初速度交给同一个弹簧 —— 不再单独跑一条
+     * 「冲出」动画，冲出与收回是同一次积分。
+     *
+     * <p>为什么不用 {@code computeScroll()} 来监测：它只在 scroller 还在跑的时候被
+     * 框架调用。惯性正好在最后一帧到达边界时，scroller 同时结束，之后再也没有回调，
+     * 「甩到底」就永远不出橡皮筋（旧实现就有这个洞）。watchdog 自己逐帧 post，直到
+     * 判定结束为止，时机不依赖框架。
+     */
+    private final Runnable flingWatch = new Runnable() {
+        @Override
+        public void run() {
+            if (!flinging) {
+                return;
+            }
+            int y = getScrollY();
+            int delta = y - watchScrollY;
+            watchScrollY = y;
+            if (delta != 0) {
+                lastFlingDelta = delta;
+                flingIdleFrames = 0;
+                postOnAnimation(this);
+                return;
+            }
+            flingIdleFrames++;
+            int dir = lastFlingDelta != 0 ? Integer.signum(lastFlingDelta)
+                    : Integer.signum(flingVelocityY);
+            boolean blocked = dir != 0
+                    && (dir > 0 ? !canScrollVertically(1) : !canScrollVertically(-1));
+            if (blocked) {
+                int impulse = lastFlingDelta != 0 ? lastFlingDelta
+                        : Math.round(flingVelocityY / 60f);
+                flinging = false;
+                flingIdleFrames = 0;
+                lastFlingDelta = 0;
+                kickOutward(impulse);
+                return;
+            }
+            if (flingIdleFrames > 3) {
+                // 没在边界却连续几帧没有位移：scroller 已自然结束，收尾即可。
+                flinging = false;
+                flingIdleFrames = 0;
+                lastFlingDelta = 0;
+                return;
+            }
+            postOnAnimation(this);
+        }
+    };
 
     /** 记录一次真正的惯性启动；ScrollView 在抬手时会自己调到这里。 */
     @Override
@@ -364,85 +403,137 @@ class MiuixScrollView extends ScrollView {
         flinging = true;
         flingIdleFrames = 0;
         lastFlingDelta = 0;
+        watchScrollY = getScrollY();
 
         // 抬手瞬间就已经贴在边界上：scroller 没有任何可滚余量，某些情况下它甚至会
-        // 立刻结束，连一帧 computeScroll 的机会都没有。这里直接用速度生成冲量，
-        // 保证「甩到底」和「拖到底」一样立刻出橡皮筋。
+        // 立刻结束。这里直接用速度生成初速度，保证「甩到底」和「拖到底」一样立刻出橡皮筋。
         boolean blockedNow = velocityY > 0
                 ? !canScrollVertically(1) : !canScrollVertically(-1);
         if (blockedNow && Math.abs(velocityY) >= 120) {
             flinging = false;
-            applyImpulse(Math.round(velocityY / 60f));
+            kickOutward(Math.round(velocityY / 60f));
             return;
         }
         super.fling(velocityY);
+        removeCallbacks(flingWatch);
+        postOnAnimation(flingWatch);
     }
 
-    private void applyImpulse(int impulse) {
-        if (Math.abs(offset) > 0.5f) {
-            return;   // 已经在形变中，别叠第二次
+    /** 惯性撞边：给弹簧一个朝外的初速度，冲出 + 收回由同一次积分完成。 */
+    private void kickOutward(int impulse) {
+        why = "KICK imp=" + impulse;
+        if (Math.abs(offset) > 0.5f || settling) {
+            return;   // 已经在形变/回弹中，别叠第二次
         }
-        // 不在这里一次性把位移顶到饱和 —— 那等于内容瞬移，看着是「猛地一顿」。
-        // 改成按惯性逐帧衰减累积：和真实 overscroll 一样，冲出过程本身就是连续的。
-        impulseV = impulse;
-        impulseFrames = 0;
+        float v = -Math.signum(impulse)
+                * Math.min(MAX_FLING_VELOCITY, Math.abs(impulse) * 60f * FLING_VELOCITY_SCALE);
         rawDistance = 0f;
-        removeCallbacks(impulseTick);
-        postOnAnimation(impulseTick);
+        startSpring(v);
     }
 
-    /** 惯性冲出的分帧推进：每帧衰减，直到动能耗尽再交给弹簧收回。 */
-    private final Runnable impulseTick = new Runnable() {
+    // ------------------------------------------------------------------ 弹簧
+
+    private final Runnable springTick = new Runnable() {
         @Override
         public void run() {
-            if (++impulseFrames > 150) {
-                rawDistance = 0f;
-                impulseV = 0f;
-                startRebound(0f);
+            // 硬上限兜底：极端数值下若弹簧不收敛，也绝不会变成常驻循环。
+            if (++settleFrames > 240) {
+                finishSpring();
                 return;
             }
-            impulseV *= 0.72f;
-            rawDistance += -impulseV * 0.55f;
-            apply(defaultParabolaScrollEasing(rawDistance, getHeight()));
-            if (Math.abs(impulseV) > 2f) {
+            long now = SystemClock.uptimeMillis();
+            float dt = lastFrameAt == 0 ? 0.016f : Math.min(0.048f, (now - lastFrameAt) / 1000f);
+            lastFrameAt = now;
+            spring.step(dt);
+            apply(spring.value);
+            // 不用 Spring#settled()：它的阈值是 0.0008px，对像素位移过严，
+            // 会在已经看不出来的位置上多跑十几帧。
+            if (Math.abs(spring.value) < 0.4f && Math.abs(spring.velocity) < 26f) {
+                finishSpring();
+            } else {
                 postOnAnimation(this);
-                return;
             }
-            rawDistance = 0f;
-            startRebound(impulseV * FLING_VELOCITY_SCALE);
         }
     };
 
-    private void startRebound(float initialVelocity) {
-        rawDistance = 0f;
-        reboundFrames = 0;
-        removeCallbacks(rebound);
-        removeCallbacks(impulseTick);
-        if (Math.abs(offset) < 0.4f) {
-            // 已经没有形变了：别用残余的手速把弹簧从 0 再弹出去一次。
-            spring.value = 0f;
-            spring.velocity = 0f;
-            apply(0f);
-            return;
-        }
+    /**
+     * 启动唯一的那条回弹动画。
+     *
+     * @param initialVelocity 朝外的初速度（px/s）。0 表示纯收回；非 0 时先冲出去再收回。
+     */
+    private void startSpring(float initialVelocity) {
+        if (Math.abs(initialVelocity) > 0.5f) why = "SPRING v0=" + Math.round(initialVelocity);
+        removeCallbacks(springTick);
         spring.value = offset;
         spring.target = 0f;
-        spring.velocity = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, initialVelocity));
+        spring.velocity = initialVelocity;
         lastFrameAt = 0;
-        if (Math.abs(offset) < 0.4f && Math.abs(spring.velocity) < 26f) {
-            spring.value = 0f;
-            spring.velocity = 0f;
-            apply(0f);
+        settleFrames = 0;
+        if (Math.abs(spring.value) < 0.4f && Math.abs(spring.velocity) < 26f) {
+            finishSpring();
             return;
         }
-        postOnAnimation(rebound);
+        settling = true;
+        postOnAnimation(springTick);
+    }
+
+    private void finishSpring() {
+        removeCallbacks(springTick);
+        settling = false;
+        spring.value = 0f;
+        spring.velocity = 0f;
+        lastFrameAt = 0;
+        settleFrames = 0;
+        rawDistance = 0f;
+        apply(0f);
+    }
+
+    private void stopSpring() {
+        removeCallbacks(springTick);
+        settling = false;
+        lastFrameAt = 0;
+        settleFrames = 0;
+    }
+
+    /**
+     * 形变方向对应的边界是否真的到了。
+     *
+     * <p>{@code v < 0} = 内容被推向上方 = 需要「已到底」；{@code v > 0} = 顶部。
+     * 用 {@code canScrollVertically} 而不是自己算 scrollY，短页面（range=0）两个方向
+     * 都会返回 false，正好允许两边都弹。
+     */
+    private boolean atOverScrollEdge(float v) {
+        return v < 0f ? !canScrollVertically(1) : !canScrollVertically(-1);
     }
 
     private void apply(float v) {
         if (Math.abs(v) < 0.01f) {
             v = 0f;
         }
+        // **硬约束：不在边界上就不许有形变**。
+        //
+        // 位移只该由「已经顶到边、手指还在继续推」产生。前面几道判断（余量必须撞边界、
+        // 惯性 watchdog 必须滚不动）都依赖「这一帧的事件序列符合预期」，而真实手指的
+        // 事件流（子 View 吃掉 DOWN、事件批量、抬手那一帧的残余速度……）总会有没覆盖到
+        // 的组合，之前几版都是修掉一处又冒一处。所以这里再加一道与事件序列无关的兜底：
+        // 只要此刻这一侧还能滚，就把形变清零 —— 中段「莫名其妙弹一下」在结构上不可能发生。
+        if (v != 0f && !atOverScrollEdge(v)) {
+            if (DEBUG_OVERSCROLL) {
+                android.util.Log.d("HHOVS", "guard-block v=" + Math.round(v)
+                        + " scrollY=" + getScrollY() + " why=" + why);
+            }
+            v = 0f;
+            rawDistance = 0f;
+        }
+        if (v == offset) {
+            return;   // 位移没变就不重绘、不回调：普通滚动时这里每帧都会被调到
+        }
         offset = v;
+        if (DEBUG_OVERSCROLL && v != 0f) {
+            android.util.Log.d("HHOVS", "apply v=" + Math.round(v) + " scrollY=" + getScrollY()
+                    + " max=" + (getChildAt(0) == null ? -1 : getChildAt(0).getHeight() - getHeight())
+                    + " why=" + why);
+        }
         View child = getChildAt(0);
         if (child != null) {
             child.setTranslationY(v);
@@ -452,6 +543,4 @@ class MiuixScrollView extends ScrollView {
         }
         invalidate();
     }
-
-
 }

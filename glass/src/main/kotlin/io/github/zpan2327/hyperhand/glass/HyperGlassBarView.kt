@@ -3,7 +3,6 @@ package io.github.zpan2327.hyperhand.glass
 import android.content.Context
 import android.content.res.Configuration
 import android.util.AttributeSet
-import android.view.Choreographer
 import android.view.View
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -118,25 +117,17 @@ class HyperGlassBarView @JvmOverloads constructor(
 
     /** Called when the page scrolls so the sampled backdrop follows. */
     fun onContentScrolled() {
-        // 一次拖动/惯性里 onScrollChange 每帧可能来好几次，合并成一帧一次，
-        // 否则会在一帧内反复重组。
-        if (redrawScheduled) return
-        redrawScheduled = true
-        Choreographer.getInstance().postFrameCallback {
-            redrawScheduled = false
-            // 60fps 节流：滚动事件是 120Hz 的，逐帧 ++redrawTick 会让整条底栏每帧
-            // 重组一次并把整页软件重画一遍采样（Draw 阶段最大的一笔 CPU 开销）。
-            // 玻璃背后的内容本来就是糊的，采样图旧 8ms 完全看不出来。
-            val now = android.os.SystemClock.uptimeMillis()
-            if (now - lastTickAt >= 16L) {
-                lastTickAt = now
-                redrawTick.intValue++
-            }
-        }
+        // 不节流：每来一次滚动信号就 +1。一帧内写多次也会被 Compose 合并成一次重组，
+        // 所以底栏的重采样率等于屏幕刷新率（120Hz 屏就是 120fps）。
+        //
+        // 曾经这里按 16ms 节流，等于把底栏锁死在 60fps：120Hz 屏上内容每 8.3ms 动一次、
+        // 玻璃却每 16.6ms 才采一次，看起来就是「玻璃只有一半帧在更新」（用户反馈的
+        // 「采样率太低 / 帧率有点低」）。
+        //
+        // 也**不要**用「布尔锁存位 + Choreographer 回调复位」做合并：那个位一旦挂住，
+        // 之后所有滚动信号都会被 return 掉，玻璃会永久冻结到下次点击底栏。
+        redrawTick.intValue++
     }
-
-    private var redrawScheduled = false
-    private var lastTickAt = 0L
 
     /** 强调色（选中态的图标/文字）。不设则用 miuix 主题默认值。 */
     fun setAccentColor(argb: Int) {
@@ -152,7 +143,11 @@ class HyperGlassBarView @JvmOverloads constructor(
         val currentItems = items
         val isDark = dark
         val accentArgb = accent
-        // 组合期读一次：页面滚动时靠它驱动重组（进而重建 drawBackdrop 的绘制节点）。
+        // 组合期读一次：值变化驱动底栏重组，绘制节点随之重建、背板重新采样。
+        //
+        // 试过改到绘制期（`Modifier.drawWithContent { redrawTick.intValue }`，本意是
+        // 只让绘制失效、不重组），真机实测**失效**：recomp/s 变 0 的同时采样次数也变 0，
+        // 子树 draw 并没有重跑，玻璃冻在上一帧。这条路径不要再试。
         val tick = redrawTick.intValue
         // miuix 的默认主题色和 HyperHand 的设计 token 是同一套（primary #3482FF、
         // surfaceContainer #FFFFFF），所以浅/深色方案直接用默认值，只把 primary 换成

@@ -37,6 +37,10 @@ dependencies {
     api(platform("androidx.compose:compose-bom:2026.09.00"))
     api("androidx.compose.ui:ui")
     api("androidx.compose.foundation:foundation")
+    // 智能按键映射的页内导航需要 AnimatedContent / slideIn 等过渡动画。
+    api("androidx.compose.animation:animation")
+    // SmartKeyActivity 用 setContent 承载纯 Compose 页面。
+    api("androidx.activity:activity-compose:1.13.0")
     api("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4-rc01")
     // OverlayDropdownPopup / OverlayDropdownPreference 在独立的 preference 构件里
     api("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4-rc01")

@@ -806,8 +806,12 @@ final class BlurBg {
 
     // ------------------------------------------------------------------ 模糊
 
-    /** 三遍盒式模糊 ≈ 高斯（中心极限定理），可分离成横向 + 纵向两趟滑动窗口。 */
-    private static void boxBlur(int[] pix, int w, int h, int r, int passes) {
+    /**
+     * 三遍盒式模糊 ≈ 高斯（中心极限定理），可分离成横向 + 纵向两趟滑动窗口。
+     * 顶栏的实时模糊也走这一套（{@link TopBar}）：GPU 的 RenderEffect 在部分设备
+     * （含模拟器的 SwiftShader）上不生效，CPU 版本才是确定可见的。
+     */
+    static void boxBlur(int[] pix, int w, int h, int r, int passes) {
         int[] tmp = new int[pix.length];
         for (int i = 0; i < passes; i++) {
             blurHorizontal(pix, tmp, w, h, r);

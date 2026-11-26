@@ -228,8 +228,12 @@ internal fun IosLiquidGlassNavigationBar(
      * 由宿主提供的「强制重画」信号。
      *
      * 宿主在页面滚动时只是 invalidate() 外层 View 的话，Compose 那张 AndroidComposeView
-     * 依旧是干净的，玻璃会僵在上一帧。这里用普通 Int 而不是 State：值变化会让
-     * drawBackdrop 的 lambda 参数变化，绘制节点被重建，才会真正重新采样背板。
+     * 依旧是干净的，玻璃会僵在上一帧。这里用普通 Int：值变化会让 drawBackdrop 的
+     * lambda 参数变化、绘制节点被重建，从而真正重新采样背板。
+     *
+     * 曾经试过改成 `() -> Int`（绘制期读取，省掉每帧重组），实测玻璃背板不再实时刷新，
+     * 只有点底栏切换选中项才更新 —— 说明这条路在 drawBackdrop 的层录制里不可靠。
+     * 这里以「背景必须实时」为第一优先级，保持重组驱动。
      */
     redrawSignal: Int = 0,
 ) {
@@ -520,7 +524,6 @@ internal fun IosLiquidGlassNavigationBar(
                                     },
                                     highlight = { baseHighlight.value.copy(alpha = 0.75f) },
                                     layerBlock = {
-                                        // 引用一下宿主的滚动信号，让它成为 lambda 的捕获值。
                                         @Suppress("UNUSED_EXPRESSION")
                                         redrawSignal
                                         val width = size.width.coerceAtLeast(1f)

@@ -8,6 +8,18 @@
          performHapticFeedback（强度不可控，也无法按场景区分）。 -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- 智能按键映射的应用选择器需要列出全部已安装应用（Android 11+ 包可见性限制）。
+         本模块面向 Root/LSPosed 用户、不经 Play 商店分发，故声明此权限。 -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- 智能按键映射的配置通道：规则与总开关写入 Settings.Global 供 system_server 读取。
+         WRITE_SECURE_SETTINGS 是 signature|development 级权限，普通安装拿不到，但可以通过
+         `pm grant` 授予；本模块运行在 Root/LSPosed 环境，首次写配置时用 su 自动授权一次。
+         （此前失败的两个原因：① App 侧从未声明/获得该权限，写 Global 静默失败；
+         ② 改试 Settings.System 会被 MIUI 以 "You cannot keep your settings in the
+         secure settings" 拒绝写入自定义 key。故回到 Global + 运行时授权。） -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+
     <application
         android:label="@string/app_name"
         android:description="@string/app_description"
@@ -25,5 +37,36 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 智能按键映射首页（Miuix Compose），从设置页第一项启动。 -->
+        <activity
+            android:name="io.github.zpan2327.hyperhand.smartkey.SmartKeyActivity"
+            android:exported="false"
+            android:label="智能按键映射" />
+
+        <!-- 以下每一页都是独立 Activity：进入/退出动画完全由系统窗口转场完成，
+             与「设置页 → 智能按键映射」同源。不要在应用内手写转场去仿它。 -->
+        <activity
+            android:name="io.github.zpan2327.hyperhand.smartkey.SkStatusActivity"
+            android:exported="false"
+            android:label="运行状态" />
+        <activity
+            android:name="io.github.zpan2327.hyperhand.smartkey.SkEditRuleActivity"
+            android:exported="false"
+            android:label="编辑规则" />
+        <activity
+            android:name="io.github.zpan2327.hyperhand.smartkey.SkConditionPickerActivity"
+            android:exported="false"
+            android:label="添加触发条件" />
+        <activity
+            android:name="io.github.zpan2327.hyperhand.smartkey.SkAppPickerActivity"
+            android:exported="false"
+            android:label="选择应用" />
+
+        <!-- 按键手势自检（无界面）：跑 SkEngine 的全组合用例，结果打到 logcat TAG=HHSKTest。 -->
+        <activity
+            android:name="io.github.zpan2327.hyperhand.smartkey.SkSelfTestActivity"
+            android:exported="false"
+            android:label="按键自检" />
     </application>
 </manifest>

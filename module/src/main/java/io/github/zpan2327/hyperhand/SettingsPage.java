@@ -62,6 +62,10 @@ final class SettingsPage {
     private Ui.ValueRow rSlideSlop;
     private Ui.ValueRow rSlideTravel;
 
+    private Ui.SwitchView swKeyMap;
+    private LinearLayout keyMapBox;
+    private LinearLayout oneHandBox;
+    private LinearLayout slideBox;
     private LinearLayout advancedBox;
     private TextView animInfo;
     private TextView downGap;
@@ -85,23 +89,63 @@ final class SettingsPage {
     private void build() {
         Cfg cur = host.cfg();
 
-        // 标题由外壳的折叠大标题栏负责，页面内容直接从第一个分组开始
+        // 版面：三个功能各**一张卡片**。卡片第一行是这个模块的总开关，开关下面是它的
+        // 全部设置项；关掉开关时容器高度收到 0（卡片跟着变矮），打开时再长回来。
+        //
+        // 以前是「开关一张卡 + 设置一张卡」，中间还夹着分组标题，整页看起来被切成两半；
+        // 现在同一张卡内部用「卡内分段标题」（{@link Ui#cardSection}）区分段落，不另起卡片。
+        //
+        // 三个开关互相独立：
+        //   按键映射     → hyperhand_sk_master（SmartKey 自己的总开关）
+        //   单手模式     → Cfg.enabled（oh_tuner_enabled）
+        //   快捷菜单滑选 → Cfg.slideEnabled
+        // 折叠只把 View 高度收掉，值仍留在各自的行里，提交时照常写回，不会丢参数。
 
-        // ---------------------------------------------------------- 模块
-        page.add(Ui.section(c, pal, "模块"));
-        LinearLayout cardModule = Ui.card(c, pal);
-        swEnabled = Ui.switchRow(c, cardModule, pal, "启用模块",
-                "关闭后恢复系统原生行为", cur.enabled);
-        swMonitor = Ui.switchRow(c, cardModule, pal, "扩展触发",
+        // ================================================== 1. 按键映射
+        page.add(Ui.section(c, pal, "按键映射"));
+        LinearLayout cardKey = Ui.card(c, pal);
+        swKeyMap = Ui.switchRow(c, cardKey, pal, "启用按键映射",
+                "关闭后音量键完全恢复系统行为", smartKeyMaster());
+
+        keyMapBox = bodyBox();
+        Ui.navRow(c, keyMapBox, pal, -1, "规则与按键",
+                smartKeySummary(), null,
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            c.startActivity(new Intent(c,
+                                    io.github.zpan2327.hyperhand.smartkey.SmartKeyActivity.class));
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                });
+        cardKey.addView(keyMapBox, fullWidth());
+        page.add(cardKey);
+
+        swKeyMap.setOnCheckedChange(new Ui.SwitchView.OnCheckedChange() {
+            @Override
+            public void onCheckedChanged(boolean checked) {
+                setSmartKeyMaster(checked);
+                expand(keyMapBox, swKeyMap, checked);
+            }
+        });
+
+        // ================================================== 2. 单手模式增强
+        page.add(Ui.section(c, pal, "单手模式增强"));
+        LinearLayout cardOne = Ui.card(c, pal);
+        swEnabled = Ui.switchRow(c, cardOne, pal, "启用单手模式增强",
+                "下滑底部区域触发，关闭后恢复系统手势", cur.enabled);
+
+        oneHandBox = bodyBox();
+        cardOne.addView(oneHandBox, fullWidth());
+
+        // ---------------------------------------------------------- 触发与识别
+        oneHandBox.addView(Ui.cardSection(c, pal, "触发与识别"));
+        swMonitor = Ui.switchRow(c, oneHandBox, pal, "扩展触发",
                 "用一手模式通道判定下滑", cur.monitorEnabled);
-        dirty(swEnabled);
         dirty(swMonitor);
-        page.add(cardModule);
-
-        // ---------------------------------------------------------- 识别
-        page.add(Ui.section(c, pal, "识别"));
-        LinearLayout cardJudge = Ui.card(c, pal);
-        cMode = Ui.choiceRow(c, cardJudge, pal, "触发模式",
+        cMode = Ui.choiceRow(c, oneHandBox, pal, "触发模式",
                 "一键填入该模式的推荐参数",
                 Cfg.MODE_SHORT, cur.mode, new Ui.OnChoice() {
                     @Override
@@ -119,60 +163,54 @@ final class SettingsPage {
                                 });
                     }
                 });
-        rMinDy = numberRow(cardJudge, "最小下滑距离", "快甩触发的最小位移", "dp",
+        rMinDy = numberRow(oneHandBox, "最小下滑距离", "快甩触发的最小位移", "dp",
                 cur.minDyDp, 0, 1, 60, 1);
-        swEndBoost = Ui.switchRow(c, cardJudge, pal, "贴底才算",
+        swEndBoost = Ui.switchRow(c, oneHandBox, pal, "贴底才算",
                 "没拖到底边就当页面滑动", cur.endBoost);
         dirty(swEndBoost);
-        rEndZone = numberRow(cardJudge, "贴底判定距离", "距底边小于此值算到底", "dp",
+        rEndZone = numberRow(oneHandBox, "贴底判定距离", "距底边小于此值算到底", "dp",
                 cur.endZoneDp, 0, 8, 80, 1);
-        rVelocity = numberRow(cardJudge, "起效速度", "0 表示只看距离", "dp/s",
+        rVelocity = numberRow(oneHandBox, "起效速度", "0 表示只看距离", "dp/s",
                 cur.minVelDp, 0, 0, 800, 10);
-        swSlow = Ui.switchRow(c, cardJudge, pal, "慢滑识别",
+        swSlow = Ui.switchRow(c, oneHandBox, pal, "慢滑识别",
                 "慢速长距离下拉也能触发", cur.slowEnabled);
         dirty(swSlow);
-        rSlowDy = numberRow(cardJudge, "慢滑所需距离", "慢滑的最小位移", "dp",
+        rSlowDy = numberRow(oneHandBox, "慢滑所需距离", "慢滑的最小位移", "dp",
                 cur.slowDyDp, 0, 1, 120, 1);
-        rSlowVel = numberRow(cardJudge, "慢滑速度下限", "慢滑的平均速度门限", "dp/s",
+        rSlowVel = numberRow(oneHandBox, "慢滑速度下限", "慢滑的平均速度门限", "dp/s",
                 cur.minAvgVelDp, 0, 0, 400, 5);
-        rConf = numberRow(cardJudge, "判定置信度", "越低越灵敏，越高越保守", "",
+        rConf = numberRow(oneHandBox, "判定置信度", "越低越灵敏，越高越保守", "",
                 cur.minConfidence, 2, 0.10f, 1.0f, 0.02f);
-        page.add(cardJudge);
 
         // ---------------------------------------------------------- 触发区
-        page.add(Ui.section(c, pal, "触发区"));
-        LinearLayout cardZone = Ui.card(c, pal);
-        swZoneRatio = Ui.switchRow(c, cardZone, pal, "延伸到 dock 上方",
+        oneHandBox.addView(Ui.cardSection(c, pal, "触发区"));
+        swZoneRatio = Ui.switchRow(c, oneHandBox, pal, "延伸到 dock 上方",
                 "按屏高比例算，覆盖整个 dock", cur.zoneRatioMode);
         dirty(swZoneRatio);
-        rZoneRatio = numberRow(cardZone, "屏幕占比", "默认 15%，约 dock 上沿高度", "%",
+        rZoneRatio = numberRow(oneHandBox, "屏幕占比", "默认 15%，约 dock 上沿高度", "%",
                 cur.zoneRatio * 100f, 0, 5, 30, 1);
-        rZone = numberRow(cardZone, "触发区高度", "固定高度（上开关关闭时生效）", "dp",
+        rZone = numberRow(oneHandBox, "触发区高度", "固定高度（上开关关闭时生效）", "dp",
                 cur.zoneDp, 0, 20, 200, 1);
-        rWidth = numberRow(cardZone, "宽度占比", "触发区水平宽度，居中", "%",
+        rWidth = numberRow(oneHandBox, "宽度占比", "触发区水平宽度，居中", "%",
                 cur.widthRatio * 100f, 0, 20, 100, 5);
-        rBias = numberRow(cardZone, "左右偏置", "按左右手习惯移动中心", "%",
+        rBias = numberRow(oneHandBox, "左右偏置", "按左右手习惯移动中心", "%",
                 cur.zoneBias * 100f, 0, -40, 40, 5);
         downGap = Ui.hintBlock(c, pal, downGapText(), pal.primary);
-        cardZone.addView(downGap);
-        page.add(cardZone);
+        oneHandBox.addView(downGap);
 
         // ---------------------------------------------------------- 外观
-        page.add(Ui.section(c, pal, "外观"));
-        LinearLayout cardLook = Ui.card(c, pal);
-        swBlur = Ui.switchRow(c, cardLook, pal, "模糊壁纸背景",
+        oneHandBox.addView(Ui.cardSection(c, pal, "外观"));
+        swBlur = Ui.switchRow(c, oneHandBox, pal, "模糊壁纸背景",
                 "用模糊壁纸替代米白遮罩", cur.blurBg);
         dirty(swBlur);
-        rBlurRadius = numberRow(cardLook, "模糊半径", "越大越糊，0 为原图", "dp",
+        rBlurRadius = numberRow(oneHandBox, "模糊半径", "越大越糊，0 为原图", "dp",
                 cur.blurRadiusDp, 0, 0, 60, 1);
-        rBlurDim = numberRow(cardLook, "压暗程度", "在模糊壁纸上叠暗色", "%",
+        rBlurDim = numberRow(oneHandBox, "压暗程度", "在模糊壁纸上叠暗色", "%",
                 cur.blurDim, 0, 0, 60, 1);
-        page.add(cardLook);
 
         // ---------------------------------------------------------- 动效
-        page.add(Ui.section(c, pal, "动效"));
-        LinearLayout cardAnim = Ui.card(c, pal);
-        cAnimCurve = Ui.choiceRow(c, cardAnim, pal, "缓动曲线",
+        oneHandBox.addView(Ui.cardSection(c, pal, "动效"));
+        cAnimCurve = Ui.choiceRow(c, oneHandBox, pal, "缓动曲线",
                 "从慢到快排列，改完即时生效",
                 Cfg.ANIM_CURVE_SHORT, cur.animCurve, new Ui.OnChoice() {
                     @Override
@@ -189,23 +227,21 @@ final class SettingsPage {
                                 });
                     }
                 });
-        rAnimScale = Ui.valueRow(c, cardAnim, pal, "动画时长",
+        rAnimScale = Ui.valueRow(c, oneHandBox, pal, "动画时长",
                 "1.00 为原生 600ms，越大越慢", "×", cur.animScale, 2);
         realTime(rAnimScale, "动画时长", "1.00 为原生 600ms，越大越慢",
                 "×", 0.60f, 2.00f, 0.05f, 2);
         animInfo = Ui.block(c, pal, animInfoText());
-        Ui.addRow(c, cardAnim, pal, animInfo);
-        page.add(cardAnim);
+        Ui.addRow(c, oneHandBox, pal, animInfo);
 
         // ---------------------------------------------------------- 模糊区手势
-        page.add(Ui.section(c, pal, "模糊区手势"));
-        LinearLayout cardTop = Ui.card(c, pal);
-        swTopShade = Ui.switchRow(c, cardTop, pal, "下滑展开面板",
+        oneHandBox.addView(Ui.cardSection(c, pal, "模糊区手势"));
+        swTopShade = Ui.switchRow(c, oneHandBox, pal, "下滑展开面板",
                 "下滑模糊区拉开通知/控制中心", cur.topShade);
         dirty(swTopShade);
-        rTopShadeDy = numberRow(cardTop, "触发距离", "下滑多少算数，防误判成下拉", "dp",
+        rTopShadeDy = numberRow(oneHandBox, "触发距离", "下滑多少算数，防误判成下拉", "dp",
                 cur.topShadeDyDp, 0, 8, 80, 1);
-        cTopShadeSide = Ui.choiceRow(c, cardTop, pal, "拉开哪个",
+        cTopShadeSide = Ui.choiceRow(c, oneHandBox, pal, "拉开哪个",
                 "左通知中心，右控制中心",
                 Cfg.TOP_SIDE_SHORT, cur.topShadeSide, new Ui.OnChoice() {
                     @Override
@@ -225,74 +261,87 @@ final class SettingsPage {
                                 });
                     }
                 });
-        page.add(cardTop);
-
-        // ---------------------------------------------------------- 快捷菜单滑选
-        page.add(Ui.section(c, pal, "快捷菜单滑选"));
-        LinearLayout cardSlide = Ui.card(c, pal);
-        swSlide = Ui.switchRow(c, cardSlide, pal, "长按滑选菜单项",
-                "滑到菜单项抬手即打开，改后重启桌面生效", cur.slideEnabled);
-        dirty(swSlide);
-        rSlideAngle = numberRow(cardSlide, "滑选判定夹角",
-                "与菜单方向的夹角上限，越小越保守", "°",
-                cur.slideAngleDeg, 0, 15, 90, 5);
-        rSlideSlop = numberRow(cardSlide, "命中容差",
-                "菜单项外扩的命中范围", "dp",
-                cur.slideSlopDp, 0, 2, 40, 1);
-        rSlideTravel = numberRow(cardSlide, "起判位移",
-                "滑多远才开始判定，过滤手抖", "dp",
-                cur.slideMinTravelDp, 0, 4, 60, 1);
-        page.add(cardSlide);
 
         // ---------------------------------------------------------- 互斥
-        page.add(Ui.section(c, pal, "互斥"));
-        LinearLayout cardGuard = Ui.card(c, pal);
-        swShadeGuard = Ui.switchRow(c, cardGuard, pal, "与下拉手势互斥",
+        oneHandBox.addView(Ui.cardSection(c, pal, "互斥"));
+        swShadeGuard = Ui.switchRow(c, oneHandBox, pal, "与下拉手势互斥",
                 "识别到面板意图就放弃单手", cur.shadeGuard);
-        swClaimZone = Ui.switchRow(c, cardGuard, pal, "底部区域优先单手",
+        swClaimZone = Ui.switchRow(c, oneHandBox, pal, "底部区域优先单手",
                 "触发区内下拉让位给单手", cur.claimZone);
-        rHotDp = numberRow(cardGuard, "原生胶囊条高度", "0 表示不改动", "dp",
+        rHotDp = numberRow(oneHandBox, "原生胶囊条高度", "0 表示不改动", "dp",
                 cur.launcherHotDp, 0, 0, 40, 1);
         dirty(swShadeGuard);
         dirty(swClaimZone);
-        page.add(cardGuard);
 
         // ---------------------------------------------------------- 高级
-        page.add(Ui.section(c, pal, "高级"));
-        LinearLayout cardToggle = Ui.card(c, pal);
-        swAdvanced = Ui.switchRow(c, cardToggle, pal, "显示高级参数",
+        oneHandBox.addView(Ui.cardSection(c, pal, "高级"));
+        swAdvanced = Ui.switchRow(c, oneHandBox, pal, "显示高级参数",
                 "采样窗口、轨迹稳定性、冷却等", false);
-        page.add(cardToggle);
 
-        advancedBox = new LinearLayout(c);
-        advancedBox.setOrientation(LinearLayout.VERTICAL);
+        advancedBox = bodyBox();
         advancedBox.setVisibility(View.GONE);
-
-        LinearLayout cardAdv = Ui.card(c, pal);
-        rWindow = numberRow(cardAdv, "速度采样窗口", "越大越稳，越小越灵敏", "ms",
+        rWindow = numberRow(advancedBox, "速度采样窗口", "越大越稳，越小越灵敏", "ms",
                 cur.velWindowMs, 0, 20, 200, 5);
-        rMaxVel = numberRow(cardAdv, "速度上限", "超过按噪声截断", "dp/s",
+        rMaxVel = numberRow(advancedBox, "速度上限", "超过按噪声截断", "dp/s",
                 cur.maxVelocityDp, 0, 300, 8000, 100);
-        rMono = numberRow(cardAdv, "轨迹稳定度", "净位移占路程的下限", "",
+        rMono = numberRow(advancedBox, "轨迹稳定度", "净位移占路程的下限", "",
                 cur.minMonotonic, 2, 0.40f, 1.0f, 0.02f);
-        rSlope = numberRow(cardAdv, "最大横向偏移", "超过视为斜滑", "倍",
+        rSlope = numberRow(advancedBox, "最大横向偏移", "超过视为斜滑", "倍",
                 cur.maxSlope, 1, 0.5f, 4.0f, 0.1f);
-        rCooldown = numberRow(cardAdv, "触发冷却", "两次触发的最小间隔", "ms",
+        rCooldown = numberRow(advancedBox, "触发冷却", "两次触发的最小间隔", "ms",
                 cur.cooldownMs, 0, 0, 2000, 50);
-        swAdaptive = Ui.switchRow(c, cardAdv, pal, "自适应阈值",
+        swAdaptive = Ui.switchRow(c, advancedBox, pal, "自适应阈值",
                 "快手势放宽，慢手势收紧", cur.adaptive);
         dirty(swAdaptive);
-        advancedBox.addView(cardAdv);
-        page.add(advancedBox);
+        oneHandBox.addView(advancedBox, fullWidth());
+
+        page.add(cardOne);
 
         swAdvanced.setOnCheckedChange(new Ui.SwitchView.OnCheckedChange() {
             @Override
             public void onCheckedChanged(boolean checked) {
-                expand(advancedBox, checked);
+                expand(advancedBox, swAdvanced, checked);
             }
         });
 
-        // ---------------------------------------------------------- 底部操作
+        swEnabled.setOnCheckedChange(new Ui.SwitchView.OnCheckedChange() {
+            @Override
+            public void onCheckedChanged(boolean checked) {
+                markDirty();
+                applyEnabledStates();
+                expand(oneHandBox, swEnabled, checked);
+            }
+        });
+
+        // ================================================== 3. 快捷菜单滑选
+        page.add(Ui.section(c, pal, "快捷菜单滑选"));
+        LinearLayout cardSlide = Ui.card(c, pal);
+        swSlide = Ui.switchRow(c, cardSlide, pal, "长按滑选菜单项",
+                "滑到菜单项抬手即打开，改后重启桌面生效", cur.slideEnabled);
+
+        slideBox = bodyBox();
+        rSlideAngle = numberRow(slideBox, "滑选判定夹角",
+                "与菜单方向的夹角上限，越小越保守", "°",
+                cur.slideAngleDeg, 0, 15, 90, 5);
+        rSlideSlop = numberRow(slideBox, "命中容差",
+                "菜单项外扩的命中范围", "dp",
+                cur.slideSlopDp, 0, 2, 40, 1);
+        rSlideTravel = numberRow(slideBox, "起判位移",
+                "滑多远才开始判定，过滤手抖", "dp",
+                cur.slideMinTravelDp, 0, 4, 60, 1);
+        cardSlide.addView(slideBox, fullWidth());
+        page.add(cardSlide);
+
+        swSlide.setOnCheckedChange(new Ui.SwitchView.OnCheckedChange() {
+            @Override
+            public void onCheckedChanged(boolean checked) {
+                markDirty();
+                applyEnabledStates();
+                expand(slideBox, swSlide, checked);
+            }
+        });
+
+        // ================================================== 底部操作
         // 改动即时保存并生效，不再需要「保存并立即生效」按钮 / 胶囊二次确认。
         LinearLayout actions = new LinearLayout(c);
         actions.setOrientation(LinearLayout.VERTICAL);
@@ -338,6 +387,97 @@ final class SettingsPage {
         page.add(statusText);
 
         applyEnabledStates();
+        // 首次进入按当前配置决定各模块内容的展开状态（不做动画，避免冷启时闪一下）。
+        keyMapBox.setVisibility(swKeyMap.isChecked() ? View.VISIBLE : View.GONE);
+        oneHandBox.setVisibility(swEnabled.isChecked() ? View.VISIBLE : View.GONE);
+        slideBox.setVisibility(swSlide.isChecked() ? View.VISIBLE : View.GONE);
+    }
+
+    /** 卡片内可折叠容器的布局参数：宽度跟随卡片，高度由内容（或折叠动画）决定。 */
+    private static LinearLayout.LayoutParams fullWidth() {
+        return new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    }
+
+    /** 一个模块的可折叠内容容器。 */
+    private LinearLayout bodyBox() {
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        return box;
+    }
+
+    // ---------------------------------------------------------------- 按键映射主开关
+
+    /** SmartKey 自己的总开关（Settings.Global 里的 hyperhand_sk_master）。 */
+    private boolean smartKeyMaster() {
+        try {
+            return new io.github.zpan2327.hyperhand.smartkey.data.RuleRepository(c)
+                    .isMasterEnabled();
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    /**
+     * 写 SmartKey 总开关（Settings.Global 的 hyperhand_sk_master）。
+     *
+     * <p>写 Global 需要 WRITE_SECURE_SETTINGS（signature|development 级），普通安装拿不到，
+     * 所以放在后台线程：先直接写，失败再走 su 授权后重写一次。**写入失败必须把开关回退**，
+     * 不能让界面显示「已开启」而 Hook 侧读到的还是关闭 —— 那是最难排查的一种状态。
+     */
+    private void setSmartKeyMaster(final boolean enabled) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                boolean ok = false;
+                try {
+                    ok = new io.github.zpan2327.hyperhand.smartkey.data.RuleRepository(c)
+                            .setMasterEnabled(enabled);
+                } catch (Throwable ignored) {
+                }
+                final boolean written = ok;
+                host.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!written) {
+                            // 回退开关与内容区，并把原因说清楚。
+                            if (swKeyMap != null) {
+                                swKeyMap.setCheckedNoAnim(!enabled);
+                            }
+                            if (keyMapBox != null) {
+                                keyMapBox.setVisibility(enabled ? View.GONE : View.VISIBLE);
+                            }
+                            if (statusText != null) {
+                                statusText.setText("写入总开关失败：需要 root 授权（KernelSU / Magisk）后重试。");
+                            }
+                            return;
+                        }
+                        if (statusText != null) {
+                            statusText.setText(enabled
+                                    ? "已启用按键映射。"
+                                    : "已关闭按键映射，音量键恢复系统行为。");
+                        }
+                    }
+                });
+            }
+        }, "sk-master").start();
+    }
+
+    /** 按键映射入口的副标题：带上当前规则数量。 */
+    private String smartKeySummary() {
+        try {
+            java.util.List<io.github.zpan2327.hyperhand.smartkey.data.Rule> rules =
+                    new io.github.zpan2327.hyperhand.smartkey.data.RuleRepository(c).loadRules();
+            int enabled = 0;
+            for (io.github.zpan2327.hyperhand.smartkey.data.Rule r : rules) {
+                if (r.getEnabled()) {
+                    enabled++;
+                }
+            }
+            return rules.size() + " 条规则 · 应用 / 音频 / 状态触发（启用 " + enabled + " 条）";
+        } catch (Throwable t) {
+            return "应用 / 音频 / 状态触发";
+        }
     }
 
     // ---------------------------------------------------------------- 行工厂
@@ -421,22 +561,141 @@ final class SettingsPage {
         });
     }
 
-    private void expand(View v, boolean show) {
+    /**
+     * 模块内容的折叠 / 展开 —— 形态照 LSPosed（Vector 2.2 / Compose）的折叠分组。
+     *
+     * <p>对 LSPosed「主题设置 → 关闭悬浮底栏 → 液态玻璃那行消失」逐帧比对：它是
+     * **in-place 高度收缩**（内容被上边缘裁掉，逐帧变矮，下方行一路平滑上移），
+     * 大约 150ms 内收掉 90%，且**没有透明度淡出** —— 收缩到最后一两帧时内容仍然
+     * 是全不透明的，只是被裁得只剩一条。
+     *
+     * <p>这正是 Compose {@code AnimatedVisibility(shrinkVertically())} 的默认观感：
+     * 临界阻尼弹簧（stiffness 400 → ω = 20 rad/s，5τ ≈ 250ms），起步快、末尾平滑收敛、
+     * 不过冲。这里用同一个解析解作为 Interpolator：{@code f = 1 − (1 + ωt)·e^(−ωt)}。
+     */
+    private static final long FOLD_MS = 300L;
+    private static final float FOLD_OMEGA = 20f;     // sqrt(Spring.StiffnessMediumLow = 400)
+
+    private static android.view.animation.Interpolator foldSpring(final float omega,
+                                                                  final long ms) {
+        return new android.view.animation.Interpolator() {
+            @Override
+            public float getInterpolation(float t) {
+                float x = omega * (t * ms / 1000f);
+                return 1f - (1f + x) * (float) Math.exp(-x);
+            }
+        };
+    }
+
+    /**
+     * 模块内容折叠 / 展开。
+     *
+     * <p><b>只对「屏幕内可见的那一段高度」做动画</b>。原因（2026-11-26 真机打点）：
+     * 单手模式那张卡完整高度 <b>6489px</b>，而视口只有 2670px、开关行底边在 y≈1272，
+     * 屏幕上只看得到约 <b>1398px</b>。若把 6489px 全程当动画距离（即便此前试过 ω=10/480ms），
+     * 前面一大半位移裁的都是屏幕外内容 —— 用户看不到任何变化，最后才把屏幕内那
+     * 1398px 一口气抽走，观感就是「先卡住、然后突然消失」。而按键映射（56px）、
+     * 滑选（168px）两张卡整张都在视口内，全程可见，所以用同一条曲线就很自然。
+     *
+     * <p>现在：动画开始前把屏幕外那段一次性砍掉（那部分本来就在屏幕外，用户看不到），
+     * 弹簧只负责可见段 0 ↔ visible。三个模块动画时长与曲线完全一致（300ms / ω=20）。
+     *
+     * @param v      可折叠的内容容器
+     * @param anchor 该模块的总开关行，其底边即容器顶边；用来算容器顶部在屏幕上的位置
+     */
+    private void expand(final View v, final View anchor, final boolean show) {
+        // 同一容器上一次动画还在跑（快速连点开关）：先停掉，再按当前实际状态重新起。
+        Object running = v.getTag();
+        if (running instanceof android.animation.Animator) {
+            ((android.animation.Animator) running).cancel();
+        }
+        v.animate().cancel();
+        final ViewGroup.LayoutParams lp = v.getLayoutParams();
+        if (lp == null) {
+            v.setVisibility(show ? View.VISIBLE : View.GONE);
+            return;
+        }
+        final int width = page.column.getWidth() > 0
+                ? page.column.getWidth() : Theme.screenWidth(c);
+        final int full;
         if (show) {
             v.setVisibility(View.VISIBLE);
-            v.setAlpha(0f);
-            v.setTranslationY(-Theme.dp(c, 6));
-            v.animate().alpha(1f).translationY(0f).setDuration(190)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f)).start();
+            // 手动量一次拿到「完全展开」的高度（measure 用传入的 spec，不看 lp.height）。
+            v.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            full = v.getMeasuredHeight();
         } else {
-            v.animate().alpha(0f).translationY(-Theme.dp(c, 6)).setDuration(140)
-                    .withEndAction(new Runnable() {
-                        @Override
-                        public void run() {
-                            v.setVisibility(View.GONE);
-                        }
-                    }).start();
+            if (v.getVisibility() != View.VISIBLE) {
+                return;
+            }
+            full = v.getHeight();
+            if (full <= 0) {
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                v.setLayoutParams(lp);
+                v.setVisibility(View.GONE);
+                return;
+            }
         }
+
+        // 容器在屏幕视口内的可见高度：从锚点（开关行）底边量到滚动视口底部。
+        int visible = full;
+        if (anchor != null && anchor.isAttachedToWindow() && page.scroll.getHeight() > 0) {
+            int[] a = new int[2];
+            int[] s = new int[2];
+            anchor.getLocationOnScreen(a);
+            page.scroll.getLocationOnScreen(s);
+            int containerTop = a[1] + anchor.getHeight() - s[1];
+            visible = page.scroll.getHeight() - containerTop;
+            if (visible < 0) {
+                visible = 0;
+            }
+            if (visible > full) {
+                visible = full;
+            }
+        }
+        final int animHeight = visible;
+
+        // 屏幕外的部分直接跳过（收起时先砍掉、展开时动画结束后补回），
+        // 弹簧只走可见段。这样三个模块的折叠观感完全统一。
+        lp.height = show ? 0 : animHeight;
+        v.setLayoutParams(lp);
+
+        final android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofFloat(0f, 1f);
+        anim.setDuration(FOLD_MS);
+        anim.setInterpolator(foldSpring(FOLD_OMEGA, FOLD_MS));
+        anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(android.animation.ValueAnimator a) {
+                float f = (Float) a.getAnimatedValue();
+                // 只有高度在动；内容保持不透明，被上边缘裁切 —— 与 LSPosed 一致。
+                lp.height = Math.round(animHeight * (show ? f : 1f - f));
+                v.setLayoutParams(lp);
+            }
+        });
+        final boolean[] cancelled = {false};
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationCancel(android.animation.Animator a) {
+                cancelled[0] = true;
+            }
+
+            @Override
+            public void onAnimationEnd(android.animation.Animator a) {
+                if (cancelled[0]) {
+                    return;     // 被下一次开关打断，终态交给新的那次动画
+                }
+                // 回到 WRAP_CONTENT：完整高度（含屏幕外部分）恢复，之后数值行变高也能自适应。
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                v.setLayoutParams(lp);
+                if (!show) {
+                    v.setVisibility(View.GONE);
+                }
+                v.setTag(null);
+            }
+        });
+        v.setTag(anim);
+        anim.start();
     }
 
     // ---------------------------------------------------------------- 行为
@@ -509,6 +768,16 @@ final class SettingsPage {
         rSlideSlop.set(Cfg.DEF_SLIDE_SLOP_DP);
         rSlideTravel.set(Cfg.DEF_SLIDE_MIN_TRAVEL_DP);
         applyEnabledStates();
+        // 恢复默认把三个功能的开关都打开了，内容容器跟着展开（不做动画）。
+        if (keyMapBox != null) {
+            keyMapBox.setVisibility(View.VISIBLE);
+        }
+        if (oneHandBox != null) {
+            oneHandBox.setVisibility(View.VISIBLE);
+        }
+        if (slideBox != null) {
+            slideBox.setVisibility(View.VISIBLE);
+        }
     }
 
     private void switchWithoutMark(Ui.SwitchView sw, boolean v) {
@@ -586,6 +855,16 @@ final class SettingsPage {
     void refreshAnimInfo() {
         if (animInfo != null) {
             animInfo.setText(animInfoText());
+        }
+        // 从「规则与按键」页回来时，那边的「功能总开关」可能已经改了，这里同步一次。
+        if (swKeyMap != null) {
+            boolean on = smartKeyMaster();
+            if (swKeyMap.isChecked() != on) {
+                swKeyMap.setCheckedNoAnim(on);
+                if (keyMapBox != null) {
+                    keyMapBox.setVisibility(on ? View.VISIBLE : View.GONE);
+                }
+            }
         }
     }
 

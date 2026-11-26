@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.3.4"
+val defaultVersionName = "3.3.5"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -43,7 +43,17 @@ val derivedVersionCode: Int = run {
 // 3.3.2 正式版 = 30302（修复关于页浅色 logo 渐变卡顿）。
 // 3.3.3 正式版 = 30303（去掉滑选进入/抬手的两处多余震动）。
 // 3.3.4 正式版 = 30304（设置交互 MIUIX 化、自动保存、状态卡 Tilt 按压、黑块/误触修复）。
-val minVersionCode = 30304
+// 3.3.5 = 30305（规则编辑页按米家「编辑自动化」复刻、按压手势状态机重写、应用选择器
+//   改磁盘快照 + 图标懒加载 + 推荐/置顶、条件行显示应用名、所有变体统一签名）。
+// 3.3.6 = 30306（概览右上角图标恢复常显；重启作用域对话框补上「系统框架」）。
+// 3.3.7 = 30307（对齐 LSPosed：顶栏近不透光 + 淡模糊、折叠标题居中、折叠改弹簧收缩、
+//   横滑改临界阻尼弹簧）。
+// 3.3.8 = 30308（撤销 3.3.7 的「一甩跨两页」：Compose Pager 默认 atMost(1)，一次手势一页）。
+// 3.3.9 = 30309（按键规则按「按压方式」匹配，修双击/长按不生效；设置页改一功能一卡 + 卡内折叠）。
+// 3.4.0 = 30400（长容器折叠改用 ω=10/480ms；横滑松手改成 decay 滑行 + spring 吸附两段）。
+// 3.4.1 = 30401（横滑回退为单段临界阻尼弹簧：OverScroller 的 decay 无法与页位对齐）。
+// 3.4.2 = 30402（折叠动画改为只对「屏幕内可见高度」做动画，修单手模式卡的「先卡住后突消」）。
+val minVersionCode = 30305
 
 val versionCodeValue = fromEnvOrProperty("VERSION_CODE")?.toIntOrNull()
     ?: maxOf(derivedVersionCode, minVersionCode)
@@ -126,12 +136,39 @@ android {
     }
 
     buildTypes {
+        // 【统一签名】所有变体（debug / fast / release）都用工程自带的
+        // `module/signing/hyperhand.keystore`，不再用机器的 `~/.android/debug.keystore`。
+        //
+        // 缘由（踩过两次）：fast 当初为了「能覆盖 debug 包」签的是 debug 钥匙，于是
+        //   release / 模块仓库历史版本 = hyperhand（912fa6bf…）
+        //   debug / fast               = debug    （76dfe496…）
+        // 两把钥匙互不兼容，拿一个覆盖另一个必然 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，
+        // 而卸载重装会丢掉 LSPosed 的模块启用状态与作用域。现在统一成一把，
+        // 任何变体都能直接 `pm install -r` 覆盖另一个，代价只是 debug 包也签成发布钥匙
+        // （本项目不经 Play 分发，没有影响）。
+        debug {
+            signingConfig = signingConfigs.getByName("hyperhand")
+        }
         release {
             // 原来的构建链（javac + d8）不做任何压缩，Xposed 模块也最怕 R8 改类名/方法体，
             // 所以这里显式关掉，保持和之前一致的行为。
             isMinifyEnabled = false
             isShrinkResources = false
             signingConfig = signingConfigs.getByName("hyperhand")
+        }
+        // 本地自用安装包：代码与 debug 完全一致，唯一差别是 debuggable = false。
+        //
+        // 这个差别对启动速度是决定性的：debuggable=true 的包会被 ART 跳过 AOT 编译
+        // （安装后 `dumpsys package` 里是 status=run-from-apk / verify），整套 Compose
+        // 类加载与执行全靠解释器 + JIT。真机实测（Xiaomi 14 / 120Hz）冷启动：
+        //   debug  : TotalTime 1320～1396ms，首帧 693～729ms，掉帧 600～650ms
+        //   fast   : TotalTime  421～ 517ms，首帧 188～222ms，掉帧 200ms
+        // 日常使用装 fast，需要断点调试时才装 debug。
+        create("fast") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("hyperhand")
+            matchingFallbacks += listOf("release")
         }
     }
 

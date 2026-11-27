@@ -42,7 +42,7 @@
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SmartKeyActivity"
             android:exported="false"
-            android:label="智能按键映射" />
+            android:label="按键映射" />
 
         <!-- 以下每一页都是独立 Activity：进入/退出动画完全由系统窗口转场完成，
              与「设置页 → 智能按键映射」同源。不要在应用内手写转场去仿它。 -->

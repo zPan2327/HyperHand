@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import io.github.zpan2327.hyperhand.smartkey.data.ModuleStatus
 import io.github.zpan2327.hyperhand.smartkey.ui.HomeScreen
 import io.github.zpan2327.hyperhand.smartkey.ui.SmartKeyScaffold
 import kotlinx.coroutines.Dispatchers
@@ -40,20 +39,21 @@ class SmartKeyActivity : SkActivity() {
         val refreshKey = revision.intValue * 31 + resumeTick.intValue
 
         val rules = remember(refreshKey) { repo.loadRules() }
-        val status = remember(refreshKey) { ModuleStatus.detect(this, rules.size) }
         val master = remember(refreshKey) { repo.isMasterEnabled() }
 
         SmartKeyScaffold(
-            title = "智能按键映射",
-            largeTitle = "智能按键映射",
+            title = "按键映射",
+            largeTitle = "按键映射",
             // 说明文字交给 TopAppBar 的 subtitle 槽位，对齐与字号由组件按规范处理，
             // 不在内容区自己塞一段不同缩进的文字。
             subtitle = "按应用、音频与设备状态重定义音量键",
+            // 本页由设置页 startActivity 进入，属于独立窗口的前进页面，
+            // 必须给顶栏返回钮（与运行状态/编辑规则一致），否则只能靠系统返回手势退出。
+            onBack = { finish() },
         ) { padding, behavior ->
             HomeScreen(
                 repo = repo,
                 rules = rules,
-                status = status,
                 masterEnabled = master,
                 onMasterChange = { enabled ->
                     // 写 Settings.Global 需要 WRITE_SECURE_SETTINGS，首次用 su 授权可能阻塞，

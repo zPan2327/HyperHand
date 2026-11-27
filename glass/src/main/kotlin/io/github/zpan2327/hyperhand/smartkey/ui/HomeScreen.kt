@@ -1,5 +1,11 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -13,8 +19,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -22,18 +32,21 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import io.github.zpan2327.hyperhand.smartkey.data.ModuleStatus
 import io.github.zpan2327.hyperhand.smartkey.data.Rule
 import io.github.zpan2327.hyperhand.smartkey.data.RuleRepository
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -44,7 +57,6 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 fun HomeScreen(
     repo: RuleRepository,
     rules: List<Rule>,
-    status: ModuleStatus,
     masterEnabled: Boolean,
     onMasterChange: (Boolean) -> Unit,
     onNewRule: () -> Unit,
@@ -62,6 +74,13 @@ fun HomeScreen(
     val context = LocalContext.current
     // 与主设置页同款触感：行 tick / 开关 toggle / 按钮 click。
     val haptics = rememberSkHaptics()
+    // 版本串连点计数（隐藏的运行状态入口）。
+    val taps = remember { mutableIntStateOf(0) }
+    val lastTap = remember { mutableLongStateOf(0L) }
+    // 当前弹出下拉菜单的规则；非空即该行的浮层展开。
+    var menuRule by remember { mutableStateOf<Rule?>(null) }
+    // 等待二次确认删除的规则；非空即弹出确认对话框。
+    var pendingDelete by remember { mutableStateOf<Rule?>(null) }
 
     SmartKeyScaffoldContent(
         padding = padding,
@@ -81,9 +100,8 @@ fun HomeScreen(
                 summary = if (masterEnabled) "已开启，按键映射参与拦截" else "已关闭，按键保持系统默认行为",
             )
             ArrowPreference(
-                title = "运行状态",
-                summary = if (status.hookActive) "system_server Hook 已激活" else "system_server Hook 未激活",
-                onClick = { haptics.tick(); onOpenStatus() },
+                title = "新建规则",
+                onClick = { haptics.tick(); onNewRule() },
             )
         }
 
@@ -153,45 +171,118 @@ fun HomeScreen(
                 }
             } else {
                 rules.forEach { rule ->
-                    BasicComponent(
-                        title = rule.name,
-                        summary = "${rule.conditionsDesc(context)}\n${rule.mappingsDesc}\n优先级 ${rule.priority}",
-                        onClick = { haptics.tick(); onEditRule(rule.id) },
-                        endActions = {
-                            Switch(
-                                checked = rule.enabled,
-                                onCheckedChange = { onToggleRule(rule.id, it) },
-                            )
-                        },
-                        bottomAction = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(text = "复制", onClick = { haptics.click(); onDuplicateRule(rule.id) })
-                                Spacer(Modifier.width(8.dp))
-                                TextButton(text = "删除", onClick = { haptics.click(); onDeleteRule(rule.id) })
+                    // 长按整行弹 Miuix 下拉浮层（复制 / 删除），点按仍然是编辑规则。
+                    // combinedClickable 必须挂在 BasicComponent 自己的 modifier 上、并让它的 onClick
+                    // 保持 null：否则内层 clickable 先吃掉手势，长按永远不触发。
+                    Box(Modifier.fillMaxWidth()) {
+                        BasicComponent(
+                            title = rule.name,
+                            summary = "${rule.conditionsDesc(context)}\n${rule.mappingsDesc}\n优先级 ${rule.priority}",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = LocalIndication.current,
+                                    onClick = { haptics.tick(); onEditRule(rule.id) },
+                                    onLongClick = {
+                                        haptics.popup()
+                                        menuRule = rule
+                                    },
+                                ),
+                            endActions = {
+                                Switch(
+                                    checked = rule.enabled,
+                                    onCheckedChange = { onToggleRule(rule.id, it) },
+                                )
+                            },
+                        )
+                        // 锚点就是这一行：浮层贴着被长按的规则弹出（圆角 16dp / surfaceContainer / 背景压暗）。
+                        OverlayListPopup(
+                            show = menuRule?.id == rule.id,
+                            alignment = PopupPositionProvider.Align.Start,
+                            onDismissRequest = { menuRule = null },
+                            minWidth = 160.dp,
+                            maxHeight = 240.dp,
+                        ) {
+                            ListPopupColumn {
+                                RuleMenuItem(text = "复制") {
+                                    haptics.click()
+                                    menuRule = null
+                                    onDuplicateRule(rule.id)
+                                }
+                                RuleMenuItem(text = "删除", danger = true) {
+                                    haptics.tick()
+                                    menuRule = null
+                                    pendingDelete = rule
+                                }
                             }
-                        },
-                    )
+                        }
+                    }
                 }
-            }
-        }
-
-        if (rules.isNotEmpty()) {
-            CardGap()
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                pressFeedbackType = PressFeedbackType.None,
-            ) {
-                ArrowPreference(title = "新建规则", onClick = { haptics.tick(); onNewRule() })
             }
         }
 
         CardGap()
         Text(
-            text = "HyperHand $version · 智能按键映射",
+            text = "HyperHand $version · 按键映射",
             style = MiuixTheme.textStyles.footnote2,
             color = MiuixTheme.colorScheme.onSurfaceSecondary,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                // 隐藏入口：连续点 5 下版本串（相邻两次间隔 < 800ms）打开运行状态页，
+                // 与「关于页连点 logo」同一套手感；入口不在列表里露出来。
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    val now = android.os.SystemClock.uptimeMillis()
+                    taps.intValue = if (now - lastTap.longValue < 800L) taps.intValue + 1 else 1
+                    lastTap.longValue = now
+                    if (taps.intValue >= 5) {
+                        taps.intValue = 0
+                        lastTap.longValue = 0L
+                        haptics.clickPrimary()
+                        onOpenStatus()
+                    }
+                },
         )
+
+        // 删除二次确认：Miuix OverlayDialog（标题 18sp 居中 + 摘要 + 底部按钮），
+        // 「删除」按钮用 error 色，确认时才真正删并给 alert 触感。
+        OverlayDialog(
+            title = "删除规则",
+            summary = pendingDelete?.let { "确定要删除「${it.name}」吗？此操作无法撤销。" } ?: "",
+            show = pendingDelete != null,
+            onDismissRequest = { pendingDelete = null },
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextButton(
+                    text = "取消",
+                    onClick = { pendingDelete = null },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "删除",
+                    onClick = {
+                        pendingDelete?.let { rule ->
+                            haptics.alert()
+                            onDeleteRule(rule.id)
+                        }
+                        pendingDelete = null
+                    },
+                    modifier = Modifier.weight(1f),
+                    // 危险操作：红色实心按钮 + 白字（TextButtonColors 的 color 是容器色、textColor 是文字色）。
+                    colors = ButtonDefaults.textButtonColors(
+                        color = MiuixTheme.colorScheme.error,
+                        textColor = MiuixTheme.colorScheme.onError,
+                    ),
+                )
+            }
+        }
     }
 }
 
@@ -247,3 +338,34 @@ internal fun SmartKeyScaffoldContent(
 
 /** 短页面为橡皮筋预留的越界余量：略大于 0 即可，肉眼不可见。 */
 private val OVERSCROLL_ROOM = 12.dp
+
+/**
+ * 下拉浮层里的一行。
+ *
+ * 度量对齐 Miuix `DropdownImpl` 的 popup 模式：水平内边距 20dp、首/尾行垂直 20dp、
+ * 文本 `body1`(16sp Medium)；危险项（删除）用 `colorScheme.error` 上红色。
+ */
+@Composable
+private fun RuleMenuItem(
+    text: String,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = LocalIndication.current,
+                onClick = onClick,
+            )
+            .padding(horizontal = 20.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MiuixTheme.textStyles.body1,
+            color = if (danger) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurfaceContainer,
+        )
+    }
+}

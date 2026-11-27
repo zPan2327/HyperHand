@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.4.3"
+val defaultVersionName = "3.4.4"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -55,7 +55,9 @@ val derivedVersionCode: Int = run {
 // 3.4.2 = 30402（折叠动画改为只对「屏幕内可见高度」做动画，修单手模式卡的「先卡住后突消」）。
 // 3.4.3 = 30403（shadeGuard 增加方向判定：从底部触发区起手的横向滑动不再拦
 //   NotificationPanelViewController.expand*，修控制中心右滑误退出）。
-val minVersionCode = 30403
+// 3.4.4 = 30404（排版权值统一：分组标题 28dp 内容线、关于页姓名 20sp title3、
+//   开发者卡内边距 16dp、版本号格式统一为 `版本名(版本号)`）。
+val minVersionCode = 30404
 
 val versionCodeValue = fromEnvOrProperty("VERSION_CODE")?.toIntOrNull()
     ?: maxOf(derivedVersionCode, minVersionCode)

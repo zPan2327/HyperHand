@@ -165,6 +165,19 @@ jobs:
         with:
           files: module/out/HyperHand.apk
           generate_release_notes: true
+          body: |
+            HyperHand ${{ steps.apk.outputs.version_name }}（versionCode ${{ steps.apk.outputs.version_code }}）
+
+            三组功能：音量键映射（短按 / 长按 / 双击 / 连按 → 媒体与音量动作）、
+            底部下滑单手模式增强、桌面快捷菜单不松手滑选。
+
+            本次为排版修正，不动手势、动画与 Hook：
+            - 分组标题与行文字差 2dp（26 / 28dp 两条对齐线）→ 统一到 28dp 内容线；
+            - 关于页开发者卡内边距 18 → 16dp，头像与其他卡片文字对齐；
+            - 关于页姓名字号 19 → 20sp（title3）；
+            - 版本号格式统一为 `版本名(版本号)`。
+
+            安装前请确认已启用 3.4.x 的签名（与之前版本同一把密钥，可直接覆盖安装）。
           prerelease: ${{ contains(steps.apk.outputs.version_name, 'beta') }}
           make_latest: ${{ contains(steps.apk.outputs.version_name, 'beta') && 'false' || 'true' }}
 
@@ -196,8 +209,8 @@ jobs:
             三组功能：音量键映射（短按 / 长按 / 双击 / 连按 → 媒体与音量动作）、
             底部下滑单手模式增强、桌面快捷菜单不松手滑选。
 
-            本次修复：控制中心右滑切通知中心时，从屏幕下方起手的横向滑动不再被
-            单手模式触发区误判为下拉，避免切换动画卡住后整个面板被收起。
+            本次为排版修正，不动手势、动画与 Hook：分组标题统一到 28dp 内容线、
+            开发者卡内边距与其它卡片对齐、姓名改用 20sp（title3）、版本号格式统一。
 
             需要支持 libxposed API 102 的框架（Vector / 新版 LSPosed）。
             作用域：`system`（按键映射）、`com.android.systemui`、`com.miui.home`。

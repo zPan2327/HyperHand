@@ -274,12 +274,15 @@ final class AboutPage {
         LinearLayout cardDev = Ui.card(c, pal);
         LinearLayout row = Ui.rowShell(c);
         Ui.rowRipple(row, pal);
-        row.setPadding(Theme.dp(c, 18), Theme.dp(c, 14), Theme.dp(c, 18), Theme.dp(c, 14));
+        // 水平内边距与其它卡片一致（ROW_PAD_H=16dp → 内容线 28dp），否则头像会比
+        // 上方「开发者」标题和下方项目卡的文字各多缩进 2dp，视觉上错开一条线。
+        row.setPadding(Theme.dp(c, Theme.ROW_PAD_H), Theme.dp(c, 14),
+                Theme.dp(c, Theme.ROW_PAD_H), Theme.dp(c, 14));
         row.addView(avatar(56), new LinearLayout.LayoutParams(
                 Theme.dp(c, 56), Theme.dp(c, 56)));
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(Ui.text(c, "不会买菜.", 19, pal.title, Theme.semibold()));
+        col.addView(Ui.text(c, "不会买菜.", Theme.T_HERO, pal.title, Theme.medium()));
         TextView sub = Ui.text(c, "@zPan2327", 14, pal.summary, false);
         sub.setPadding(0, Theme.dp(c, 1), 0, 0);
         col.addView(sub);

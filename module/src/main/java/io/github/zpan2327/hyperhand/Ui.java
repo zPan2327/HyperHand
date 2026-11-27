@@ -89,7 +89,9 @@ final class Ui {
      */
     static TextView section(Context c, Theme.Colors p, String s) {
         TextView t = text(c, s, Theme.T_SECTION, p.section, Theme.bold());
-        t.setPadding(Theme.dp(c, 14), Theme.dp(c, 14), Theme.dp(c, 14), Theme.dp(c, 6));
+        // 左右 16dp：容器 12dp + 16dp = 28dp，与行标题（卡片内 16dp）和卡内分段标题同一条内容线。
+        // 原为 14dp（26dp），肉眼能看出分组标题比下面行文字略靠左。
+        t.setPadding(Theme.dp(c, 16), Theme.dp(c, 14), Theme.dp(c, 16), Theme.dp(c, 6));
         return t;
     }
 

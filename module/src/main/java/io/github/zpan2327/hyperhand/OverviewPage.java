@@ -231,9 +231,10 @@ final class OverviewPage {
             String name = pi.versionName == null ? "3.0.0" : pi.versionName;
             long code = android.os.Build.VERSION.SDK_INT >= 28
                     ? pi.getLongVersionCode() : pi.versionCode;
-            return name + " (" + code + ")";
+            // 与关于页 hero 及规范 §2.3 保持同一格式「版本名(版本号)」，中间不留空格。
+            return name + "(" + code + ")";
         } catch (Throwable t) {
-            return "3.0.0 (30000)";
+            return "3.0.0(30000)";
         }
     }
 

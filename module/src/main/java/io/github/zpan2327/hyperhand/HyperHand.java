@@ -133,6 +133,11 @@ public class HyperHand extends XposedModule {
     private static boolean sTracking;
     private static boolean sTriggered;
     private static long sDownTime;
+    /** 本次触发区手势的 DOWN 坐标，供 shadeGuard 区分"下拉"与"横向切换"。 */
+    private static float sDownX;
+    private static float sDownY;
+    /** shadeGuard 额外放行判定：向下位移要超过这个像素数才认为是在下拉。 */
+    private static final float SHADE_GUARD_MIN_DY = 12f;
     private static long sLastTriggerAt;
     /** 最近一次 StatusBarState 切换的时刻（毫秒时间戳，0 = 从未），调试用。 */
     static volatile long sLastSetStateAt;
@@ -687,10 +692,32 @@ public class HyperHand extends XposedModule {
      */
     private static boolean blockShadeByZoneGesture(XposedInterface.Chain chain, String tag) {
         if (!isZoneGesture()) return false;
+
+        // 不能只看"起手落在触发区"就拦。通知/控制中心里的左右切换手势，手指常常
+        // 停在屏幕下方（zoneTop 之下），起手同样落在触发区；但它根本不是下拉，
+        // 拦掉 expandToNotifications 会让切换动画卡在 pending layout timeout，
+        // 最后控制中心被 switchHide 直接收起 —— 表现就是"右滑没切到通知中心，
+        // 反而整个退出"。真机 11:23:51 的日志抓到了这条链路：
+        //   DOWN zone x=957 y=2374 → blocked shade expand → pending layout timeout
+        //   → switchHide → COLLAPSED。
+        //
+        // 所以这里额外要求"这确实是一次向下拖"：要么单手模式已经触发（触发后
+        // 手指继续下拉，正是本拦截要防的场景），要么当前位移是明显向下且向下
+        // 分量压过横向分量。纯横向 / 抬手方向的手势一律放行给系统。
+        if (!sTriggered) {
+            float dy = sRec.lastY() - sDownY;
+            float dx = sRec.lastX() - sDownX;
+            if (dy <= SHADE_GUARD_MIN_DY || dy <= Math.abs(dx)) return false;
+        }
+
         // 只拦 void 方法：返回 null 会让非 void 方法的调用方拿到 null
         java.lang.reflect.Executable e = chain.getExecutable();
         if (e instanceof Method && ((Method) e).getReturnType() != void.class) return false;
-        if (sDebug) log("blocked shade expand (" + tag + ", zone gesture)");
+        if (sDebug) {
+            log(String.format(Locale.US,
+                    "blocked shade expand (%s, zone gesture dy=%.0f dx=%.0f triggered=%b)",
+                    tag, sRec.lastY() - sDownY, sRec.lastX() - sDownX, sTriggered));
+        }
         return true;
     }
 
@@ -758,6 +785,8 @@ public class HyperHand extends XposedModule {
                 if (isKeyguardLocked(ctx)) return;
                 sTracking = true;
                 sDownTime = now;
+                sDownX = x;
+                sDownY = y;
                 sRec.begin(now, x, y);
                 if (c.debug) {
                     log(String.format(Locale.US, "DOWN zone x=%.0f y=%.0f h=%d zonePx=%.0f mode=%d",

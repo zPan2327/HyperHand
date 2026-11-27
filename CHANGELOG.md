@@ -2,6 +2,21 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [3.4.3] - 2026-11-27
+
+> versionCode 30403，可直接覆盖安装 3.4.2（30402）。
+
+### 修复
+- **控制中心右滑误退出**：在控制中心/通知中心里从屏幕下方起手往右滑想切到通知中心时，
+  手指落点常在单手模式触发区内（`zoneTop` 之下）。此前 `shadeGuard` 只凭「起手在区内
+  且 2.5 秒内」就拦掉 `NotificationPanelViewController.expandToNotifications`，
+  MIUI 的切换动画随后卡在 `pending layout timeout`，最终 `switchHide` 把整个面板收起 ——
+  表现就是「右滑没切成通知中心，反而直接退出控制中心」。
+  现在拦截额外要求**确实在向下拖**（累计 `dy > 12px` 且 `dy > |dx|`，或单手模式已触发），
+  纯横向 / 抬手方向的手势放行给系统。真机复现链路与修复后日志均已核对：
+  `blocked shade expand` 0 次，无 `pending layout timeout` / `switchHide`；
+  单手模式本身仍正常触发（`TRIGGER(E)`、conf=1.00）。
+
 ## [3.4.2] - 2026-11-26
 
 > versionCode 30402，可直接覆盖安装 3.4.1（30401）。

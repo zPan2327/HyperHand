@@ -193,8 +193,12 @@ jobs:
           body: |
             HyperHand ${{ steps.apk.outputs.version_name }}（versionCode ${{ steps.apk.outputs.version_code }}）
 
-            单手模式增强：扩大底部触发区、按速度判定下滑、与下拉通知/控制中心互斥，
-            缩小动画 / 布局 / 触摸映射 / 退出方式全部沿用 HyperOS 原生实现。
+            三组功能：音量键映射（短按 / 长按 / 双击 / 连按 → 媒体与音量动作）、
+            底部下滑单手模式增强、桌面快捷菜单不松手滑选。
+
+            本次修复：控制中心右滑切通知中心时，从屏幕下方起手的横向滑动不再被
+            单手模式触发区误判为下拉，避免切换动画卡住后整个面板被收起。
 
             需要支持 libxposed API 102 的框架（Vector / 新版 LSPosed）。
+            作用域：`system`（按键映射）、`com.android.systemui`、`com.miui.home`。
           files: module/out/HyperHand.apk

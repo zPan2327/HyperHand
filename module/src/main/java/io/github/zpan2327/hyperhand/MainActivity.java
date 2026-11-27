@@ -109,8 +109,7 @@ public class MainActivity extends ComponentActivity {
             bar.hide();
         }
 
-        // 界面语言：默认简体中文。首次启动会把「跟随系统」的应用级设置改成 zh-Hans，
-        // 之后只有偏好与系统不一致时才写，不会每次冷启都重建 Activity。
+        // 界面语言：默认跟随系统。只有偏好与系统不一致时才写，不会每次冷启都重建 Activity。
         Lang.applyOnStart(this);
 
         // 返回键：Android 16 + targetSdk 36 下系统不再调用 onBackPressed()（预测性返回），

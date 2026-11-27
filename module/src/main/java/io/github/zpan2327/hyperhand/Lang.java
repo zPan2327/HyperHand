@@ -13,7 +13,7 @@ import java.util.Locale;
  * <p>Android 13 起系统给每个应用存一份独立的语言设置，{@link LocaleManager#setApplicationLocales}
  * 设置后由系统负责重建 Activity、并把资源限定符切到对应语言——不需要自己包 Context、
  * 也不用改 Configuration。这里只负责三件事：记住用户选了什么、把它同步给系统、
- * 启动时把两者对齐（默认简体中文，不是「跟随系统」）。</p>
+ * 启动时把两者对齐（默认「跟随系统」；系统语言不在已翻译之列时资源回退到简体中文）。</p>
  *
  * <p>四个选项的 code 与资源目录一一对应：
  * {@code zh-Hans} → {@code values/}（默认）、{@code zh-Hant} → {@code values-b+zh+Hant/}、
@@ -24,11 +24,13 @@ public final class Lang {
     /** 与下拉菜单顺序一一对应；不要单独调整某一项，索引会被持久化。 */
     public static final String[] CODES = {"system", "zh-Hans", "zh-Hant", "en"};
 
-    /** 默认值：简体中文（需求明确「默认使用简体中文」，所以不是 system）。 */
-    private static final String DEFAULT_CODE = "zh-Hans";
+    /** 默认值：跟随系统。系统语言是英文就显示英文，是繁體就显示繁體，都不命中则回退到简体中文资源。 */
+    public static final String DEFAULT_CODE = "system";
 
     private static final String PREF = "hyperhand_ui";
-    private static final String KEY = "language";
+    // 键名带 v2：早期测试版把默认值「简体中文」写进了旧键 language。正式版从未带过语言设置，
+    // 换键名让装过测试版的设备回到真正的默认值，又不影响任何正式用户。
+    private static final String KEY = "language_v2";
 
     private Lang() {
     }
@@ -43,7 +45,7 @@ public final class Lang {
         for (int i = 0; i < CODES.length; i++) {
             if (CODES[i].equals(code)) return i;
         }
-        return 1;
+        return 0;
     }
 
     /** 下拉菜单里的选项名：语言名一律用它自己的语言书写，不随界面语言变化。 */
@@ -81,7 +83,7 @@ public final class Lang {
     /**
      * 启动时对齐一次，两条规则：
      * <ol>
-     *   <li>第一次启动：偏好是空的，写入默认值并同步给系统（于是「默认简体中文」对系统语言是英文的用户同样成立）；</li>
+     *   <li>第一次启动：偏好是空的，写入默认值「跟随系统」并同步给系统（装过测试版的设备会在此被清回跟随系统）；</li>
      *   <li>之后：以系统里存的应用级语言为准反向更新偏好——用户可能在「系统设置 → 应用 → HyperHand →
      *       语言」里改过，这里不能把他的选择覆盖回旧值。</li>
      * </ol>

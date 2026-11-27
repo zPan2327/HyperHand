@@ -117,7 +117,7 @@ item → release to run it.
 
 | Where | What it does |
 |---|---|
-| Personalization → Language | Follow system / 简体中文 (default) / 繁體中文 / English; the UI refreshes immediately |
+| Personalization → Language | Follow system (default) / 简体中文 / 繁體中文 / English; the UI refreshes immediately. Languages not listed fall back to Simplified Chinese |
 | Show advanced parameters | Expands thresholds, trigger zone, appearance and algorithm constants |
 | Restore defaults | Resets everything to the "Natural" preset; explicit values you set before are cleared too |
 | Restart scopes | Re-injects the hooks; requires root. Offers system framework, System UI and launcher |

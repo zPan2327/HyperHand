@@ -929,8 +929,8 @@ public class MainActivity extends ComponentActivity {
     }
 
     void restartScopes() {
-        Ui.confirmDialog(this, pal, "重启两个作用域",
-                "会结束「系统界面」与「小米桌面」两个进程，屏幕闪一下、短暂黑屏后自动恢复。",
+        Ui.confirmDialog(this, pal, "重启系统界面与桌面",
+                "会结束这两个进程，屏幕短暂黑屏后自动恢复。",
                 "重启", new Ui.OnConfirm() {
                     @Override
                     public void onConfirm() {

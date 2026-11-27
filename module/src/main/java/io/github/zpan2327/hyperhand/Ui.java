@@ -85,7 +85,7 @@ final class Ui {
 
     /**
      * SmallTitle：miuix subtitle（14sp Bold）+ SonyPods 的 insideMargin。
-     * 页面已有 12dp 边距，这里补 14dp，左边距落在 26dp —— 与 miuix 的 28dp 视觉一致。
+     * 页面已有 12dp 边距，这里补 16dp，文字起点落在 28dp —— 与卡片内行标题同一条内容线。
      */
     static TextView section(Context c, Theme.Colors p, String s) {
         TextView t = text(c, s, Theme.T_SECTION, p.section, Theme.bold());
@@ -117,6 +117,17 @@ final class Ui {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(Theme.round(p.card, Theme.dp(c, Theme.CARD_RADIUS)));
         card.setClipToOutline(true);
+        return card;
+    }
+
+    /**
+     * 半透明卡片：填充用 {@link Theme.Colors#cardGlass}，底下的渐变会透上来。
+     * 只在有「整页流动背景」的页面用（当前是关于页）；普通页面背后是纯色底，
+     * 半透明会显得脏，仍用 {@link #card}。
+     */
+    static LinearLayout cardGlass(Context c, Theme.Colors p) {
+        LinearLayout card = card(c, p);
+        card.setBackground(Theme.round(p.cardGlass, Theme.dp(c, Theme.CARD_RADIUS)));
         return card;
     }
 

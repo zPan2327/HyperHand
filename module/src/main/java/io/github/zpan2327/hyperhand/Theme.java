@@ -45,6 +45,7 @@ final class Theme {
         // 基础层
         int bg;             // background：页面底色（#F7F7F7）
         int card;           // surfaceContainer：卡片
+        int cardGlass;      // 半透明卡片：叠在渐变背景上，让背景透上来（关于页用）
         int cardHigh;       // secondaryVariant：卡片内的次级块
         int title;          // onSurface
         int summary;        // onSurfaceVariantSummary
@@ -94,6 +95,10 @@ final class Theme {
             // darkColorScheme()
             p.bg = 0xFF000000;
             p.card = 0xFF242424;
+            // 深色下的半透明卡片：极淡的白（约 9%），叠在渐变上只提亮一点点，
+            // 让卡片边界靠「更亮一档」而不是靠一块纯色灰块 —— 与 LSPosed 关于页一致
+            // （实测参考实现的卡片相对背景只抬升约 +13/255）。
+            p.cardGlass = 0x17FFFFFF;
             p.cardHigh = 0xFF2D2D2D;
             p.title = 0xFFF2F2F2;
             p.summary = 0x80FFFFFF;
@@ -128,6 +133,9 @@ final class Theme {
             // lightColorScheme()
             p.bg = 0xFFF7F7F7;
             p.card = 0xFFFFFFFF;
+            // 浅色下的半透明卡片：约 66% 的白。参考实现实测 0.62~0.65
+            //（卡片相对背景抬升 +22~+34/255），略高一点保证大段文字的对比度。
+            p.cardGlass = 0xA9FFFFFF;
             p.cardHigh = 0xFFF0F0F0;
             p.title = 0xFF000000;
             p.summary = 0x99000000;

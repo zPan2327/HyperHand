@@ -271,7 +271,7 @@ final class AboutPage {
         // 滚动上限就锚在这个标题上：字样的顶不允许越过顶栏的底（见 scrollLimit）。
         devSection = Ui.section(c, pal, "开发者");
         page.add(devSection);
-        LinearLayout cardDev = Ui.card(c, pal);
+        LinearLayout cardDev = Ui.cardGlass(c, pal);
         LinearLayout row = Ui.rowShell(c);
         Ui.rowRipple(row, pal);
         // 水平内边距与其它卡片一致（ROW_PAD_H=16dp → 内容线 28dp），否则头像会比
@@ -305,7 +305,7 @@ final class AboutPage {
 
         // ---------------------------------------------------------- 项目
         // 参考版式里开发者卡片下面直接就是这张卡片，没有「项目」小标题。
-        LinearLayout cardProj = Ui.card(c, pal);
+        LinearLayout cardProj = Ui.cardGlass(c, pal);
         Ui.navRow(c, cardProj, pal, -1, "源码", "GitHub 上的 HyperHand 仓库", "GitHub",
                 new Runnable() {
                     @Override

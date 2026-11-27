@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.4.4"
+val defaultVersionName = "3.4.5"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -57,7 +57,9 @@ val derivedVersionCode: Int = run {
 //   NotificationPanelViewController.expand*，修控制中心右滑误退出）。
 // 3.4.4 = 30404（排版权值统一：分组标题 28dp 内容线、关于页姓名 20sp title3、
 //   开发者卡内边距 16dp、版本号格式统一为 `版本名(版本号)`）。
-val minVersionCode = 30404
+// 3.4.5 = 30405（关于页卡片改半透明对齐 LSPosed；单手模式设 常用/高级 两层，
+//   总开关统一「启用 + 功能名」；设置页文案重写去口语）。
+val minVersionCode = 30405
 
 val versionCodeValue = fromEnvOrProperty("VERSION_CODE")?.toIntOrNull()
     ?: maxOf(derivedVersionCode, minVersionCode)

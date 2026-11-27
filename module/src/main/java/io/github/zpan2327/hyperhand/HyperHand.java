@@ -862,15 +862,15 @@ public class HyperHand extends XposedModule {
             String tip;
             if (inZone) {
                 // delta 恒为负：越接近 0 越贴边
-                tip = delta > -10f ? "贴着边界" : String.format(Locale.US, "深入区内 %.0f dp", -delta);
+                tip = delta > -10f ? "接近区线" : String.format(Locale.US, "区内 %.0f dp", -delta);
             } else if (delta > 0f) {
-                tip = String.format(Locale.US, "超出区线 %.0f dp，把高度调大约这个数", delta);
+                tip = String.format(Locale.US, "超出区线 %.0f dp，可增大触发区高度", delta);
             } else {
                 // y 明明在区线内却判成区外，只可能是水平方向出了范围
-                tip = "高度够，问题在水平范围（宽度占比/左右偏置）";
+                tip = "高度足够，落在水平范围外（检查宽度占比与左右偏置）";
             }
             Settings.Global.putString(ctx.getContentResolver(), Cfg.K_LAST_DOWN,
-                    String.format(Locale.US, "最近一次起手：距底 %.0f dp · %s\n区线 %.0f dp · %s",
+                    String.format(Locale.US, "最近一次下滑：起手距底 %.0f dp · %s\n区线 %.0f dp · %s",
                             gapDp, inZone ? "区内" : "区外", c.zoneDp, tip));
         } catch (Throwable ignored) {
             // 纯调试显示

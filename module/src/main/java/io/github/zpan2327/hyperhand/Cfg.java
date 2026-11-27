@@ -176,12 +176,13 @@ final class Cfg {
             "标准（ease-out quart）", "迅捷（ease-out quint）"
     };
     static final String[] ANIM_CURVE_SHORT = new String[] {"原生", "舒缓", "柔和", "标准", "迅捷"};
+    // 说明只写曲线名与两个采样点，不带「手感如何」这类评价。
     static final String[] ANIM_CURVE_SUMMARIES = new String[] {
-            "系统自带：10% 时间走完 50% 位移，观感最冲",
-            "起手与收尾都减速：10% 只走 3%，位移最均匀，但起手像\"顿一下\"",
-            "10% 走 27%、30% 走 66%：中段接近直线，容易觉得机械",
-            "10% 走 34%、30% 走 76%：起步果断、尾部从容，推荐",
-            "10% 走 41%、30% 走 83%：最接近原生节奏，只是没那么极端",
+            "10% 时间走完 50% 位移",
+            "10% 走 3%，30% 走 27%",
+            "10% 走 27%，30% 走 66%",
+            "10% 走 34%，30% 走 76%",
+            "10% 走 41%，30% 走 83%",
     };
     /** 原生曲线的一句话描述，设置页直接显示。 */
     static final String ANIM_CURVE_RAW_DESC = "曲线 ease-out expo（10% 时间 → 50% 位移）";
@@ -210,9 +211,14 @@ final class Cfg {
     static final int TOP_SIDE_NOTIFY = 1;
     static final int TOP_SIDE_CONTROL = 2;
     static final String[] TOP_SIDE_NAMES = new String[] {
-            "左侧通知 / 右侧控制", "总是通知中心", "总是控制中心"
+            "左侧通知、右侧控制", "总是通知中心", "总是控制中心"
     };
-    static final String[] TOP_SIDE_SHORT = new String[] {"左通知右控制", "通知中心", "控制中心"};
+    static final String[] TOP_SIDE_SHORT = new String[] {"左侧 / 右侧", "通知中心", "控制中心"};
+    static final String[] TOP_SIDE_SUMMARIES = new String[] {
+            "按下滑所在半屏决定",
+            "任意位置下滑都展开通知中心",
+            "任意位置下滑都展开控制中心",
+    };
     static final int DEF_TOP_SHADE_SIDE = TOP_SIDE_SPLIT;
 
     /**
@@ -241,12 +247,12 @@ final class Cfg {
     static final int MODE_SENSITIVE = 1;
     static final int MODE_STABLE = 2;
 
-    static final String[] MODE_NAMES = new String[] {"自然（iPhone 式）", "灵敏", "防误触"};
+    static final String[] MODE_NAMES = new String[] {"自然", "灵敏", "防误触"};
     static final String[] MODE_SHORT = new String[] {"自然", "灵敏", "防误触"};
     static final String[] MODE_SUMMARIES = new String[] {
-            "自然连续下滑即可触发，兼顾速度与距离",
-            "降低门槛，短距离轻扫也能触发",
-            "提高门槛，优先保证页面滚动与系统手势",
+            "速度与距离综合判定",
+            "阈值更低，轻扫即可触发",
+            "阈值更高，优先保证页面滚动",
     };
 
     /** 模式的默认敏感度。显式写入的键会覆盖这里的值。 */

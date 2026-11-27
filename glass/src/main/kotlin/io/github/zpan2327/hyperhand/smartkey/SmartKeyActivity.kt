@@ -77,9 +77,26 @@ class SmartKeyActivity : SkActivity() {
                 },
                 onNewRule = { openEditRule(null) },
                 onEditRule = { id -> openEditRule(id) },
-                onToggleRule = { id, en -> repo.setEnabled(id, en); revision.intValue++ },
-                onDeleteRule = { id -> repo.delete(id); revision.intValue++ },
-                onDuplicateRule = { id -> repo.duplicate(id); revision.intValue++ },
+                // 增删改与开关都会写 Settings.Global；若后台预热还没完成，这里可能也要走 su 授权，
+                // 所以统一放 IO 线程，避免和预热抢在同一时刻时卡住主线程。
+                onToggleRule = { id, en ->
+                    scope.launch(Dispatchers.IO) {
+                        repo.setEnabled(id, en)
+                        withContext(Dispatchers.Main) { revision.intValue++ }
+                    }
+                },
+                onDeleteRule = { id ->
+                    scope.launch(Dispatchers.IO) {
+                        repo.delete(id)
+                        withContext(Dispatchers.Main) { revision.intValue++ }
+                    }
+                },
+                onDuplicateRule = { id ->
+                    scope.launch(Dispatchers.IO) {
+                        repo.duplicate(id)
+                        withContext(Dispatchers.Main) { revision.intValue++ }
+                    }
+                },
                 onOpenStatus = { openStatus() },
                 version = try {
                     packageManager.getPackageInfo(packageName, 0).versionName ?: ""

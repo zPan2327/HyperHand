@@ -2,11 +2,7 @@
 <resources>
     <!-- 应用 / 模块显示名：就叫 HyperHand，不附加任何副标题。
          LSPosed 从 android:label 读这个名字，模块仓库 description 也是 HyperHand。 -->
-    <string name="app_name" translatable="false">HyperHand</string>
     <!-- 语言下拉里的语言名用各自的语言书写，三种语言下都保持原样 -->
-    <string name="lang_zh_hans" translatable="false">简体中文</string>
-    <string name="lang_zh_hant" translatable="false">繁體中文</string>
-    <string name="lang_en" translatable="false">English</string>
 
 
     <!-- 单手模式下拉：动画曲线 / 展开方向 / 触发模式 -->
@@ -146,8 +142,12 @@
     <string name="set_101">重新啟動中…</string>
     <string name="set_102">重新啟動系統介面與桌面</string>
     <string name="set_native_hint">系統原生 %1$dms · %2$s；下滑一次後顯示實測值</string>
-    <string name="set_rules_count">%1$d 條規則</string>
-    <string name="set_rules_count_enabled">%1$d 條規則 · 啟用 %2$d 條</string>
+    <plurals name="set_rules_count">
+        <item quantity="other">%1$d 條規則</item>
+    </plurals>
+    <plurals name="set_rules_count_enabled">
+        <item quantity="other">%1$d 條規則 · 啟用 %2$d 條</item>
+    </plurals>
 
     <!-- 设置页 -->
     <string name="unit_times">倍</string>
@@ -292,7 +292,7 @@
     <string name="about_038">立刻縮小視窗，直接看背景效果</string>
     <string name="about_039">退出單手模式</string>
     <string name="about_040">恢復正常視窗大小</string>
-    <string name="about_041">重新啟動兩個作用域</string>
+    <string name="about_041">重新啟動作用域</string>
     <string name="about_042">結束系統介面與桌面程序，重新注入鉤子</string>
     <string name="about_043">關閉</string>
     <string name="about_044">未知</string>

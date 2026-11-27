@@ -2,6 +2,29 @@
 
 所有值得注意的改动都会记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 安全
+- **配置广播加发送方校验**：`io.github.zpan2327.hyperhand.action.SET` 的接收器注册在 SystemUI / 桌面进程，
+  此前导出且无权限保护——任何第三方应用都能发它来杀 SystemUI（`act=reload`）、改写全部 `oh_tuner_*`
+  配置、强拉控制中心。现在用模块自声明的 signature 级权限
+  `io.github.zpan2327.hyperhand.permission.CONTROL` 保护接收器，只有同签名的本模块（或 root）能发。
+  adb 调试改为 `adb shell su -c "am broadcast …"`。
+
+### 修复
+- **返回键**：Android 16 + targetSdk 36 下系统不再调用 `onBackPressed()`，「设置 / 关于页按返回先回概览」
+  实际已失效；改为注册到 `OnBackPressedDispatcher`，逻辑不变。
+- **语言跟随系统设置**：用户在「系统设置 → 应用 → 语言」里改过之后，下次启动不再被旧偏好覆盖；
+  兼容 `zh-Hans-CN`、`en-US` 这类带地区的写法。
+- **首次授权不再卡住**：`WRITE_SECURE_SETTINGS` 的 `su` 授权最多等 8 秒；规则启用 / 删除 / 复制也移到
+  IO 线程，避免和启动预热撞车时在主线程等 root。
+
+### 翻译
+- 英文把「从底部下滑」误译为 swipe up 的 4 处改为 swipe down。
+- 「重启两个作用域」改为「重启作用域」（实际已是三个作用域）。
+- 英文规则数改为复数：`1 rule / 2 rules`（原来是 `1 rule(s)`）。
+- 4 个 `translatable="false"` 的条目不再重复出现在 `values-en` / `values-b+zh+Hant`。
+
 ## [3.4.6] - 2026-11-27
 
 > versionCode 30406，可直接覆盖安装 3.4.5（30405）。界面与交互调整，手势识别与 Hook 逻辑零改动。

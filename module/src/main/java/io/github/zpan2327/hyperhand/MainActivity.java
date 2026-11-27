@@ -27,6 +27,8 @@ import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import androidx.activity.OnBackPressedCallback;
+
 import java.util.Locale;
 
 /**
@@ -42,7 +44,7 @@ import java.util.Locale;
  * <p>继承 {@link ComponentActivity} 而不是裸 {@link android.app.Activity}：液态玻璃底栏是 Compose
  * 画的（{@code HyperGlassBarView} 是 {@code AbstractComposeView}），Compose 要求 ViewTree 上挂了
  * LifecycleOwner / SavedStateRegistryOwner，只有 ComponentActivity 会替你装好这两个 owner。
- * 其余行为（ActionBar 隐藏、WindowInsets、onBackPressed 覆写）都与原来一致。
+ * 其余行为（ActionBar 隐藏、WindowInsets、返回键处理）都与原来一致。
  */
 public class MainActivity extends ComponentActivity {
 
@@ -110,6 +112,16 @@ public class MainActivity extends ComponentActivity {
         // 界面语言：默认简体中文。首次启动会把「跟随系统」的应用级设置改成 zh-Hans，
         // 之后只有偏好与系统不一致时才写，不会每次冷启都重建 Activity。
         Lang.applyOnStart(this);
+
+        // 返回键：Android 16 + targetSdk 36 下系统不再调用 onBackPressed()（预测性返回），
+        // 必须把同一套逻辑注册到 OnBackPressedDispatcher，否则「设置/关于页按返回先回概览」失效。
+        backCallback = new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleBack();
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, backCallback);
 
         // 截图/调试用：--es bg grad 换成彩色渐变底，用来看玻璃的折射与通透
         Theme.demoBg = getIntent() != null && "grad".equals(getIntent().getStringExtra("bg"));
@@ -694,8 +706,11 @@ public class MainActivity extends ComponentActivity {
         selectTab(TAB_SETTINGS, true);
     }
 
-    @Override
-    public void onBackPressed() {
+    /**
+     * 返回键的统一出口：先关浮层（下拉 / 数字选择器 / 对话框），不在概览页就回概览，
+     * 否则交回系统退出。由上面注册的 OnBackPressedCallback 调用。
+     */
+    void handleBack() {
         if (dropdownHost != null && dropdownHost.isShowing()) {
             dropdownHost.hide();
             return;
@@ -716,8 +731,17 @@ public class MainActivity extends ComponentActivity {
             selectTab(TAB_OVERVIEW, true);
             return;
         }
-        super.onBackPressed();
+        // 交回系统退出。必须先禁用自己：否则 dispatcher 会再次分发到本回调，永远到不了默认退出。
+        if (backCallback != null) backCallback.setEnabled(false);
+        try {
+            getOnBackPressedDispatcher().onBackPressed();
+        } finally {
+            if (backCallback != null) backCallback.setEnabled(true);
+        }
     }
+
+    /** 注册在 OnBackPressedDispatcher 上的返回键回调；需要「交回系统退出」时先把它禁用一下。 */
+    private OnBackPressedCallback backCallback;
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {

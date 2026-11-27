@@ -98,6 +98,8 @@ public class HyperHand extends XposedModule {
     static final String CLS_SYSUI_PROXY_WRAPPER_MIUI = "com.miui.home.recents.MiuiSystemUiProxyWrapper";
 
     static final String ACTION_SET = "io.github.zpan2327.hyperhand.action.SET";
+    /** 配置广播的发送方权限，signature 级；只有本模块自己（或 root）能发。 */
+    static final String PERMISSION_CONTROL = "io.github.zpan2327.hyperhand.permission.CONTROL";
 
     /** transaction code: ISystemUiProxy.onStatusBarMotionEvent(MotionEvent)。 */
     static final int TX_ON_STATUS_BAR_MOTION_EVENT = 10;
@@ -1231,11 +1233,11 @@ public class HyperHand extends XposedModule {
                     }
                 };
                 IntentFilter filter = new IntentFilter(ACTION_SET);
-                if (Build.VERSION.SDK_INT >= 33) {
-                    ctx.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
-                } else {
-                    ctx.registerReceiver(receiver, filter);
-                }
+                // 发送方必须持有本模块的 signature 级权限（见 Manifest）。这条广播能杀进程、
+                // 改全部配置、拉控制中心，导出给任意应用等于把 SystemUI 的能力交出去。
+                // root（uid 0）天然通过，所以 adb 调试用 `su -c am broadcast`。
+                ctx.registerReceiver(receiver, filter, PERMISSION_CONTROL, null,
+                        Context.RECEIVER_EXPORTED);
                 sReceiverRegistered = true;
                 log("config receiver registered");
                 Cfg.migrateIfNeeded(ctx);

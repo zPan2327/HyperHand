@@ -2,11 +2,7 @@
 <resources>
     <!-- 应用 / 模块显示名：就叫 HyperHand，不附加任何副标题。
          LSPosed 从 android:label 读这个名字，模块仓库 description 也是 HyperHand。 -->
-    <string name="app_name" translatable="false">HyperHand</string>
     <!-- 语言下拉里的语言名用各自的语言书写，三种语言下都保持原样 -->
-    <string name="lang_zh_hans" translatable="false">简体中文</string>
-    <string name="lang_zh_hant" translatable="false">繁體中文</string>
-    <string name="lang_en" translatable="false">English</string>
 
 
     <!-- 单手模式下拉：动画曲线 / 展开方向 / 触发模式 -->
@@ -27,8 +23,8 @@
     <string name="cfg_015" formatted="false">41% at 10%, 83% at 30%</string>
     <string name="cfg_016" formatted="false">ease-out expo (50% of the distance in 10% of the time)</string>
     <string name="cfg_017">Notifications left, control center right</string>
-    <string name="cfg_018">Always notification center</string>
-    <string name="cfg_019">Always control center</string>
+    <string name="cfg_018">Always open notification center</string>
+    <string name="cfg_019">Always open control center</string>
     <string name="cfg_020">Left / right</string>
     <string name="cfg_021">Notification center</string>
     <string name="cfg_022">Control center</string>
@@ -49,7 +45,7 @@
     <string name="set_004">Rules and keys</string>
     <string name="set_005">One-handed mode</string>
     <string name="set_006">Enable one-handed mode</string>
-    <string name="set_007">Triggered by swiping up from the bottom edge; system gesture returns when off</string>
+    <string name="set_007">Triggered by swiping down from the bottom edge; system gesture returns when off</string>
     <string name="set_008">Trigger style</string>
     <string name="set_009">Applies the preset values of that style</string>
     <string name="set_010">Blurred wallpaper</string>
@@ -141,13 +137,19 @@
     <string name="set_096">Key mapping disabled, volume keys behave normally again.</string>
     <string name="set_097">No rules yet</string>
     <string name="set_098">Triggered by app, audio and state</string>
-    <string name="set_099">Saved and applied. Swipe up from the bottom to test, then open Recent gestures to see the result.</string>
+    <string name="set_099">Saved and applied. Swipe down from the bottom to test, then open Recent gestures to see the result.</string>
     <string name="set_100">Swipe once from the bottom to show how far your finger started from the edge</string>
     <string name="set_101">Restarting…</string>
     <string name="set_102">Restart System UI and launcher</string>
     <string name="set_native_hint">System default %1$dms · %2$s; measured value appears after one swipe</string>
-    <string name="set_rules_count">%1$d rule(s)</string>
-    <string name="set_rules_count_enabled">%1$d rule(s) · %2$d enabled</string>
+    <plurals name="set_rules_count">
+        <item quantity="one">%1$d rule</item>
+        <item quantity="other">%1$d rules</item>
+    </plurals>
+    <plurals name="set_rules_count_enabled">
+        <item quantity="one">%1$d rule · %2$d enabled</item>
+        <item quantity="other">%1$d rules · %2$d enabled</item>
+    </plurals>
 
     <!-- 设置页 -->
     <string name="unit_times">×</string>
@@ -165,7 +167,7 @@
     <string name="main_010">No injection record yet</string>
     <string name="main_011">"System UI "</string>
     <string name="main_012">"Launcher "</string>
-    <string name="main_013">Nothing recorded yet. Turn on debug logging, swipe up from the bottom once, then come back.</string>
+    <string name="main_013">Nothing recorded yet. Turn on debug logging, swipe down from the bottom once, then come back.</string>
     <string name="main_014">Master switch: </string>
     <string name="main_015">Enabled</string>
     <string name="main_016">Disabled</string>
@@ -218,7 +220,7 @@
     <string name="main_063">and try again.</string>
     <string name="main_064">No root, restart skipped</string>
     <string name="main_065">Both processes stopped; the hooks re-inject once they restart.</string>
-    <string name="main_066">Now swipe up from the bottom area to try it.</string>
+    <string name="main_066">Now swipe down from the bottom area to try it.</string>
     <string name="main_067">Restarted</string>
     <string name="main_068">Root command failed: </string>
     <string name="main_069">\nFell back to letting System UI restart itself (the launcher hook is not refreshed; restart it manually later).</string>
@@ -292,7 +294,7 @@
     <string name="about_038">Shrinks the window right away to show the background</string>
     <string name="about_039">Exit one-handed mode</string>
     <string name="about_040">Restores the normal window size</string>
-    <string name="about_041">Restart both scopes</string>
+    <string name="about_041">Restart scopes</string>
     <string name="about_042">Stops System UI and the launcher to re-inject the hooks</string>
     <string name="about_043">Close</string>
     <string name="about_044">Unknown</string>

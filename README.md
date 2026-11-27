@@ -268,8 +268,10 @@ adb logcat -d -s HyperHand
 
 全部存于 `Settings.Global`，前缀 `oh_tuner_`，App 界面可改，也可用 `adb`：
 
+> 配置广播受 signature 级权限保护，只有本模块自己能发；`adb shell`（uid 2000）直接发会被拒，需按下面的写法走 root。
+
 ```bash
-adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_min_velocity_dp_s 120
+adb shell su -c "am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_min_velocity_dp_s 120"
 ```
 
 **单位约定**：距离用 `dp`，速度用 `dp/s`（与屏幕密度无关）。旧版的 `oh_tuner_min_velocity_px_s` 仍然可读，
@@ -492,7 +494,7 @@ LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://gith
 
 ## 回滚 / 停用
 
-1. App 里关掉「启用模块」，或 `adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_enabled 0`；
+1. App 里关掉「启用模块」，或 `adb shell su -c "am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_enabled 0"`；
 2. Vector 里停用模块（也可只取消对应作用域）→ `adb shell am crash com.android.systemui`；
 3. `adb uninstall io.github.zpan2327.hyperhand`（残留的 `oh_tuner_*` 设置项可忽略，模块不再读取）。
 

@@ -656,10 +656,7 @@ final class AboutPage {
 
     private Bitmap loadAvatar() {
         try {
-            int id = c.getResources().getIdentifier("avatar", "drawable", c.getPackageName());
-            if (id == 0) {
-                return null;
-            }
+            final int id = R.drawable.avatar;
             android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
             o.inPreferredConfig = Bitmap.Config.ARGB_8888;
             // 不让 aapt2 按屏幕密度把图放大成 2000+ 再缩回来，那样会糊。

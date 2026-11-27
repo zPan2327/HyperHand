@@ -507,8 +507,8 @@ final class SettingsPage {
                 return c.getString(R.string.set_097);
             }
             return enabled == rules.size()
-                    ? c.getString(R.string.set_rules_count, rules.size())
-                    : c.getString(R.string.set_rules_count_enabled, rules.size(), enabled);
+                    ? c.getResources().getQuantityString(R.plurals.set_rules_count, rules.size(), rules.size())
+                    : c.getResources().getQuantityString(R.plurals.set_rules_count_enabled, rules.size(), rules.size(), enabled);
         } catch (Throwable t) {
             return c.getString(R.string.set_098);
         }

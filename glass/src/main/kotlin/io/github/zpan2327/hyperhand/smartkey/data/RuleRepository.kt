@@ -167,7 +167,19 @@ class RuleRepository(private val context: Context) {
                     "pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
                 )
             )
-            val code = p.waitFor()
+            // 首次会弹 root 授权框：用户不管它时不能无限期等下去，最多等 8 秒就放弃，
+            // 下次写入时再试（授权一旦点过，管理器会记住）。
+            val result = java.util.concurrent.atomic.AtomicInteger(Int.MIN_VALUE)
+            Thread {
+                result.set(runCatching { p.waitFor() }.getOrDefault(-1))
+            }.apply { isDaemon = true }.start()
+            val deadline = System.currentTimeMillis() + 8_000L
+            while (result.get() == Int.MIN_VALUE && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50)
+            }
+            val finished = result.get() != Int.MIN_VALUE
+            if (!finished) runCatching { p.destroy() }
+            val code = if (finished) result.get() else -1
             // 关键：pm grant 成功后，同一进程内的 checkSelfPermission 可能仍读到旧值，
             // 所以不能只用它判断成败；以 su 退出码为准，真正能否写由后续 putString 决定。
             val ok = code == 0 || hasSecureSettings()

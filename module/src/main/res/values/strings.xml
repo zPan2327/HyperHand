@@ -146,8 +146,12 @@
     <string name="set_101">重启中…</string>
     <string name="set_102">重启系统界面与桌面</string>
     <string name="set_native_hint">系统原生 %1$dms · %2$s；下滑一次后显示实测值</string>
-    <string name="set_rules_count">%1$d 条规则</string>
-    <string name="set_rules_count_enabled">%1$d 条规则 · 启用 %2$d 条</string>
+    <plurals name="set_rules_count">
+        <item quantity="other">%1$d 条规则</item>
+    </plurals>
+    <plurals name="set_rules_count_enabled">
+        <item quantity="other">%1$d 条规则 · 启用 %2$d 条</item>
+    </plurals>
 
     <!-- 设置页 -->
     <string name="unit_times">倍</string>
@@ -292,7 +296,7 @@
     <string name="about_038">立刻缩小窗口，直接看背景效果</string>
     <string name="about_039">退出单手模式</string>
     <string name="about_040">恢复正常窗口大小</string>
-    <string name="about_041">重启两个作用域</string>
+    <string name="about_041">重启作用域</string>
     <string name="about_042">结束系统界面与桌面进程，重新注入钩子</string>
     <string name="about_043">关闭</string>
     <string name="about_044">未知</string>

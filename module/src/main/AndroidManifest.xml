@@ -20,6 +20,15 @@
          secure settings" 拒绝写入自定义 key。故回到 Global + 运行时授权。） -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 
+    <!-- 配置广播的发送方权限（signature 级，只有与本模块同签名的应用能获得）。
+         接收器注册在 SystemUI / 桌面进程里并要求发送方持有它：
+         没有它时任何第三方应用都能发这条广播——杀 SystemUI、改写全部配置、强拉控制中心。
+         adb 调试需走 root：adb shell su -c "am broadcast ..."（shell 自己拿不到 signature 权限）。 -->
+    <permission
+        android:name="io.github.zpan2327.hyperhand.permission.CONTROL"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="io.github.zpan2327.hyperhand.permission.CONTROL" />
+
     <application
         android:label="@string/app_name"
         android:description="@string/app_description"

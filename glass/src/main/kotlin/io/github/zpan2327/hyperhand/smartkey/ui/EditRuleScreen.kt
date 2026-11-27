@@ -83,11 +83,15 @@ fun ColumnScope.EditRuleScreenContent(
     var actionIndex by remember { mutableStateOf(-1) }
     var conditionIndex by remember { mutableStateOf(-1) }
     var priorityOpen by remember { mutableStateOf(false) }
+    // 「添加」不再是就地塞一条默认值：先弹选择框，确认后才追加。
+    var addTriggerOpen by remember { mutableStateOf(false) }
+    var addActionOpen by remember { mutableStateOf(false) }
 
     // 贴底对话框会压到页面底部那条「保存」上，只留出一小截蓝底。Miuix 的对话框没法从外部
     // 改抽屉高度（改 outsideMargin 就不再是默认贴底形态了），所以改成「弹窗打开时把按钮收起来」：
     // 底部槽位高度保持不变，页面不会因此跳动。
-    val overlayOpen = triggerIndex >= 0 || actionIndex >= 0 || conditionIndex >= 0 || priorityOpen
+    val overlayOpen = triggerIndex >= 0 || actionIndex >= 0 || conditionIndex >= 0 ||
+        priorityOpen || addTriggerOpen || addActionOpen
     SideEffect { onOverlayOpenChange(overlayOpen) }
 
     // ------------------------------------------------------------ 名称
@@ -161,9 +165,7 @@ fun ColumnScope.EditRuleScreenContent(
             )
         }
         if (state.mappings.isNotEmpty()) SkRowDivider()
-        SkAddRow(text = "添加触发按键") {
-            state = state.copy(mappings = state.mappings + KeyMapping(KeyType.VOLUME_UP))
-        }
+        SkAddRow(text = "添加触发按键") { addTriggerOpen = true }
     }
 
     // ------------------------------------------------------------ 且满足…状态
@@ -208,9 +210,7 @@ fun ColumnScope.EditRuleScreenContent(
             )
         }
         if (state.mappings.isNotEmpty()) SkRowDivider()
-        SkAddRow(text = "添加执行动作") {
-            state = state.copy(mappings = state.mappings + KeyMapping(KeyType.VOLUME_UP))
-        }
+        SkAddRow(text = "添加执行动作") { addActionOpen = true }
     }
 
     // ------------------------------------------------------------ 规则设置
@@ -302,6 +302,34 @@ fun ColumnScope.EditRuleScreenContent(
             }
         },
         onDismiss = { conditionIndex = -1 },
+    )
+
+    // ------------------------------------------------------------ 新增（先选后加）
+    SkNewTriggerDialog(
+        show = addTriggerOpen,
+        onConfirm = { key, press ->
+            state = state.copy(mappings = state.mappings + KeyMapping(key = key, press = press))
+            addTriggerOpen = false
+        },
+        onDismiss = { addTriggerOpen = false },
+    )
+
+    val lastMapping = state.mappings.lastOrNull()
+    SkNewActionDialog(
+        show = addActionOpen,
+        baseKey = lastMapping?.key ?: KeyType.VOLUME_UP,
+        basePress = lastMapping?.press ?: PressType.SHORT,
+        onConfirm = { action ->
+            state = state.copy(
+                mappings = state.mappings + KeyMapping(
+                    key = lastMapping?.key ?: KeyType.VOLUME_UP,
+                    press = lastMapping?.press ?: PressType.SHORT,
+                    action = action,
+                )
+            )
+            addActionOpen = false
+        },
+        onDismiss = { addActionOpen = false },
     )
 
     SkOptionDialog(

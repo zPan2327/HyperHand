@@ -2,6 +2,7 @@ package io.github.zpan2327.hyperhand.smartkey
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import io.github.zpan2327.hyperhand.smartkey.data.Condition
 import io.github.zpan2327.hyperhand.smartkey.data.Rule
 import io.github.zpan2327.hyperhand.smartkey.ui.EditRuleScreenContent
+import io.github.zpan2327.hyperhand.smartkey.ui.SkDiscardChangesDialog
 import io.github.zpan2327.hyperhand.smartkey.ui.SmartKeyScaffold
 import io.github.zpan2327.hyperhand.smartkey.ui.SmartKeyScaffoldContent
 import io.github.zpan2327.hyperhand.smartkey.ui.rememberSkHaptics
@@ -47,6 +49,14 @@ class SkEditRuleActivity : SkActivity() {
 
     private lateinit var draftState: MutableState<Rule>
     private val saving = mutableStateOf(false)
+
+    /**
+     * 进页面时的草稿快照（JSON）。
+     *
+     * 退出时拿它跟当前草稿比：一致说明没改过，直接返回；不一致弹「放弃修改？」。
+     * 用 JSON 比而不是逐字段比，是因为条件/映射都是列表，随便哪一层改了都该算脏。
+     */
+    private var baselineJson: String = ""
 
     /** 点「更换应用」时记住是第几条条件，结果回来据此替换（按位置而不是按类型，避免同类型多条互相串）。 */
     private var pendingAppIndex: Int = -1
@@ -87,6 +97,7 @@ class SkEditRuleActivity : SkActivity() {
         draftState = mutableStateOf(
             restored ?: loadInitialDraft() ?: Rule(id = repo.newId(), name = "", enabled = true)
         )
+        baselineJson = draftState.value.toJson().toString()
     }
 
     private fun loadInitialDraft(): Rule? {
@@ -109,10 +120,20 @@ class SkEditRuleActivity : SkActivity() {
         val haptics = rememberSkHaptics()
         val overlayOpen = remember { mutableStateOf(false) }
 
+        // 有没有未保存的改动：与进页面时的快照比 JSON。
+        val dirty = draftState.value.toJson().toString() != baselineJson
+        val leaveConfirm = remember { mutableStateOf(false) }
+        // 顶栏返回与系统返回键走同一条判断：脏了先问，干净直接退。
+        val requestExit: () -> Unit = {
+            if (dirty) leaveConfirm.value = true else finish()
+        }
+        // 对话框开着时把返回键让给 Miuix（它的 onDismissRequest 负责关闭）。
+        BackHandler(enabled = !leaveConfirm.value) { requestExit() }
+
         SmartKeyScaffold(
             title = title,
             largeTitle = title,
-            onBack = { finish() },
+            onBack = { requestExit() },
             // 「保存」整行主色按钮占满底部一条（米家的创建/保存按钮同位置）。
             // 必须放在 Scaffold 的 bottomBar 槽里而不是浮在 Scaffold 外层：两者的差别是 z 序 ——
             // 弹窗浮层由 Scaffold 内部的 MiuixPopupHost 渲染，外层 Box 里的按钮会画在弹窗之上，
@@ -156,6 +177,16 @@ class SkEditRuleActivity : SkActivity() {
             },
         ) { padding, behavior ->
             SmartKeyScaffoldContent(padding, behavior) {
+                // 未保存退出确认放在 Scaffold 内容里，才能进 MiuixPopupHost 的浮层。
+                SkDiscardChangesDialog(
+                    show = leaveConfirm.value,
+                    onDismiss = { leaveConfirm.value = false },
+                    onConfirm = {
+                        leaveConfirm.value = false
+                        // 不保存：草稿随窗口销毁，仓储层一个字节都没写。
+                        finish()
+                    },
+                )
                 EditRuleScreenContent(
                     draft = draftState,
                     onOverlayOpenChange = { overlayOpen.value = it },

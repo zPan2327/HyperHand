@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.zpan2327.hyperhand.smartkey.data.ActionType
 import io.github.zpan2327.hyperhand.smartkey.data.Condition
 import io.github.zpan2327.hyperhand.smartkey.data.KeyMapping
 import io.github.zpan2327.hyperhand.smartkey.data.KeyType
@@ -557,6 +558,145 @@ fun SkConditionDialog(
                 left = "删除" to onDelete,
                 rightText = if (onPickApps != null) "更换应用" else "完成",
                 onRight = { onPickApps?.invoke() ?: onDismiss() },
+            )
+        }
+    }
+}
+
+
+/**
+ * 「添加触发按键」的选择对话框：先选物理按键 + 按压方式，点「添加」才真正追加一条映射。
+ *
+ * 之前是点一下就直接在列表尾部塞一条 `音量加 · 短按`，用户还得再点开这一行改一遍，
+ * 等于两步操作；这里把「新增」和「编辑」分开：[SkTriggerDialog] 改已有行，
+ * 本对话框负责新增，带取消/添加，未确认不会污染草稿。
+ */
+@Composable
+fun SkNewTriggerDialog(
+    show: Boolean,
+    onConfirm: (KeyType, PressType) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // 每次打开都从默认值开始，不记住上一次的选择（避免误加）。
+    var key by remember(show) { mutableStateOf(KeyType.VOLUME_UP) }
+    var press by remember(show) { mutableStateOf(PressType.SHORT) }
+
+    OverlayDialog(
+        show = show,
+        title = "添加触发按键",
+        summary = "按下「${key.label}键 · ${press.label}」时执行",
+        onDismissRequest = onDismiss,
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                SkDialogGroupLabel("物理按键")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    pressFeedbackType = PressFeedbackType.None,
+                ) {
+                    KeyType.values().forEachIndexed { index, item ->
+                        if (index > 0) SkRowDivider(startIndent = 16)
+                        SkOptionRow(title = item.label, selected = item == key) { key = item }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                SkDialogGroupLabel("按压方式")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    pressFeedbackType = PressFeedbackType.None,
+                ) {
+                    PressType.values().forEachIndexed { index, item ->
+                        if (index > 0) SkRowDivider(startIndent = 16)
+                        SkOptionRow(title = item.label, selected = item == press) { press = item }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            SkDialogButtons(
+                left = "取消" to onDismiss,
+                rightText = "添加",
+                onRight = { onConfirm(key, press) },
+            )
+        }
+    }
+}
+
+/**
+ * 「添加执行动作」的选择对话框：先选动作，确认后才追加。
+ *
+ * 一条映射是「触发 + 动作」的整体，所以新增动作行时同时要有一条触发；
+ * 这里沿用**上一条映射的按键与按压方式**（没有上一条就用音量加 · 短按），
+ * 并把这件事写进摘要，避免用户以为动作是凭空多出来的。
+ */
+@Composable
+fun SkNewActionDialog(
+    show: Boolean,
+    baseKey: KeyType,
+    basePress: PressType,
+    onConfirm: (ActionType) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var action by remember(show) { mutableStateOf(ActionType.NEXT) }
+
+    OverlayDialog(
+        show = show,
+        title = "添加执行动作",
+        summary = "将同时新增「${baseKey.label}键 · ${basePress.label}」的触发，加完可以点该行再改",
+        onDismissRequest = onDismiss,
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                pressFeedbackType = PressFeedbackType.None,
+            ) {
+                Column(
+                    Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    ActionType.values().forEachIndexed { index, item ->
+                        if (index > 0) SkRowDivider(startIndent = 16)
+                        SkOptionRow(title = item.label, selected = item == action) { action = item }
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            SkDialogButtons(
+                left = "取消" to onDismiss,
+                rightText = "添加",
+                onRight = { onConfirm(action) },
+            )
+        }
+    }
+}
+
+/**
+ * 「有未保存修改」的退出确认。
+ *
+ * 取消 = 关掉对话框留在本页继续编辑；退出 = 丢弃草稿直接返回上一页，不写任何数据。
+ */
+@Composable
+fun SkDiscardChangesDialog(
+    show: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    OverlayDialog(
+        show = show,
+        title = "放弃修改？",
+        summary = "当前修改还没有保存，退出后会丢失。",
+        onDismissRequest = onDismiss,
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            SkDialogButtons(
+                left = "取消" to onDismiss,
+                rightText = "退出",
+                onRight = onConfirm,
             )
         }
     }

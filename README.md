@@ -2,11 +2,14 @@
 
 # HyperHand
 
+**[简体中文](README.md)｜[English](README_EN.md)**
+
 **HyperOS 上的手势增强模块：音量键映射、底部下滑单手模式、桌面菜单滑选。**
 
 在小米 14 / HyperOS 3（Android 16）上提供三组功能：把音量键映射成媒体/音量动作（3.3.5 起），
 底部下滑触发单手模式，长按桌面图标后滑动选中菜单项（3.3.0 起）。
 三者都只改触发与交互层，系统原有的动画、布局、窗口行为保持不变。
+界面语言跟随系统，支持简体中文、繁體中文与 English（3.4.7 起）。
 
 [![Android](https://img.shields.io/badge/Android-16%20·%20HyperOS%203-3DDC84?logo=android&logoColor=white)](#验证环境)
 [![libxposed API](https://img.shields.io/badge/libxposed%20API-102-orange)](#模块声明与-api-102)
@@ -71,7 +74,8 @@
 - **落点判定（2.8）**：抬手点必须**拖到屏幕最底边**才算单手模式，没到底就当成页面滑动放行 —— 桌面抽屉、可滚动列表不再被抢手势。贴底路径不再看速度/置信度，只要求向下 6dp、时长 50ms，所以既更灵敏也更不容易误触。带宽（默认 24dp）可在设置页调。
 - **动画可调速（2.7）**：缩小 / 恢复动画的时长与曲线都能在设置页调。系统原生是 600ms + ease-out expo 曲线，**前 10% 时间就走完 50% 位移**，所以显得"傻快"；模块提供 5 档曲线（原生 / 舒缓 / 柔和 / **标准** / 迅捷）和 0.60~2.00 倍时长，只改单手模式这一条动画，不碰系统窗口动画。这两项**改完即时生效**，设置页会显示系统原生值、当前生效值和上次实测耗时。
 - **模糊区下拉（2.9）**：单手模式下，上半屏那片模糊区**任意位置往下滑**就能拉出通知中心（左半屏）或控制中心（右半屏），拉下来的同时**自动退出单手模式**，不用再手动点一下退出。不需要记"虚拟顶部"在哪 —— 单手模式把整个界面向下平移了约 40% 屏高，状态栏也跟着搬走了，这块模糊区原本完全没有手势。虚拟顶部那条状态栏下拉、以及在缩小窗口中间内容区下拉（桌面/应用把事件转发给系统展开面板）同样会退出单手模式，四条路径行为一致。未达触发距离（默认 36dp）时仍然走原生的"点一下退出"，互不干扰。
-- **一键重启两个作用域（2.4）**：设置页底部可直接结束 SystemUI 与桌面进程让钩子重新注入，省掉重启手机；有 root 走 `killall`，没有 root 时自动退回让 SystemUI 自行重启（persistent 进程会被系统拉起）。
+- **一键重启作用域（2.4 起，3.3.5 起加入系统框架）**：概览页右上角可直接重启系统框架 / SystemUI / 桌面进程让钩子重新注入，省掉重启手机；有 root 走 `killall`，没有 root 时自动退回让 SystemUI 自行重启（persistent 进程会被系统拉起）。
+- **界面语言（3.4.7）**：跟随系统（默认）/ 简体中文 / 繁體中文 / English，在设置页最底部「个性化 → 语言」切换，全部界面文案已完成三语翻译；系统语言不在三者之列时显示简体中文。
 - **桌面快捷菜单 iOS 式滑选（3.3.0）**：长按图标弹菜单后手指不离开，滑到菜单项抬手即选中；菜单在上方或下方都可用，图标不会跟着动或漂移，命中项是浅灰按压态 + 系统「设置」边界反弹同款震动。菜单开着点图标可直接打开 App，点菜单项不会误触底下的图标。实现与真机验证细节见 [`docs/桌面快捷菜单滑动选择.md`](docs/桌面快捷菜单滑动选择.md)。
 
 ## 界面
@@ -262,7 +266,8 @@ adb logcat -d -s HyperHand
 - **调参**：打开「HyperHand」App 改数值 → 自动保存、立即生效（无需点保存、无需重启、无需 root）。
 - **看判定过程**：「调试」卡片点「最近手势」，可直接看到上一次的位移/速度/置信度与未触发原因。
 - **背景改成模糊壁纸**：「外观」卡片打开「模糊壁纸背景」，半径/压暗可调；点「调试 → 预览遮罩」可以立刻进入一次单手模式看效果。
-- **改了模块版本后**：设置页底部点「重启两个作用域」（有 root 会直接结束进程，没有 root 则让 SystemUI 自行重启），或手动重启手机，让新钩子注入。
+- **切换界面语言**：设置页最底部「个性化 → 语言」，默认跟随系统。
+- **改了模块版本后**：点「重启作用域」把系统框架、SystemUI 与桌面都重启一遍（有 root 会直接结束进程，没有 root 则让 SystemUI 自行重启），或手动重启手机，让新钩子注入。
 
 ## 可配置参数
 
@@ -355,7 +360,7 @@ pwsh -File module/build.ps1
 
 上面两个脚本只是薄壳，内部转调 `./gradlew :module:assembleHyperHand`；直接跑 Gradle 也可以。
 SDK 路径用 `ANDROID_HOME` / `ANDROID_SDK_ROOT`（或写进 `local.properties`），JDK 用 `JAVA_HOME`。
-签名密钥固定放在 `module/signing/hyperhand.keystore`（已 gitignore，首次构建自动生成）—— 保留它才能持续用 `adb install -r` 覆盖升级。
+签名密钥放在 `module/signing/hyperhand.keystore`，**随仓库保留**（开源模块的自签密钥，不是私密凭据）—— 换机器构建时它必须不变，才能持续用 `adb install -r` 覆盖升级。
 产物：`module/out/HyperHand.apk`。`minSdk` 是 **33**（miuix-blur 的硬性要求，比原来的 31 高一档，实际只放弃 Android 12）。
 
 CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI 产物和本地构建同签名，在仓库 **Settings → Secrets and variables → Actions** 里加一个 `ANDROID_KEYSTORE_B64`，值为本地 keystore 的 base64：
@@ -368,10 +373,12 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 
 ```
 .
-├── README.md
+├── README.md                 # 中文说明
+├── README_EN.md              # English README
 ├── CHANGELOG.md
 ├── LICENSE
 ├── docs/
+│   ├── USAGE.md / USAGE_EN.md  # 面向用户的使用说明（中文 / 英文）
 │   ├── 单手模式增强.md      # 完整技术文档：调查结论 / 调用链 / 方案比较 / 实测日志 / 回滚
 │   ├── 液态玻璃底栏.md      # Compose 底栏的接入结构 + 迁移踩坑与改法
 │   ├── 设计稿对照.md        # 设置界面的 Miuix / HyperOS token 对照
@@ -385,7 +392,7 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 │   │   ├── java_init.list      #   入口类：io.github.zpan2327.hyperhand.HyperHand
 │   │   ├── scope.list          #   可选作用域：system + systemui + miui.home
 │   │   └── module.prop         #   minApiVersion / targetApiVersion / staticScope
-│   ├── src/main/res/values/strings.xml  # 模块名与简介（android:label / android:description）
+│   ├── src/main/res/values*/strings.xml  # 界面文案（默认简体 / values-en / values-b+zh+Hant）
 │   ├── src/main/java/io/github/zpan2327/hyperhand/
 │   │   ├── HyperHand.java      # 钩子主体（SystemUI 前置闸门 + 触发 + 结果发布 / 桌面侧闸门）
 │   │   ├── Recognizer.java     # 手势识别核心：历史采样 / 分窗速度 / 双路径评分

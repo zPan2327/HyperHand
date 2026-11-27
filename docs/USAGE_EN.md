@@ -1,9 +1,9 @@
 # HyperHand — Usage Guide
 
-> 中文版：[USAGE.md](USAGE.md)
+> **[简体中文](USAGE.md)｜[English](USAGE_EN.md)**
 >
 > Applies to 3.4.x and later. For internals (gesture algorithm, hook points, the full parameter
-> table) see [README](../README.md); for release notes see [CHANGELOG](../CHANGELOG.md).
+> table) see [README](../README_EN.md); for release notes see [CHANGELOG](../CHANGELOG.md).
 
 HyperHand is an LSPosed module for Xiaomi phones (HyperOS / MIUI, Android 13+). It does three things.
 So far it has only been fully tested on the Xiaomi 14 with HyperOS 3 (Android 16); other devices and
@@ -163,7 +163,7 @@ More in the [README FAQ](../README.md#常见问题) (Chinese).
 
 ## 8. Links
 
-- [README](../README.md) — full feature tour, gesture algorithm, parameter table, build steps
+- [README](../README_EN.md) — full feature tour, gesture algorithm, parameter table, build steps
 - [CHANGELOG](../CHANGELOG.md) — release notes
 - [MIT License](../LICENSE)
 - [Issues](https://github.com/zPan2327/HyperHand/issues)

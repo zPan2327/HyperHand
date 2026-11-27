@@ -1,6 +1,6 @@
 # HyperHand 使用说明
 
-> English version: [USAGE_EN.md](USAGE_EN.md)
+> **[简体中文](USAGE.md)｜[English](USAGE_EN.md)**
 >
 > 适用于 3.4.x 及之后的版本。技术细节（识别算法、Hook 点、参数全表）见 [README](../README.md)，
 > 版本变更见 [CHANGELOG](../CHANGELOG.md)。

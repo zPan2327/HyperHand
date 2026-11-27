@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -108,7 +110,7 @@ fun ColumnScope.EditRuleScreenContent(
             Column(Modifier.weight(1f)) {
                 SkPlainTextField(
                     value = state.name,
-                    placeholder = "规则名称",
+                    placeholder = stringResource(R.string.sk_084),
                     textStyle = MiuixTheme.textStyles.main,
                     textColor = MiuixTheme.colorScheme.onSurface,
                     onValueChange = { state = state.copy(name = it) },
@@ -116,7 +118,7 @@ fun ColumnScope.EditRuleScreenContent(
                 Spacer(Modifier.height(2.dp))
                 SkPlainTextField(
                     value = state.description,
-                    placeholder = "添加说明（可选）",
+                    placeholder = stringResource(R.string.sk_085),
                     textStyle = MiuixTheme.textStyles.footnote1,
                     textColor = MiuixTheme.colorScheme.onSurfaceSecondary,
                     onValueChange = { state = state.copy(description = it) },
@@ -139,7 +141,7 @@ fun ColumnScope.EditRuleScreenContent(
                 ) {
                     Icon(
                         imageVector = MiuixIcons.Close,
-                        contentDescription = "清空名称",
+                        contentDescription = stringResource(R.string.sk_086),
                         modifier = Modifier.size(12.dp),
                         tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
@@ -150,7 +152,7 @@ fun ColumnScope.EditRuleScreenContent(
 
     // ------------------------------------------------------------ 当以下情况发生
     CardGap()
-    SkSectionTitle("当以下情况发生")
+    SkSectionTitle(stringResource(R.string.sk_087))
     Card(
         modifier = Modifier.fillMaxWidth(),
         pressFeedbackType = PressFeedbackType.None,
@@ -159,19 +161,19 @@ fun ColumnScope.EditRuleScreenContent(
             if (index > 0) SkRowDivider()
             SkItemRow(
                 icon = mapping.key.icon,
-                title = "${mapping.key.label}键 · ${mapping.press.label}",
+                title = stringResource(R.string.sk_088, mapping.key.label, mapping.press.label),
                 subtitle = mapping.pressDetail(),
                 onClick = { triggerIndex = index },
             )
         }
         if (state.mappings.isNotEmpty()) SkRowDivider()
-        SkAddRow(text = "添加触发按键") { addTriggerOpen = true }
+        SkAddRow(text = stringResource(R.string.sk_059)) { addTriggerOpen = true }
     }
 
     // ------------------------------------------------------------ 且满足…状态
     CardGap()
     SkSectionTitleDropdown(
-        text = "且满足${state.logic.shortLabel}",
+        text = stringResource(R.string.sk_089, state.logic.shortLabel),
         options = listOf(Logic.AND.shortLabel, Logic.OR.shortLabel),
         selectedIndex = if (state.logic == Logic.AND) 0 else 1,
         onSelect = { state = state.copy(logic = if (it == 0) Logic.AND else Logic.OR) },
@@ -190,12 +192,12 @@ fun ColumnScope.EditRuleScreenContent(
             )
         }
         if (state.conditions.isNotEmpty()) SkRowDivider()
-        SkAddRow(text = "添加状态条件", onClick = onAddCondition)
+        SkAddRow(text = stringResource(R.string.sk_090), onClick = onAddCondition)
     }
 
     // ------------------------------------------------------------ 就执行
     CardGap()
-    SkSectionTitle("就执行")
+    SkSectionTitle(stringResource(R.string.sk_091))
     Card(
         modifier = Modifier.fillMaxWidth(),
         pressFeedbackType = PressFeedbackType.None,
@@ -205,33 +207,33 @@ fun ColumnScope.EditRuleScreenContent(
             SkItemRow(
                 icon = mapping.action.icon,
                 title = mapping.action.label,
-                subtitle = "由「${mapping.key.label}键 · ${mapping.press.label}」触发",
+                subtitle = stringResource(R.string.sk_092, mapping.key.label, mapping.press.label),
                 onClick = { actionIndex = index },
             )
         }
         if (state.mappings.isNotEmpty()) SkRowDivider()
-        SkAddRow(text = "添加执行动作") { addActionOpen = true }
+        SkAddRow(text = stringResource(R.string.sk_063)) { addActionOpen = true }
     }
 
     // ------------------------------------------------------------ 规则设置
     CardGap()
-    SkSectionTitle("规则设置")
+    SkSectionTitle(stringResource(R.string.sk_093))
     Card(
         modifier = Modifier.fillMaxWidth(),
         pressFeedbackType = PressFeedbackType.None,
     ) {
         SkSwitchRow(
-            title = "启用此规则",
-            summary = if (state.enabled) "按键匹配时会参与判定" else "已停用，不参与按键匹配",
+            title = stringResource(R.string.sk_094),
+            summary = if (state.enabled) stringResource(R.string.sk_095) else stringResource(R.string.sk_096),
             checked = state.enabled,
             // Switch 自带触感，不重复调用。
             onCheckedChange = { state = state.copy(enabled = it) },
         )
         SkRowDivider(startIndent = 16)
         SkValueRow(
-            title = "优先级",
+            title = stringResource(R.string.sk_097),
             value = state.priority.toString(),
-            summary = "数值越大越先执行",
+            summary = stringResource(R.string.sk_098),
             onClick = { priorityOpen = true },
         )
     }
@@ -258,8 +260,8 @@ fun ColumnScope.EditRuleScreenContent(
     val actionMapping = state.mappings.getOrNull(actionIndex)
     SkOptionDialog(
         show = actionMapping != null,
-        title = "执行动作",
-        summary = "触发后执行的动作",
+        title = stringResource(R.string.sk_099),
+        summary = stringResource(R.string.sk_100),
         options = ActionType.values().map { it.label },
         selectedIndex = ActionType.values().indexOf(actionMapping?.action ?: ActionType.PASS_THROUGH)
             .coerceAtLeast(0),
@@ -334,9 +336,9 @@ fun ColumnScope.EditRuleScreenContent(
 
     SkOptionDialog(
         show = priorityOpen,
-        title = "规则优先级",
-        summary = "多条规则命中同一按键时，数值大的先执行",
-        options = (0..10).map { "优先级 $it" },
+        title = stringResource(R.string.sk_101),
+        summary = stringResource(R.string.sk_102),
+        options = (0..10).map { stringResource(R.string.sk_103) },
         selectedIndex = state.priority.coerceIn(0, 10),
         onSelect = { state = state.copy(priority = it) },
         onDismiss = { priorityOpen = false },

@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import androidx.compose.ui.res.stringResource
+import io.github.zpan2327.hyperhand.glass.R
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -87,7 +89,7 @@ fun HomeScreen(
         scrollBehavior = scrollBehavior,
     ) {
         // ---------------------------------------------------------- 功能状态
-        SmallTitle(text = "功能状态")
+        SmallTitle(text = stringResource(R.string.sk_068))
         Card(
             modifier = Modifier.fillMaxWidth(),
             pressFeedbackType = PressFeedbackType.None,
@@ -96,11 +98,11 @@ fun HomeScreen(
                 checked = masterEnabled,
                 // Miuix 的 Switch 自带 MIUI TICK 触感，这里不再叠加，否则一次点击震两下。
                 onCheckedChange = onMasterChange,
-                title = "功能总开关",
-                summary = if (masterEnabled) "已开启，按键映射参与拦截" else "已关闭，按键保持系统默认行为",
+                title = stringResource(R.string.sk_069),
+                summary = if (masterEnabled) stringResource(R.string.sk_070) else stringResource(R.string.sk_071),
             )
             ArrowPreference(
-                title = "新建规则",
+                title = stringResource(R.string.sk_072),
                 onClick = { haptics.tick(); onNewRule() },
             )
         }
@@ -108,14 +110,14 @@ fun HomeScreen(
         // ---------------------------------------------------------- 冲突提醒
         if (conflicts.isNotEmpty()) {
             CardGap()
-            SmallTitle(text = "冲突提醒")
+            SmallTitle(text = stringResource(R.string.sk_073))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 pressFeedbackType = PressFeedbackType.None,
             ) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(
-                        text = "存在 ${conflicts.size} 处规则冲突",
+                        text = stringResource(R.string.sk_074, conflicts.size),
                         style = MiuixTheme.textStyles.subtitle,
                         color = MiuixTheme.colorScheme.error,
                     )
@@ -129,7 +131,7 @@ fun HomeScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "同一按键事件只执行优先级最高的规则，其余规则自动让位。",
+                        text = stringResource(R.string.sk_075),
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceSecondary,
                     )
@@ -139,7 +141,7 @@ fun HomeScreen(
 
         // ---------------------------------------------------------- 规则
         CardGap()
-        SmallTitle(text = "规则列表（${rules.size}）")
+        SmallTitle(text = stringResource(R.string.sk_076, rules.size))
         Card(
             modifier = Modifier.fillMaxWidth(),
             pressFeedbackType = PressFeedbackType.None,
@@ -150,13 +152,13 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text = "还没有任何规则",
+                        text = stringResource(R.string.sk_077),
                         style = MiuixTheme.textStyles.subtitle,
                         color = MiuixTheme.colorScheme.onSurface,
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "例如：网易云音乐播放且息屏时，音量加 → 下一首",
+                        text = stringResource(R.string.sk_078),
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurfaceSecondary,
                     )
@@ -166,7 +168,7 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColorsPrimary(),
                     ) {
-                        Text("创建第一条规则", color = MiuixTheme.colorScheme.onPrimary)
+                        Text(stringResource(R.string.sk_079), color = MiuixTheme.colorScheme.onPrimary)
                     }
                 }
             } else {
@@ -177,7 +179,12 @@ fun HomeScreen(
                     Box(Modifier.fillMaxWidth()) {
                         BasicComponent(
                             title = rule.name,
-                            summary = "${rule.conditionsDesc(context)}\n${rule.mappingsDesc}\n优先级 ${rule.priority}",
+                            summary = context.getString(
+                                R.string.sk_rule_summary,
+                                rule.conditionsDesc(context),
+                                rule.mappingsDesc(context),
+                                rule.priority,
+                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .combinedClickable(
@@ -205,12 +212,12 @@ fun HomeScreen(
                             maxHeight = 240.dp,
                         ) {
                             ListPopupColumn {
-                                RuleMenuItem(text = "复制") {
+                                RuleMenuItem(text = stringResource(R.string.sk_080)) {
                                     haptics.click()
                                     menuRule = null
                                     onDuplicateRule(rule.id)
                                 }
-                                RuleMenuItem(text = "删除", danger = true) {
+                                RuleMenuItem(text = stringResource(R.string.sk_051), danger = true) {
                                     haptics.tick()
                                     menuRule = null
                                     pendingDelete = rule
@@ -224,7 +231,7 @@ fun HomeScreen(
 
         CardGap()
         Text(
-            text = "HyperHand $version · 按键映射",
+            text = stringResource(R.string.sk_081, version),
             style = MiuixTheme.textStyles.footnote2,
             color = MiuixTheme.colorScheme.onSurfaceSecondary,
             modifier = Modifier
@@ -251,8 +258,8 @@ fun HomeScreen(
         // 删除二次确认：Miuix OverlayDialog（标题 18sp 居中 + 摘要 + 底部按钮），
         // 「删除」按钮用 error 色，确认时才真正删并给 alert 触感。
         OverlayDialog(
-            title = "删除规则",
-            summary = pendingDelete?.let { "确定要删除「${it.name}」吗？此操作无法撤销。" } ?: "",
+            title = stringResource(R.string.sk_082),
+            summary = pendingDelete?.let { stringResource(R.string.sk_083, it.name) } ?: "",
             show = pendingDelete != null,
             onDismissRequest = { pendingDelete = null },
         ) {
@@ -261,12 +268,12 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TextButton(
-                    text = "取消",
+                    text = stringResource(R.string.sk_061),
                     onClick = { pendingDelete = null },
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
-                    text = "删除",
+                    text = stringResource(R.string.sk_051),
                     onClick = {
                         pendingDelete?.let { rule ->
                             haptics.alert()

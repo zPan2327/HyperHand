@@ -197,16 +197,16 @@ v(t) = (y(t) - y(t-W)) / (t - (t-W)) * 1000 / density     [dp/s]，W = oh_tuner_
 ## 模块声明与 API 102
 
 模块用的是 **libxposed 现代 API（API 102）**，不再是 `assets/xposed_init` + `xposedminversion=82` 那套 legacy 形态。
-现代 API 把"模块是什么"从 manifest 的 meta-data 挪到了 APK 里的三个文件，好处是作用域可以静态声明：
+现代 API 把“模块是什么”从 manifest 的 meta-data 挪到了 APK 里的三个文件，并声明可选作用域：
 
 | 文件 | 作用 | 内容 |
 |---|---|---|
 | `META-INF/xposed/java_init.list` | 入口类 | `io.github.zpan2327.hyperhand.HyperHand` |
-| `META-INF/xposed/scope.list` | **静态作用域** | `com.android.systemui` / `com.miui.home` |
-| `META-INF/xposed/module.prop` | 版本与行为 | `minApiVersion=102`、`targetApiVersion=102`、`staticScope=true` |
+| `META-INF/xposed/scope.list` | 可选作用域 | `system` / `com.android.systemui` / `com.miui.home` |
+| `META-INF/xposed/module.prop` | 版本与行为 | `minApiVersion=102`、`targetApiVersion=102`、`staticScope=false` |
 
-- **静态作用域**：`staticScope=true` 时管理器不允许用户加挂其它应用，装到别的机型上也不会因为
-  "勾错作用域"去 hook 无关进程。
+- **手动选择作用域**：`staticScope=false` 时需要在管理器中勾选；按键映射选 `system`，
+  单手模式选 `com.android.systemui`，桌面滑选及手势互斥选 `com.miui.home`。
 - **模块名与简介**：直接取 `res/values/strings.xml` 里的 `app_name` / `app_description`
   （即 `android:label` / `android:description`）。
 - **钩子写法**：现代 API 是拦截器链（`Hooker#intercept(chain)`），`Hooks.java` 把
@@ -223,9 +223,9 @@ v(t) = (y(t) - y(t-W)) / (t - (t-W)) * 1000 / density     [dp/s]，W = oh_tuner_
 > 两者是彼此独立的应用。`adb uninstall com.onehandtuner`（或手动卸载「单手模式增强」）后再装。
 
 1. 从 [Releases](../../releases) 下载 `HyperHand.apk` 并安装。
-2. 在 **Vector / LSPosed** 里启用 **HyperHand** 即可。作用域已在 APK 里**静态声明**
-   （`com.android.systemui` + `com.miui.home`），不需要手动勾选，也无法挂到别的应用上。
-3. 重启两个进程让模块加载：
+2. 在 **Vector / LSPosed** 里启用 **HyperHand**，并按需勾选作用域：`system`（按键映射）、
+   `com.android.systemui`（单手模式）、`com.miui.home`（桌面滑选及手势互斥）。当前 `staticScope=false`，需要手动选择。
+3. 重启所选进程让模块加载（`system` 作用域可通过软重启或重启手机加载）：
 
 ```bash
 adb shell am crash com.miui.home
@@ -247,6 +247,9 @@ adb logcat -d -s HyperHand
 见[构建](#构建)。
 
 ## 使用
+
+> 面向用户的完整说明（安装、三个功能怎么用、常见问题、恢复原状）见 **[docs/USAGE.md](docs/USAGE.md)**，英文版 [docs/USAGE_EN.md](docs/USAGE_EN.md)。
+> 下面这节是最短路径。
 
 - **配按键映射**：「按键映射」卡打开总开关 →「规则与按键」→ 新建规则，选按键、按压方式和动作，
   需要时加应用/锁屏等条件。保存后在设置页或锁屏界面按音量键即可验证。
@@ -378,7 +381,7 @@ CI 使用 runner 预装的 Android SDK，不需要额外安装。若想让 CI �
 │   ├── src/main/AndroidManifest.xml
 │   ├── src/main/resources/META-INF/xposed/   # libxposed 现代 API 的模块声明
 │   │   ├── java_init.list      #   入口类：io.github.zpan2327.hyperhand.HyperHand
-│   │   ├── scope.list          #   静态作用域：systemui + miui.home
+│   │   ├── scope.list          #   可选作用域：system + systemui + miui.home
 │   │   └── module.prop         #   minApiVersion / targetApiVersion / staticScope
 │   ├── src/main/res/values/strings.xml  # 模块名与简介（android:label / android:description）
 │   ├── src/main/java/io/github/zpan2327/hyperhand/
@@ -427,8 +430,8 @@ LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://gith
 按顺序排查：① 框架是否支持 **libxposed API 102**（Vector 2.x / 新版 LSPosed 才有，旧 LSPosed 1.9.x 只到 101，会直接忽略本模块）；② Vector 里模块是否启用；③ 是否 `am crash` 重启过 SystemUI；④ `adb logcat -s HyperHand` 是否能看到 `attached to SystemUI`；⑤ `one_handed_mode_enabled` 是否为 1。
 
 **Q：作用域在哪里选？**
-不用选。`scope.list` + `module.prop` 的 `staticScope=true` 已经把作用域静态声明成「系统界面 + 小米桌面」，
-管理器里会显示为不可编辑；装到别的机型上也不会被误挂到其它应用。
+在框架的模块作用域设置里勾选：`system`（系统框架，按键映射）、`com.android.systemui`（单手模式）、
+`com.miui.home`（桌面滑选及手势互斥）。当前 `staticScope=false`，不会自动强制勾选。
 
 **Q：想触发单手，却开了通知中心？**
 说明闸门①没生效（多半是没重启桌面进程）。`adb shell am crash com.miui.home` 即可。
@@ -490,7 +493,7 @@ LSPosed 的模块列表来自 GitHub 组织 [`Xposed-Modules-Repo`](https://gith
 ## 回滚 / 停用
 
 1. App 里关掉「启用模块」，或 `adb shell am broadcast -a io.github.zpan2327.hyperhand.action.SET --es oh_tuner_enabled 0`；
-2. Vector 里停用模块（作用域是静态声明的，无法单独取消）→ `adb shell am crash com.android.systemui`；
+2. Vector 里停用模块（也可只取消对应作用域）→ `adb shell am crash com.android.systemui`；
 3. `adb uninstall io.github.zpan2327.hyperhand`（残留的 `oh_tuner_*` 设置项可忽略，模块不再读取）。
 
 全程未修改任何系统分区文件，无需备份原文件，OTA 不受影响。

@@ -34,7 +34,7 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  * Java 友好的 MIUIX Dropdown 桥接层。
  *
  * 设置页本身是 Java 手写 View，不能直接调用 Compose 的 OverlayDropdownPreference；
- * 而这个宿主是一张铺满 Activity 根容器的透明 View，和 SonyPodsDialogHost 一样处在同一
+ * 而这个宿主是一张铺满 Activity 根容器的透明 View，和 RestartScopeDialogHost 一样处在同一
  * window 里，能提供 MIUIX popup 必须的 root Scaffold / MiuixPopupHost。
  *
  * Java 侧只需要把“当前行的屏幕矩形”传进来。我们在 Scaffold 内容里放一个同样位置的

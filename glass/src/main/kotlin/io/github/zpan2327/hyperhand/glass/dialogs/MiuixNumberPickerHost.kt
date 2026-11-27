@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.glass.dialogs
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.res.Configuration
 import android.util.AttributeSet
@@ -38,7 +40,7 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  * 表达（range = 0..labels.size-1，label = { labels[it] }），和原 Dropdown 的数据流
  * 完全一致：Java 侧拿到确认索引后仍按 values[index] 回写，配置键 / 广播不变。
  *
- * 宿主结构与 [SonyPodsDialogHost] 一致：透明、零 insets 的 root Scaffold 提供
+ * 宿主结构与 [RestartScopeDialogHost] 一致：透明、零 insets 的 root Scaffold 提供
  * OverlayDialog 必须的 MiuixPopupHost；没有弹窗时 dispatchTouchEvent 把触摸还给下层。
  */
 class MiuixNumberPickerHost @JvmOverloads constructor(
@@ -161,12 +163,12 @@ private fun SingleNumberPickerDialog(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TextButton(
-                text = "取消",
+                text = stringResource(R.string.sk_061),
                 onClick = onDismissRequest,
                 modifier = Modifier.weight(1f),
             )
             TextButton(
-                text = "确定",
+                text = stringResource(R.string.sk_141),
                 onClick = {
                     request.onConfirm.onConfirm(selected.coerceIn(0, lastIndex))
                     onDismissRequest()

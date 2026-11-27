@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用 / 模块显示名：就叫 HyperHand，不附加任何副标题。
+         LSPosed 从 android:label 读这个名字，模块仓库 description 也是 HyperHand。 -->
+    <string name="app_name" translatable="false">HyperHand</string>
+    <!-- 语言下拉里的语言名用各自的语言书写，三种语言下都保持原样 -->
+    <string name="lang_zh_hans" translatable="false">简体中文</string>
+    <string name="lang_zh_hant" translatable="false">繁體中文</string>
+    <string name="lang_en" translatable="false">English</string>
+
+
+    <!-- 单手模式下拉：动画曲线 / 展开方向 / 触发模式 -->
+    <string name="cfg_001">Native (system curve)</string>
+    <string name="cfg_002">Relaxed (smoothstep)</string>
+    <string name="cfg_003">Soft (ease-out cubic)</string>
+    <string name="cfg_004">Standard (ease-out quart)</string>
+    <string name="cfg_005">Quick (ease-out quint)</string>
+    <string name="cfg_006">Native</string>
+    <string name="cfg_007">Relaxed</string>
+    <string name="cfg_008">Soft</string>
+    <string name="cfg_009">Standard</string>
+    <string name="cfg_010">Quick</string>
+    <string name="cfg_011" formatted="false">50% of the distance in the first 10% of the time</string>
+    <string name="cfg_012" formatted="false">3% at 10%, 27% at 30%</string>
+    <string name="cfg_013" formatted="false">27% at 10%, 66% at 30%</string>
+    <string name="cfg_014" formatted="false">34% at 10%, 76% at 30%</string>
+    <string name="cfg_015" formatted="false">41% at 10%, 83% at 30%</string>
+    <string name="cfg_016" formatted="false">ease-out expo (50% of the distance in 10% of the time)</string>
+    <string name="cfg_017">Notifications left, control center right</string>
+    <string name="cfg_018">Always notification center</string>
+    <string name="cfg_019">Always control center</string>
+    <string name="cfg_020">Left / right</string>
+    <string name="cfg_021">Notification center</string>
+    <string name="cfg_022">Control center</string>
+    <string name="cfg_023">Decided by the half you swipe in</string>
+    <string name="cfg_024">Swipe anywhere to open notifications</string>
+    <string name="cfg_025">Swipe anywhere to open control center</string>
+    <string name="cfg_026">Natural</string>
+    <string name="cfg_027">Sensitive</string>
+    <string name="cfg_028">Anti-mistouch</string>
+    <string name="cfg_029">Combines speed and distance</string>
+    <string name="cfg_030">Lower thresholds, a light flick is enough</string>
+    <string name="cfg_031">Higher thresholds, page scrolling wins</string>
+
+    <!-- 设置页 -->
+    <string name="set_001">Key mapping</string>
+    <string name="set_002">Enable key mapping</string>
+    <string name="set_003">Volume keys fall back to the system behaviour when off</string>
+    <string name="set_004">Rules and keys</string>
+    <string name="set_005">One-handed mode</string>
+    <string name="set_006">Enable one-handed mode</string>
+    <string name="set_007">Triggered by swiping up from the bottom edge; system gesture returns when off</string>
+    <string name="set_008">Trigger style</string>
+    <string name="set_009">Applies the preset values of that style</string>
+    <string name="set_010">Blurred wallpaper</string>
+    <string name="set_011">Replaces the plain mask with a blurred wallpaper</string>
+    <string name="set_012">Swipe to open panel</string>
+    <string name="set_013">Swipe down inside the trigger area to pull the panel out</string>
+    <string name="set_014">Show advanced settings</string>
+    <string name="set_015">Thresholds, trigger area, appearance and algorithm constants</string>
+    <string name="set_016">Detection</string>
+    <string name="set_017">Extended trigger</string>
+    <string name="set_018">Let the system decide the swipe</string>
+    <string name="set_019">Minimum swipe distance</string>
+    <string name="set_020">Shortest distance that still triggers</string>
+    <string name="set_021">Trigger speed</string>
+    <string name="set_022">0 means distance only</string>
+    <string name="set_023">Slow swipe</string>
+    <string name="set_024">A long, slow pull can trigger too</string>
+    <string name="set_025">Distance for slow swipe</string>
+    <string name="set_026">Minimum travel for a slow swipe</string>
+    <string name="set_027">Slow swipe speed</string>
+    <string name="set_028">Lower bound of the average speed</string>
+    <string name="set_029">Require reaching the bottom edge</string>
+    <string name="set_030">Short of the edge counts as page scrolling</string>
+    <string name="set_031">Edge tolerance</string>
+    <string name="set_032">Below this distance counts as reaching the edge</string>
+    <string name="set_033">Confidence</string>
+    <string name="set_034">Lower is more sensitive, higher is stricter</string>
+    <string name="set_035">Trigger area</string>
+    <string name="set_036">Extend above the dock</string>
+    <string name="set_037">Sized by screen ratio, covering the dock</string>
+    <string name="set_038">Screen ratio</string>
+    <string name="set_039" formatted="false">15% by default, about the height of the dock</string>
+    <string name="set_040">Trigger area height</string>
+    <string name="set_041">Fixed height; applies when the switch above is off</string>
+    <string name="set_042">Width ratio</string>
+    <string name="set_043">Width of the trigger area, centred</string>
+    <string name="set_044">Horizontal offset</string>
+    <string name="set_045">Shifts the centre for left- or right-handed use</string>
+    <string name="set_046">Appearance</string>
+    <string name="set_047">Blur radius</string>
+    <string name="set_048">Higher is blurrier, 0 disables blur</string>
+    <string name="set_049">Dimming</string>
+    <string name="set_050">Darkens the blurred wallpaper</string>
+    <string name="set_051">Animation curve</string>
+    <string name="set_052">Ordered slow to fast, applies immediately</string>
+    <string name="set_053">Animation duration</string>
+    <string name="set_054">1.00 is the native 600ms, higher is slower</string>
+    <string name="set_055">Animation duration</string>
+    <string name="set_056">1.00 is the native 600ms, higher is slower</string>
+    <string name="set_057">Panel gestures</string>
+    <string name="set_058">Trigger distance</string>
+    <string name="set_059">Minimum travel counted as a swipe</string>
+    <string name="set_060">Open direction</string>
+    <string name="set_061">Panel follows where you swipe</string>
+    <string name="set_062">Yield to panel gesture</string>
+    <string name="set_063">Panel gesture wins, one-handed mode gives up</string>
+    <string name="set_064">Bottom area prefers one-handed</string>
+    <string name="set_065">Swipes inside the area are treated as one-handed</string>
+    <string name="set_066">Native capsule height</string>
+    <string name="set_067">0 keeps the system default</string>
+    <string name="set_068">Algorithm details</string>
+    <string name="set_069">Adaptive threshold</string>
+    <string name="set_070">Looser for fast gestures, tighter for slow ones</string>
+    <string name="set_071">Speed window</string>
+    <string name="set_072">Larger is steadier, smaller is more sensitive</string>
+    <string name="set_073">Speed ceiling</string>
+    <string name="set_074">Anything above is treated as noise</string>
+    <string name="set_075">Path stability</string>
+    <string name="set_076">Minimum net travel over path length</string>
+    <string name="set_077">Maximum sideways drift</string>
+    <string name="set_078">Above this counts as a diagonal swipe</string>
+    <string name="set_079">Trigger cooldown</string>
+    <string name="set_080">Minimum interval between two triggers</string>
+    <string name="set_081">Launcher slide select</string>
+    <string name="set_082">Enable slide select on long press</string>
+    <string name="set_083">Slide onto a menu item and release to pick it; restart the launcher to apply</string>
+    <string name="set_084">Selection angle</string>
+    <string name="set_085">Maximum angle from the menu direction, smaller is stricter</string>
+    <string name="set_086">Hit tolerance</string>
+    <string name="set_087">How far a menu item extends its hit area</string>
+    <string name="set_088">Start distance</string>
+    <string name="set_089">Minimum travel before selection starts</string>
+    <string name="set_090">Restore defaults</string>
+    <string name="set_091">Restart System UI and launcher</string>
+    <string name="set_092">Re-injects the hooks, requires root</string>
+    <string name="set_093">Changes are saved and applied automatically</string>
+    <string name="set_094">Failed to write the master switch: grant root (KernelSU / Magisk) and retry.</string>
+    <string name="set_095">Key mapping enabled.</string>
+    <string name="set_096">Key mapping disabled, volume keys behave normally again.</string>
+    <string name="set_097">No rules yet</string>
+    <string name="set_098">Triggered by app, audio and state</string>
+    <string name="set_099">Saved and applied. Swipe up from the bottom to test, then open Recent gestures to see the result.</string>
+    <string name="set_100">Swipe once from the bottom to show how far your finger started from the edge</string>
+    <string name="set_101">Restarting…</string>
+    <string name="set_102">Restart System UI and launcher</string>
+    <string name="set_native_hint">System default %1$dms · %2$s; measured value appears after one swipe</string>
+    <string name="set_rules_count">%1$d rule(s)</string>
+    <string name="set_rules_count_enabled">%1$d rule(s) · %2$d enabled</string>
+
+    <!-- 设置页 -->
+    <string name="unit_times">×</string>
+
+    <!-- 主界面 -->
+    <string name="main_001">Overview</string>
+    <string name="main_002">Settings</string>
+    <string name="main_003">About</string>
+    <string name="main_004">Changes apply immediately</string>
+    <string name="main_005">System framework</string>
+    <string name="main_006">System UI</string>
+    <string name="main_007">Launcher</string>
+    <string name="main_008">No scope selected</string>
+    <string name="main_009">Master switch off</string>
+    <string name="main_010">No injection record yet</string>
+    <string name="main_011">"System UI "</string>
+    <string name="main_012">"Launcher "</string>
+    <string name="main_013">Nothing recorded yet. Turn on debug logging, swipe up from the bottom once, then come back.</string>
+    <string name="main_014">Master switch: </string>
+    <string name="main_015">Enabled</string>
+    <string name="main_016">Disabled</string>
+    <string name="main_017">System UI: </string>
+    <string name="main_018">Launcher: </string>
+    <string name="main_019">Trigger style: </string>
+    <string name="main_020">Trigger area: </string>
+    <string name="main_021"> (screen height </string>
+    <string name="main_022"> (fixed height)</string>
+    <string name="main_023">Extended trigger: </string>
+    <string name="main_024">  Edge reach: </string>
+    <string name="main_025">Appearance: </string>
+    <string name="main_026">Blurred wallpaper </string>
+    <string name="main_027">Native mask</string>
+    <string name="main_028">Animation: </string>
+    <string name="main_029">Injection records are written when System UI and the launcher start,</string>
+    <string name="main_030">so a new module version or a reboot shows up as a fresh timestamp here.</string>
+    <string name="main_031">Status</string>
+    <string name="main_032">No record yet</string>
+    <string name="main_033">just now</string>
+    <string name="main_034">%1$d min ago</string>
+    <string name="main_035">%1$d h ago</string>
+    <string name="main_036">%1$d d ago</string>
+    <string name="main_037">Save failed: </string>
+    <string name="main_038">Saved</string>
+    <string name="main_039">Requested one-handed mode</string>
+    <string name="main_040">Requested exit</string>
+    <string name="main_041">Restart System UI and launcher</string>
+    <string name="main_042">Both processes end; the screen goes black briefly and recovers on its own.</string>
+    <string name="main_043">Restart</string>
+    <string name="main_044">System framework</string>
+    <string name="main_045">System UI</string>
+    <string name="main_046">Launcher</string>
+    <string name="main_047">Soft-restarting the system framework. The screen goes black for about 20 seconds and recovers on its own; please do not touch the device.</string>
+    <string name="main_048">Checking root access… allow the prompt if it appears.</string>
+    <string name="main_049">Soft-restarting the system…</string>
+    <string name="main_050">Root access denied, restart cancelled. Grant superuser to HyperHand in </string>
+    <string name="main_051">KernelSU / Magisk and try again.</string>
+    <string name="main_052">No root, restart skipped</string>
+    <string name="main_053">Soft restart failed: </string>
+    <string name="main_054">Restart failed</string>
+    <string name="main_055">System framework restart requested; the system will soft-restart shortly.</string>
+    <string name="main_056">Stopped</string>
+    <string name="main_057">; the hook re-injects once it restarts.</string>
+    <string name="main_058">Restarted</string>
+    <string name="main_059">Root command failed: </string>
+    <string name="main_060">Restart failed</string>
+    <string name="main_061">Checking root access… allow the prompt if it appears.</string>
+    <string name="main_062">Root access denied, restart cancelled. Grant superuser to HyperHand in KernelSU / Magisk </string>
+    <string name="main_063">and try again.</string>
+    <string name="main_064">No root, restart skipped</string>
+    <string name="main_065">Both processes stopped; the hooks re-inject once they restart.</string>
+    <string name="main_066">Now swipe up from the bottom area to try it.</string>
+    <string name="main_067">Restarted</string>
+    <string name="main_068">Root command failed: </string>
+    <string name="main_069">\nFell back to letting System UI restart itself (the launcher hook is not refreshed; restart it manually later).</string>
+    <string name="main_070">System UI restart requested</string>
+    <string name="main_071">Unknown error</string>
+    <string name="main_072">Timed out waiting for authorisation; allow HyperHand in KernelSU / Magisk</string>
+    <string name="main_073">Exit code </string>
+    <string name="main_074">No usable su found (</string>
+    <string name="main_075">). Make sure the device is rooted and allow HyperHand\'s superuser request</string>
+    <string name="main_time_ago">%1$s (%2$s)</string>
+
+    <!-- 概览页 -->
+    <string name="ov_001">One-handed mode</string>
+    <string name="ov_002">Launcher slide select</string>
+    <string name="ov_003">Enabled</string>
+    <string name="ov_004">Disabled</string>
+    <string name="ov_005">System information</string>
+    <string name="ov_006">Device model</string>
+    <string name="ov_007">Android version</string>
+    <string name="ov_008">System build</string>
+    <string name="ov_009">Screen</string>
+    <string name="ov_010">Module version</string>
+    <string name="ov_011">Scopes</string>
+    <string name="ov_012">System framework system (key mapping)\nSystem UI com.android.systemui\nLauncher com.miui.home</string>
+    <string name="ov_013">Installed</string>
+    <string name="ov_014">Every setting lives in Settings; changes apply immediately.</string>
+    <string name="ov_015">Unknown</string>
+    <string name="ov_016">Module active</string>
+    <string name="ov_017">Hook is live in System UI</string>
+    <string name="ov_018">Module not enabled</string>
+    <string name="ov_019">Master switch off</string>
+    <string name="ov_020">Not enabled in LSPosed, or the scope was not injected</string>
+    <string name="ov_021">Unknown</string>
+
+    <!-- 关于页 -->
+    <string name="about_001">Developer</string>
+    <string name="about_002">不会买菜.</string>
+    <string name="about_003">Source</string>
+    <string name="about_004">HyperHand on GitHub</string>
+    <string name="about_005">Credits</string>
+    <string name="about_006">Miuix / KernelSU / SonyPods and more</string>
+    <string name="about_007">Credits</string>
+    <string name="about_008">Usage</string>
+    <string name="about_009">A few things worth reading first</string>
+    <string name="about_011">License</string>
+    <string name="about_013">Debug</string>
+    <string name="about_014">Status / gestures / quick actions</string>
+    <string name="about_015">Debug logging</string>
+    <string name="about_016">Debug log</string>
+    <string name="about_017">Watch the detection with logcat -s HyperHand and record recent gestures</string>
+    <string name="about_018">Status</string>
+    <string name="about_019">Extended trigger</string>
+    <string name="about_020">On</string>
+    <string name="about_021">Off</string>
+    <string name="about_022">Blurred wallpaper</string>
+    <string name="about_023">"On · "</string>
+    <string name="about_024">" dp / dim "</string>
+    <string name="about_025">Off</string>
+    <string name="about_026">Shrink animation</string>
+    <string name="about_027">Swipe in blurred area</string>
+    <string name="about_028">Off</string>
+    <string name="about_029">Edge reach</string>
+    <string name="about_030"> dp counts as the edge</string>
+    <string name="about_031">Off</string>
+    <string name="about_032">Recent gestures</string>
+    <string name="about_033">Refresh</string>
+    <string name="about_034">Reads the last decision written back by System UI</string>
+    <string name="about_035">Refreshed</string>
+    <string name="about_036">Quick actions</string>
+    <string name="about_037">Preview one-handed mode</string>
+    <string name="about_038">Shrinks the window right away to show the background</string>
+    <string name="about_039">Exit one-handed mode</string>
+    <string name="about_040">Restores the normal window size</string>
+    <string name="about_041">Restart both scopes</string>
+    <string name="about_042">Stops System UI and the launcher to re-inject the hooks</string>
+    <string name="about_043">Close</string>
+    <string name="about_044">Unknown</string>
+    <string name="about_046">No browser available</string>
+    <string name="about_references">Miuix (compose-miuix-ui/miuix)\nWhere the colour scheme, type scale, corner radii and component specs come from. Apache-2.0.\n\nKernelSU (tiann/KernelSU)\nReference for page hierarchy, card grouping and information layout. GPL-3.0.\n\nSonyPods (Mercury000/SonyPods)\nReference for the floating bar, background blur and the About page layout.\n\nlibxposed API (libxposed/api)\nThe module\'s modern API entry point. Apache-2.0.\n\nAndroidLiquidGlass (Kyant0/AndroidLiquidGlass)\nRefraction and highlight ideas for the liquid glass. Apache-2.0.\n\nThese projects are design references only; all HyperHand UI code is\nhand-written with native Views using Miuix\'s values.</string>
+
+    <!-- 通用 / 个性化 / 动画诊断 -->
+    <string name="anim_info_line1">System default %1$dms · %2$s</string>
+    <string name="anim_info_line2">Now %1$dms (×%2$s) · %3$s%4$s</string>
+    <string name="anim_info_curve_unchanged"> (curve unchanged)</string>
+    <string name="anim_info_measured">Last measured %1$dms</string>
+    <string name="app_description">One-handed mode enhancement: a larger bottom trigger area, velocity-based detection, native animations and exit gestures preserved</string>
+    <string name="section_personalize">Personalization</string>
+    <string name="row_language">Language</string>
+    <string name="row_language_summary">The interface refreshes immediately</string>
+    <string name="lang_system">Follow system</string>
+    <string name="lang_system_summary">Use the system language</string>
+    <string name="lang_zh_hans_summary">Always use Simplified Chinese</string>
+    <string name="lang_zh_hant_summary">Always use Traditional Chinese</string>
+    <string name="lang_en_summary">Always use English</string>
+    <!-- 状态开关 -->
+    <string name="main_on">On</string>
+    <string name="main_off">Off</string>
+    <!-- 各页 Activity 标题（最近任务里显示）/ 通用对话框按钮 -->
+    <string name="activity_key_mapping">Key mapping</string>
+    <string name="activity_status">Status</string>
+    <string name="activity_edit_rule">Edit rule</string>
+    <string name="activity_add_condition">Add condition</string>
+    <string name="activity_pick_app">Select app</string>
+    <string name="activity_self_test">Key self-test</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="about_license_link">Read the full MIT license on GitHub</string>
+</resources>

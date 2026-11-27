@@ -72,7 +72,7 @@ public class MainActivity extends ComponentActivity {
 
     private FrameLayout contentHost;
     private FrameLayout root;
-    private io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost dialogHost;
+    private io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost dialogHost;
     private io.github.zpan2327.hyperhand.glass.dialogs.InfoDialogHost infoDialogHost;
     private io.github.zpan2327.hyperhand.glass.dialogs.MiuixDropdownHost dropdownHost;
     private io.github.zpan2327.hyperhand.glass.dialogs.MiuixNumberPickerHost numberPickerHost;
@@ -90,6 +90,15 @@ public class MainActivity extends ComponentActivity {
     private int current = TAB_OVERVIEW;
     private int statusInset;
 
+    /** 重建（切语言、切深色）时用来把用户留在原来那一页。 */
+    private static final String STATE_PAGE = "page";
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt(STATE_PAGE, current);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -97,6 +106,10 @@ public class MainActivity extends ComponentActivity {
         if (bar != null) {
             bar.hide();
         }
+
+        // 界面语言：默认简体中文。首次启动会把「跟随系统」的应用级设置改成 zh-Hans，
+        // 之后只有偏好与系统不一致时才写，不会每次冷启都重建 Activity。
+        Lang.applyOnStart(this);
 
         // 截图/调试用：--es bg grad 换成彩色渐变底，用来看玻璃的折射与通透
         Theme.demoBg = getIntent() != null && "grad".equals(getIntent().getStringExtra("bg"));
@@ -128,6 +141,14 @@ public class MainActivity extends ComponentActivity {
             start = TAB_SETTINGS;
         } else if ("about".equals(tab)) {
             start = TAB_ABOUT;
+        }
+        // 切换语言会让系统重建本 Activity，重建时 intent 仍是「启动时那个 tab」，
+        // 不恢复的话用户会从设置页被弹回概览。这里优先用重建前的页码。
+        if (savedInstanceState != null) {
+            int savedPage = savedInstanceState.getInt(STATE_PAGE, -1);
+            if (savedPage >= 0 && savedPage < pages.length) {
+                start = savedPage;
+            }
         }
         current = start;
         nav.setSelectedImmediate(start);
@@ -182,8 +203,8 @@ public class MainActivity extends ComponentActivity {
         // 横滑时跟着页面整体平移。旧实现只有一条全屏顶栏、按浮点页位置同时画两页标题，
         // 两页折叠状态不同时会出现非预期的中间态。
         pager = new PagePager(this);
-        String[] titles = {"概览", "设置", "关于"};
-        String[] subs = {"", "改动后立即生效", ""};
+        String[] titles = {getString(R.string.main_001), getString(R.string.main_002), getString(R.string.main_003)};
+        String[] subs = {"", getString(R.string.main_004), ""};
         boolean[] showLarge = {true, true, false};
         // 关于页自带整屏渐变：顶栏不压模糊带，滚到底才化底色。
         boolean[] plainBar = {false, false, true};
@@ -536,8 +557,8 @@ public class MainActivity extends ComponentActivity {
      * 正是 miuix Checkbox 文档里的父子复选框用法。
      */
     /**
-     * 重启作用域对话框——直接用 SonyPods 的 {@code RestartScopeDialog} Composable 原版渲染，
-     * 通过 {@link io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost} 桥接到 Java。
+     * 重启作用域对话框——直接渲染 {@code RestartScopeDialog} Composable，
+     * 通过 {@link io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost} 桥接到 Java。
      * 这里只负责提供作用域数据与确认后的业务动作，界面代码一行都不手写。
      */
     private void showRestartDialog() {
@@ -549,8 +570,8 @@ public class MainActivity extends ComponentActivity {
         if (dialogHost != null && dialogHost.getParent() == root) {
             root.removeView(dialogHost);
         }
-        final io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost host =
-                new io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost(this);
+        final io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost host =
+                new io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost(this);
         dialogHost = host;
         host.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -564,22 +585,22 @@ public class MainActivity extends ComponentActivity {
         // system（system_server，按键 Hook 所在地）+ 系统界面 + 小米桌面。
         // 之前这里只写了后两项，新增 system 作用域后对话框里就缺了「系统框架」。
         scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
-                "system", "系统框架"));
+                "system", getString(R.string.main_005)));
         scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
-                "com.android.systemui", "系统界面"));
+                "com.android.systemui", getString(R.string.main_006)));
         scopes.add(new io.github.zpan2327.hyperhand.glass.dialogs.RestartScope(
-                "com.miui.home", "小米桌面"));
+                "com.miui.home", getString(R.string.main_007)));
         host.setRestartScopes(scopes);
 
-        final io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost.OnDismiss onDismiss =
-                new io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost.OnDismiss() {
+        final io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost.OnDismiss onDismiss =
+                new io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost.OnDismiss() {
                     @Override
                     public void onDismiss() {
                         dismissRestartDialog(host);
                     }
                 };
         host.setCallbacks(onDismiss,
-                new io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost.OnConfirm() {
+                new io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost.OnConfirm() {
                     @Override
                     public void onConfirm(java.util.List<String> selected) {
                         boolean system = selected.contains("system");
@@ -598,7 +619,7 @@ public class MainActivity extends ComponentActivity {
                         } else if (home) {
                             restartScopeNow("home");
                         } else {
-                            toast("未选择任何作用域");
+                            toast(getString(R.string.main_008));
                         }
                     }
                 });
@@ -607,7 +628,7 @@ public class MainActivity extends ComponentActivity {
 
     /** 关掉原版 Composable 对话框：先让它播放退出动画，再从 root 移除宿主 View。 */
     private void dismissRestartDialog(
-            final io.github.zpan2327.hyperhand.glass.dialogs.SonyPodsDialogHost host) {
+            final io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost host) {
         host.hide();
         host.postDelayed(new Runnable() {
             @Override
@@ -807,17 +828,17 @@ public class MainActivity extends ComponentActivity {
         long sysui = Cfg.aliveTs(this, Cfg.K_ALIVE_SYSUI);
         long launcher = Cfg.aliveTs(this, Cfg.K_ALIVE_LAUNCHER);
         if (sysui <= 0 && launcher <= 0) {
-            return statusLevel() == 0 ? "总开关关闭" : "尚无注入记录";
+            return statusLevel() == 0 ? getString(R.string.main_009) : getString(R.string.main_010);
         }
         StringBuilder sb = new StringBuilder();
         if (sysui > 0) {
-            sb.append("系统界面 ").append(ago(sysui));
+            sb.append(getString(R.string.main_011)).append(ago(sysui));
         }
         if (launcher > 0) {
             if (sb.length() > 0) {
                 sb.append(" · ");
             }
-            sb.append("桌面 ").append(ago(launcher));
+            sb.append(getString(R.string.main_012)).append(ago(launcher));
         }
         return sb.toString();
     }
@@ -831,58 +852,58 @@ public class MainActivity extends ComponentActivity {
         } catch (Throwable ignored) {
             // 走默认提示
         }
-        return "还没有记录。开启调试日志后，在屏幕底部下滑一次再看这里。";
+        return getString(R.string.main_013);
     }
 
     void showStatusDetail() {
         Cfg cfg = cfg();
         StringBuilder sb = new StringBuilder();
-        sb.append("总开关：").append(cfg.enabled ? "已启用" : "已关闭").append('\n');
-        sb.append("系统界面：").append(aliveText(Cfg.K_ALIVE_SYSUI)).append('\n');
-        sb.append("桌面：").append(aliveText(Cfg.K_ALIVE_LAUNCHER)).append("\n\n");
-        sb.append("识别模式：").append(Cfg.MODE_SHORT[safeMode(cfg.mode)]).append('\n');
-        sb.append("触发区：").append(Ui.fmt(cfg.zoneDp, 0)).append(" dp")
-                .append(cfg.zoneRatioMode ? "（屏幕高度 " + Ui.fmt(cfg.zoneRatio * 100f, 0) + "%）" : "（固定高度）")
+        sb.append(getString(R.string.main_014)).append(cfg.enabled ? getString(R.string.main_015) : getString(R.string.main_016)).append('\n');
+        sb.append(getString(R.string.main_017)).append(aliveText(Cfg.K_ALIVE_SYSUI)).append('\n');
+        sb.append(getString(R.string.main_018)).append(aliveText(Cfg.K_ALIVE_LAUNCHER)).append("\n\n");
+        sb.append(getString(R.string.main_019)).append(Cfg.modeShort(this)[safeMode(cfg.mode)]).append('\n');
+        sb.append(getString(R.string.main_020)).append(Ui.fmt(cfg.zoneDp, 0)).append(" dp")
+                .append(cfg.zoneRatioMode ? getString(R.string.main_021) + Ui.fmt(cfg.zoneRatio * 100f, 0) + "%）" : getString(R.string.main_022))
                 .append('\n');
-        sb.append("扩展触发：").append(cfg.monitorEnabled ? "开" : "关")
-                .append("　贴底直达：").append(cfg.endBoost ? "开" : "关").append('\n');
-        sb.append("外观：").append(cfg.blurBg ? "模糊壁纸 " + Ui.fmt(cfg.blurRadiusDp, 0) + "dp" : "原生遮罩").append('\n');
-        sb.append("动画：").append(Cfg.ANIM_CURVE_SHORT[safeCurve(cfg.animCurve)])
+        sb.append(getString(R.string.main_023)).append(cfg.monitorEnabled ? getString(R.string.main_on) : getString(R.string.main_off))
+                .append(getString(R.string.main_024)).append(cfg.endBoost ? getString(R.string.main_on) : getString(R.string.main_off)).append('\n');
+        sb.append(getString(R.string.main_025)).append(cfg.blurBg ? getString(R.string.main_026) + Ui.fmt(cfg.blurRadiusDp, 0) + "dp" : getString(R.string.main_027)).append('\n');
+        sb.append(getString(R.string.main_028)).append(Cfg.animCurveShort(this)[safeCurve(cfg.animCurve)])
                 .append(" · ").append(Ui.fmt(cfg.animScale, 2)).append("×\n\n");
-        sb.append("注入记录由模块在系统界面 / 桌面进程启动时写入，")
-                .append("换了模块版本或刚重启过系统，这里会显示对应时间。");
-        Ui.infoDialog(this, pal, "运行状态", sb.toString());
+        sb.append(getString(R.string.main_029))
+                .append(getString(R.string.main_030));
+        Ui.infoDialog(this, pal, getString(R.string.main_031), sb.toString());
     }
 
     private String aliveText(String key) {
         long ts = Cfg.aliveTs(this, key);
         if (ts <= 0) {
-            return "尚无记录";
+            return getString(R.string.main_032);
         }
         SimpleDateFormat f = new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault());
-        return f.format(new Date(ts)) + "（" + ago(ts) + "）";
+        return getString(R.string.main_time_ago, f.format(new Date(ts)), ago(ts));
     }
 
     private static int safeMode(int v) {
-        return v < 0 || v >= Cfg.MODE_SHORT.length ? 0 : v;
+        return v < 0 || v >= Cfg.MODE_COUNT ? 0 : v;
     }
 
     private static int safeCurve(int v) {
-        return v < 0 || v >= Cfg.ANIM_CURVE_SHORT.length ? 0 : v;
+        return v < 0 || v >= Cfg.ANIM_CURVE_COUNT ? 0 : v;
     }
 
-    private static String ago(long ts) {
+    private String ago(long ts) {
         long d = System.currentTimeMillis() - ts;
         if (d < 90_000L) {
-            return "刚刚";
+            return getString(R.string.main_033);
         }
         if (d < 3600_000L) {
-            return (d / 60_000L) + " 分钟前";
+            return getString(R.string.main_034, d / 60_000L);
         }
         if (d < 86_400_000L) {
-            return (d / 3600_000L) + " 小时前";
+            return getString(R.string.main_035, d / 3600_000L);
         }
-        return (d / 86_400_000L) + " 天前";
+        return getString(R.string.main_036, d / 86_400_000L);
     }
 
     // ---------------------------------------------------------------- 动作
@@ -893,14 +914,14 @@ public class MainActivity extends ComponentActivity {
         try {
             settingsPage.applyTo(i);
         } catch (Throwable t) {
-            toast("保存失败：" + t);
+            toast(getString(R.string.main_037) + t);
             return;
         }
         sendBroadcast(i);
         settingsPage.onSaved();
         reloadCfg();
         overviewPage.refresh();
-        toast("已保存");
+        toast(getString(R.string.main_038));
         if (settingsPage != null) {
             settingsPage.refreshAnimInfo();
         }
@@ -920,18 +941,18 @@ public class MainActivity extends ComponentActivity {
 
     void previewOneHanded() {
         broadcastAction("trigger");
-        toast("已请求进入单手模式");
+        toast(getString(R.string.main_039));
     }
 
     void stopOneHanded() {
         broadcastAction("stop");
-        toast("已请求退出");
+        toast(getString(R.string.main_040));
     }
 
     void restartScopes() {
-        Ui.confirmDialog(this, pal, "重启系统界面与桌面",
-                "会结束这两个进程，屏幕短暂黑屏后自动恢复。",
-                "重启", new Ui.OnConfirm() {
+        Ui.confirmDialog(this, pal, getString(R.string.main_041),
+                getString(R.string.main_042),
+                getString(R.string.main_043), new Ui.OnConfirm() {
                     @Override
                     public void onConfirm() {
                         doRestart();
@@ -949,8 +970,8 @@ public class MainActivity extends ComponentActivity {
      */
     void restartScopeNow(final String scope) {
         final boolean system = "system".equals(scope);
-        final String label = system ? "系统框架"
-                : ("sysui".equals(scope) ? "系统界面" : "小米桌面");
+        final String label = system ? getString(R.string.main_044)
+                : ("sysui".equals(scope) ? getString(R.string.main_045) : getString(R.string.main_046));
         final String pkg = system ? "system_server"
                 : ("sysui".equals(scope) ? "com.android.systemui" : "com.miui.home");
         final String cmd = system
@@ -958,10 +979,10 @@ public class MainActivity extends ComponentActivity {
                 : "killall " + pkg + "; sleep 1; input keyevent 3";
         settingsPage.setRestarting(true);
         settingsPage.setStatus(system
-                ? "正在软重启系统框架，屏幕会短暂黑屏、约 20 秒后自动恢复，请不要手动操作。"
-                : "正在检查 root 权限……若弹出授权请允许。");
+                ? getString(R.string.main_047)
+                : getString(R.string.main_048));
         if (system) {
-            toast("正在软重启系统…");
+            toast(getString(R.string.main_049));
         }
         new Thread(new Runnable() {
             @Override
@@ -972,9 +993,9 @@ public class MainActivity extends ComponentActivity {
                         @Override
                         public void run() {
                             settingsPage.setRestarting(false);
-                            settingsPage.setStatus("未获得 root 权限，已取消重启。请先在 "
-                                    + "KernelSU / Magisk 里授予 HyperHand 超级用户权限后重试。");
-                            toast("没有 root，未执行重启");
+                            settingsPage.setStatus(getString(R.string.main_050)
+                                    + getString(R.string.main_051));
+                            toast(getString(R.string.main_052));
                             if (current == TAB_OVERVIEW) overviewPage.refresh();
                         }
                     });
@@ -991,22 +1012,22 @@ public class MainActivity extends ComponentActivity {
                             // broadcastAction("reload") 兜底：那是给系统界面用的，对
                             // system_server 无意义，还会把失败原因盖掉。
                             if (err != null) {
-                                settingsPage.setStatus("重启系统框架失败：" + err);
-                                toast("重启失败");
+                                settingsPage.setStatus(getString(R.string.main_053) + err);
+                                toast(getString(R.string.main_054));
                             } else {
-                                settingsPage.setStatus("已请求重启系统框架，系统即将软重启。");
+                                settingsPage.setStatus(getString(R.string.main_055));
                             }
                             if (current == TAB_OVERVIEW) overviewPage.refresh();
                             return;
                         }
                         if (err == null) {
-                            settingsPage.setStatus("已结束" + label + "，钩子会在它重启后重新注入。");
-                            toast("已重启" + label);
+                            settingsPage.setStatus(getString(R.string.main_056) + label + getString(R.string.main_057));
+                            toast(getString(R.string.main_058) + label);
                         } else {
                             // 已确认有 root，命令本身失败才走 reload 兜底。
                             broadcastAction("reload");
-                            settingsPage.setStatus("root 命令执行失败：" + err);
-                            toast("重启失败");
+                            settingsPage.setStatus(getString(R.string.main_059) + err);
+                            toast(getString(R.string.main_060));
                         }
                         if (current == TAB_OVERVIEW) {
                             overviewPage.refresh();
@@ -1026,7 +1047,7 @@ public class MainActivity extends ComponentActivity {
 
     private void doRestart() {
         settingsPage.setRestarting(true);
-        settingsPage.setStatus("正在检查 root 权限……若弹出授权请允许。");
+        settingsPage.setStatus(getString(R.string.main_061));
         final int keepTab = current;
         new Thread(new Runnable() {
             @Override
@@ -1038,9 +1059,9 @@ public class MainActivity extends ComponentActivity {
                         @Override
                         public void run() {
                             settingsPage.setRestarting(false);
-                            settingsPage.setStatus("未获得 root 权限，已取消重启。请先在 KernelSU / Magisk "
-                                    + "里授予 HyperHand 超级用户权限后重试。");
-                            toast("没有 root，未执行重启");
+                            settingsPage.setStatus(getString(R.string.main_062)
+                                    + getString(R.string.main_063));
+                            toast(getString(R.string.main_064));
                             if (keepTab == TAB_OVERVIEW) overviewPage.refresh();
                         }
                     });
@@ -1053,16 +1074,16 @@ public class MainActivity extends ComponentActivity {
                     public void run() {
                         settingsPage.setRestarting(false);
                         if (err == null) {
-                            settingsPage.setStatus("已结束两个进程，钩子会在它们重启后重新注入。"
-                                    + "现在可以下滑底部区域试试。");
-                            toast("已重启");
+                            settingsPage.setStatus(getString(R.string.main_065)
+                                    + getString(R.string.main_066));
+                            toast(getString(R.string.main_067));
                         } else {
                             // 已确认有 root，但 killall 执行失败（权限已给、命令环境问题）。
                             // 这里保留 reload 兜底——与"未授权"无关，属于另一类失败。
                             broadcastAction("reload");
-                            settingsPage.setStatus("root 命令执行失败：" + err
-                                    + "\n已改为让系统界面自行重启（桌面侧钩子未刷新，可稍后手动重启）。");
-                            toast("已请求系统界面重启");
+                            settingsPage.setStatus(getString(R.string.main_068) + err
+                                    + getString(R.string.main_069));
+                            toast(getString(R.string.main_070));
                         }
                         if (keepTab == TAB_OVERVIEW) {
                             overviewPage.refresh();
@@ -1111,7 +1132,7 @@ public class MainActivity extends ComponentActivity {
      */
     private String su(String cmd, long timeoutMs) {
         final String[] bins = new String[] {"su", "/system/bin/su", "/debug_ramdisk/su", "/sbin/su"};
-        String last = "未知错误";
+        String last = getString(R.string.main_071);
         for (String bin : bins) {
             Process p;
             try {
@@ -1123,14 +1144,14 @@ public class MainActivity extends ComponentActivity {
             try {
                 if (!p.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                     p.destroy();
-                    return "等待授权超时，请在 KernelSU / Magisk 里允许 HyperHand";
+                    return getString(R.string.main_072);
                 }
                 int code = p.exitValue();
                 String err = readStream(p.getErrorStream());
                 if (code == 0) {
                     return null;
                 }
-                return "退出码 " + code + (err.length() > 0 ? "：" + err.trim() : "");
+                return getString(R.string.main_073) + code + (err.length() > 0 ? "：" + err.trim() : "");
             } catch (Throwable t) {
                 return String.valueOf(t);
             } finally {
@@ -1141,7 +1162,7 @@ public class MainActivity extends ComponentActivity {
                 }
             }
         }
-        return "没找到可用的 su（" + last + "）。请确认已 root，并允许 HyperHand 的超级用户请求";
+        return getString(R.string.main_074) + last + getString(R.string.main_075);
     }
 
     private static String readStream(java.io.InputStream in) {

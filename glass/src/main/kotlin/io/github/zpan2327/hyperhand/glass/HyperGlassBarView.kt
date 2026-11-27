@@ -58,7 +58,7 @@ class HyperGlassBarView @JvmOverloads constructor(
      * 滚动前那一帧。在绘制阶段读这个状态，才会真正让 Compose 重跑 draw。
      */
     private val redrawTick = mutableIntStateOf(0)
-    private var items by mutableStateOf(defaultItems())
+    private var items by mutableStateOf(defaultItems(context))
     private var dark by mutableStateOf(isNightMode())
     private var listener: OnTabSelected? = null
     private val backdrop = ViewBackdrop()
@@ -188,10 +188,10 @@ class HyperGlassBarView @JvmOverloads constructor(
         /** 按下放大 + 投影需要的溢出余量（只加在顶部，胶囊视觉位置不变）。 */
         val OverhangRoom = 14.dp
 
-        fun defaultItems(): List<NavigationItem> = listOf(
-            NavigationItem(label = "概览", icon = MiuixIcons.Home),
-            NavigationItem(label = "设置", icon = MiuixIcons.Settings),
-            NavigationItem(label = "关于", icon = MiuixIcons.Info),
+        fun defaultItems(c: android.content.Context): List<NavigationItem> = listOf(
+            NavigationItem(label = c.getString(R.string.tab_overview), icon = MiuixIcons.Home),
+            NavigationItem(label = c.getString(R.string.tab_settings), icon = MiuixIcons.Settings),
+            NavigationItem(label = c.getString(R.string.tab_about), icon = MiuixIcons.Info),
         )
     }
 }

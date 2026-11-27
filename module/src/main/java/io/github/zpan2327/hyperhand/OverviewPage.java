@@ -116,7 +116,7 @@ final class OverviewPage {
         card.addView(col, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        col.addView(Ui.text(c, mode ? "单手模式增强" : "快捷菜单滑选", 13, pal.summary, Theme.medium()));
+        col.addView(Ui.text(c, mode ? c.getString(R.string.ov_001) : c.getString(R.string.ov_002), 13, pal.summary, Theme.medium()));
 
         TextView value = Ui.text(c, "", Theme.T_STAT, pal.title, Theme.bold());
         value.setPadding(0, Theme.dp(c, 2), 0, 0);
@@ -131,7 +131,7 @@ final class OverviewPage {
 
     /** 功能状态值：沿用上一版配色（statCard 的 pal.title），只用文字区分状态。 */
     private void applyState(TextView v, boolean enabled) {
-        v.setText(enabled ? "已启用" : "已禁用");
+        v.setText(enabled ? c.getString(R.string.ov_003) : c.getString(R.string.ov_004));
     }
 
     void refresh() {
@@ -153,28 +153,28 @@ final class OverviewPage {
         dynamic.setOrientation(LinearLayout.VERTICAL);
 
         // ------------------------------------------------------ 系统信息
-        dynamic.addView(Ui.section(c, pal, "系统信息"));
+        dynamic.addView(Ui.section(c, pal, c.getString(R.string.ov_005)));
         LinearLayout cardInfo = Ui.card(c, pal);
         LinearLayout infoBody = new LinearLayout(c);
         infoBody.setOrientation(LinearLayout.VERTICAL);
         infoBody.setPadding(Theme.dp(c, 16), Theme.dp(c, 16), Theme.dp(c, 16), Theme.dp(c, 16));
         cardInfo.addView(infoBody);
 
-        Ui.infoText(c, infoBody, pal, "设备型号",
+        Ui.infoText(c, infoBody, pal, c.getString(R.string.ov_006),
                 safe(android.os.Build.MANUFACTURER) + " " + safe(android.os.Build.MODEL));
-        Ui.infoText(c, infoBody, pal, "Android 版本",
+        Ui.infoText(c, infoBody, pal, c.getString(R.string.ov_007),
                 android.os.Build.VERSION.RELEASE + "（API " + android.os.Build.VERSION.SDK_INT + "）");
-        Ui.infoText(c, infoBody, pal, "系统版本", safe(android.os.Build.DISPLAY));
+        Ui.infoText(c, infoBody, pal, c.getString(R.string.ov_008), safe(android.os.Build.DISPLAY));
         android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
-        Ui.infoText(c, infoBody, pal, "屏幕",
+        Ui.infoText(c, infoBody, pal, c.getString(R.string.ov_009),
                 dm.widthPixels + " × " + dm.heightPixels + " · " + dm.densityDpi + " dpi");
-        Ui.infoText(c, infoBody, pal, "模块版本", moduleVersion());
-        Ui.infoText(c, infoBody, pal, "作用域",
-                "系统框架 system（按键映射）\n系统界面 com.android.systemui\n桌面 com.miui.home");
-        Ui.infoText(c, infoBody, pal, "安装时间", installTime(), false);
+        Ui.infoText(c, infoBody, pal, c.getString(R.string.ov_010), moduleVersion());
+        Ui.infoText(c, infoBody, pal, c.getString(R.string.ov_011),
+                c.getString(R.string.ov_012));
+        Ui.infoText(c, infoBody, pal, c.getString(R.string.ov_013), installTime(), false);
         dynamic.addView(cardInfo, Ui.cardLp(c, Theme.CARD_GAP));
 
-        TextView foot = Ui.text(c, "所有参数都在「设置」里，改动后立即生效。",
+        TextView foot = Ui.text(c, c.getString(R.string.ov_014),
                 Theme.T_CAP, pal.section, Theme.regular());
         foot.setGravity(Gravity.CENTER);
         foot.setPadding(0, Theme.dp(c, 20), 0, Theme.dp(c, 8));
@@ -183,8 +183,8 @@ final class OverviewPage {
         page.column.addView(dynamic);
     }
 
-    private static String safe(String s) {
-        return s == null || s.length() == 0 ? "未知" : s;
+    private String safe(String s) {
+        return s == null || s.length() == 0 ? c.getString(R.string.ov_015) : s;
     }
 
     /**
@@ -206,14 +206,14 @@ final class OverviewPage {
             bg = pal.night ? 0xFF16301F : 0xFFDFFAE4;
             iconTint = pal.night ? 0xFF5BD07E : 0xFF36D167;
             summaryColor = Theme.alpha(pal.night ? 0xFFB8E8C5 : 0xFF2F3A32, 0.78f);
-            title = "模块已激活";
-            summary = "钩子已在系统界面生效";
+            title = c.getString(R.string.ov_016);
+            summary = c.getString(R.string.ov_017);
         } else {
             bg = pal.night ? 0xFF3A201E : 0xFFFFE5E3;
             iconTint = pal.night ? 0xFFFF8A82 : 0xFFFF5A52;
             summaryColor = pal.night ? 0xFFFF8A82 : 0xFFFF5A52;
-            title = "模块未启用";
-            summary = level == 0 ? "总开关关闭" : "未在 LSPosed 启用或作用域未注入";
+            title = c.getString(R.string.ov_018);
+            summary = level == 0 ? c.getString(R.string.ov_019) : c.getString(R.string.ov_020);
         }
 
         // 状态卡由 MIUIX Compose Card 承载按压反馈，但配色完全沿用本页原有逻辑：
@@ -246,7 +246,7 @@ final class OverviewPage {
                     new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault());
             return f.format(new java.util.Date(pi.lastUpdateTime));
         } catch (Throwable t) {
-            return "未知";
+            return c.getString(R.string.ov_021);
         }
     }
 }

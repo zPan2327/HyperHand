@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import android.os.Bundle
 import android.widget.Toast
 import androidx.compose.runtime.Composable
@@ -42,11 +44,11 @@ class SmartKeyActivity : SkActivity() {
         val master = remember(refreshKey) { repo.isMasterEnabled() }
 
         SmartKeyScaffold(
-            title = "按键映射",
-            largeTitle = "按键映射",
+            title = stringResource(R.string.sk_133),
+            largeTitle = stringResource(R.string.sk_133),
             // 说明文字交给 TopAppBar 的 subtitle 槽位，对齐与字号由组件按规范处理，
             // 不在内容区自己塞一段不同缩进的文字。
-            subtitle = "按应用、音频与设备状态重定义音量键",
+            subtitle = stringResource(R.string.sk_134),
             // 本页由设置页 startActivity 进入，属于独立窗口的前进页面，
             // 必须给顶栏返回钮（与运行状态/编辑规则一致），否则只能靠系统返回手势退出。
             onBack = { finish() },
@@ -66,7 +68,7 @@ class SmartKeyActivity : SkActivity() {
                             } else {
                                 Toast.makeText(
                                     this@SmartKeyActivity,
-                                    "无法写入总开关：需要 root 授权以修改系统设置",
+                                    getString(R.string.sk_135),
                                     Toast.LENGTH_LONG,
                                 ).show()
                             }

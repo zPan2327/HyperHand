@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -435,7 +437,7 @@ fun SkOptionDialog(
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
     summary: String? = null,
-    deleteLabel: String = "删除",
+    deleteLabel: String = stringResource(R.string.sk_051),
     onDelete: (() -> Unit)? = null,
 ) {
     OverlayDialog(
@@ -465,7 +467,7 @@ fun SkOptionDialog(
             Spacer(Modifier.height(12.dp))
             SkDialogButtons(
                 left = onDelete?.let { deleteLabel to it },
-                rightText = "完成",
+                rightText = stringResource(R.string.sk_052),
                 onRight = onDismiss,
             )
         }
@@ -488,8 +490,8 @@ fun SkTriggerDialog(
 ) {
     OverlayDialog(
         show = show,
-        title = "触发按键",
-        summary = "按下「${mapping.key.label}键 · ${mapping.press.label}」时执行",
+        title = stringResource(R.string.sk_053),
+        summary = stringResource(R.string.sk_054, mapping.key.label, mapping.press.label),
         onDismissRequest = onDismiss,
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -500,7 +502,7 @@ fun SkTriggerDialog(
                     .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                SkDialogGroupLabel("物理按键")
+                SkDialogGroupLabel(stringResource(R.string.sk_055))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     pressFeedbackType = PressFeedbackType.None,
@@ -513,7 +515,7 @@ fun SkTriggerDialog(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                SkDialogGroupLabel("按压方式")
+                SkDialogGroupLabel(stringResource(R.string.sk_056))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     pressFeedbackType = PressFeedbackType.None,
@@ -528,8 +530,8 @@ fun SkTriggerDialog(
             }
             Spacer(Modifier.height(16.dp))
             SkDialogButtons(
-                left = "删除" to onDelete,
-                rightText = "完成",
+                left = stringResource(R.string.sk_051) to onDelete,
+                rightText = stringResource(R.string.sk_052),
                 onRight = onDismiss,
             )
         }
@@ -550,13 +552,13 @@ fun SkConditionDialog(
         title = condition.type.label,
         // 副标题给应用**名称**（不是包名）。
         summary = condition.detail(androidx.compose.ui.platform.LocalContext.current)
-            ?: "该条件不需要额外设置",
+            ?: stringResource(R.string.sk_057),
         onDismissRequest = onDismiss,
     ) {
         Column(Modifier.fillMaxWidth()) {
             SkDialogButtons(
-                left = "删除" to onDelete,
-                rightText = if (onPickApps != null) "更换应用" else "完成",
+                left = stringResource(R.string.sk_051) to onDelete,
+                rightText = if (onPickApps != null) stringResource(R.string.sk_058) else stringResource(R.string.sk_052),
                 onRight = { onPickApps?.invoke() ?: onDismiss() },
             )
         }
@@ -583,8 +585,8 @@ fun SkNewTriggerDialog(
 
     OverlayDialog(
         show = show,
-        title = "添加触发按键",
-        summary = "按下「${key.label}键 · ${press.label}」时执行",
+        title = stringResource(R.string.sk_059),
+        summary = stringResource(R.string.sk_060, key.label, press.label),
         onDismissRequest = onDismiss,
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -594,7 +596,7 @@ fun SkNewTriggerDialog(
                     .heightIn(max = 420.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                SkDialogGroupLabel("物理按键")
+                SkDialogGroupLabel(stringResource(R.string.sk_055))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     pressFeedbackType = PressFeedbackType.None,
@@ -605,7 +607,7 @@ fun SkNewTriggerDialog(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                SkDialogGroupLabel("按压方式")
+                SkDialogGroupLabel(stringResource(R.string.sk_056))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     pressFeedbackType = PressFeedbackType.None,
@@ -618,8 +620,8 @@ fun SkNewTriggerDialog(
             }
             Spacer(Modifier.height(16.dp))
             SkDialogButtons(
-                left = "取消" to onDismiss,
-                rightText = "添加",
+                left = stringResource(R.string.sk_061) to onDismiss,
+                rightText = stringResource(R.string.sk_062),
                 onRight = { onConfirm(key, press) },
             )
         }
@@ -645,8 +647,8 @@ fun SkNewActionDialog(
 
     OverlayDialog(
         show = show,
-        title = "添加执行动作",
-        summary = "将同时新增「${baseKey.label}键 · ${basePress.label}」的触发，加完可以点该行再改",
+        title = stringResource(R.string.sk_063),
+        summary = stringResource(R.string.sk_064, baseKey.label, basePress.label),
         onDismissRequest = onDismiss,
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -667,8 +669,8 @@ fun SkNewActionDialog(
             }
             Spacer(Modifier.height(12.dp))
             SkDialogButtons(
-                left = "取消" to onDismiss,
-                rightText = "添加",
+                left = stringResource(R.string.sk_061) to onDismiss,
+                rightText = stringResource(R.string.sk_062),
                 onRight = { onConfirm(action) },
             )
         }
@@ -688,14 +690,14 @@ fun SkDiscardChangesDialog(
 ) {
     OverlayDialog(
         show = show,
-        title = "放弃修改？",
-        summary = "当前修改还没有保存，退出后会丢失。",
+        title = stringResource(R.string.sk_065),
+        summary = stringResource(R.string.sk_066),
         onDismissRequest = onDismiss,
     ) {
         Column(Modifier.fillMaxWidth()) {
             SkDialogButtons(
-                left = "取消" to onDismiss,
-                rightText = "退出",
+                left = stringResource(R.string.sk_061) to onDismiss,
+                rightText = stringResource(R.string.sk_067),
                 onRight = onConfirm,
             )
         }

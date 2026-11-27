@@ -42,31 +42,31 @@
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SmartKeyActivity"
             android:exported="false"
-            android:label="按键映射" />
+            android:label="@string/activity_key_mapping" />
 
         <!-- 以下每一页都是独立 Activity：进入/退出动画完全由系统窗口转场完成，
              与「设置页 → 智能按键映射」同源。不要在应用内手写转场去仿它。 -->
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SkStatusActivity"
             android:exported="false"
-            android:label="运行状态" />
+            android:label="@string/activity_status" />
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SkEditRuleActivity"
             android:exported="false"
-            android:label="编辑规则" />
+            android:label="@string/activity_edit_rule" />
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SkConditionPickerActivity"
             android:exported="false"
-            android:label="添加触发条件" />
+            android:label="@string/activity_add_condition" />
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SkAppPickerActivity"
             android:exported="false"
-            android:label="选择应用" />
+            android:label="@string/activity_pick_app" />
 
         <!-- 按键手势自检（无界面）：跑 SkEngine 的全组合用例，结果打到 logcat TAG=HHSKTest。 -->
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SkSelfTestActivity"
             android:exported="false"
-            android:label="按键自检" />
+            android:label="@string/activity_self_test" />
     </application>
 </manifest>

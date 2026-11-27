@@ -27,7 +27,7 @@ import android.widget.TextView;
  * 说明          body1 = 16sp，居中，下边距 12dp
  * 按钮          TextButton 40dp 高、16dp 圆角、MinWidth 58dp、文字 button = 17sp；
  *               双按钮横排（左 secondary / 右 primary），间距 8dp —— 与
- *               SonyPods PowerOffDialog / PodImageConfigDialog 的 Row 布局一致
+ *               MIUI 弹窗的 Row 布局一致
  * 蒙层          windowDimming = 黑 α0.3（浅色）/ α0.6（深色）
  * </pre>
  *

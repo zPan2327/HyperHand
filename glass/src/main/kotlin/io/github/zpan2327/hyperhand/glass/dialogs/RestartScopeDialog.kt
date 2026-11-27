@@ -1,8 +1,9 @@
-// 复制自 SonyPods: app/src/main/java/dev/sonypods/ui/dialogs/RestartScopeDialog.kt
-// 唯一改动：stringResource(R.string.xxx) → S.xxx（中文替换表见 DialogStrings.kt）。
-// package / 作用域数据由桥接层提供，Composable 本体与 SonyPods 逐字一致。
+// 重启作用域选择：文案走 :glass 自己的资源（values / values-en / values-b+zh+Hant），
+// 作用域列表由 Java 桥接层传入。
 package io.github.zpan2327.hyperhand.glass.dialogs
 
+import androidx.compose.ui.res.stringResource
+import io.github.zpan2327.hyperhand.glass.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -47,8 +48,8 @@ fun RestartScopeDialog(
     }
 
     OverlayDialog(
-        title = S.restart_scope_title,
-        summary = S.restart_scope_summary,
+        title = stringResource(R.string.sk_restart_scope_title),
+        summary = stringResource(R.string.sk_restart_scope_summary),
         show = show,
         onDismissRequest = onDismissRequest,
     ) {
@@ -76,12 +77,12 @@ fun RestartScopeDialog(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TextButton(
-                text = S.cancel,
+                text = stringResource(R.string.sk_061),
                 onClick = onDismissRequest,
                 modifier = Modifier.weight(1f),
             )
             TextButton(
-                text = S.confirm,
+                text = stringResource(R.string.sk_141),
                 onClick = { onConfirm(selectedPackages.toList()) },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.textButtonColorsPrimary(),

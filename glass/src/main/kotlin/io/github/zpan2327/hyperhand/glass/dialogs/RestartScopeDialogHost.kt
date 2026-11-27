@@ -17,20 +17,20 @@ import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 
 /**
- * Java 友好桥接：把 SonyPods 的 OverlayDialog Composable 装进一个普通 Android View。
+ * Java 友好桥接：把 [RestartScopeDialog] 这个 Compose 弹窗装进一个普通 Android View。
  *
- * 宿主结构与 SonyPods MainUI 的外层 Scaffold 一致——OverlayDialog（经 DialogLayout）
- * 必须有 root 级 MiuixPopupHost 才能渲染，否则弹窗不显示。这里用一个透明、
- * 零 insets 的 Scaffold 提供该宿主，主题深浅跟随系统（与 HyperHand 其余 miuix 组件同源）。
+ * OverlayDialog（经 DialogLayout）必须有 root 级 MiuixPopupHost 才能渲染，否则弹窗不显示。
+ * 这里用一个透明、零 insets 的 Scaffold 提供该宿主，主题深浅跟随系统
+ * （与 HyperHand 其余 miuix 组件同源）。
  *
  * Java 侧用法：
- *   SonyPodsDialogHost host = new SonyPodsDialogHost(activity);
+ *   RestartScopeDialogHost host = new RestartScopeDialogHost(activity);
  *   host.setRestartScopes(scopes);                 // List<RestartScope>，Kotlin data class 对 Java 可见
  *   host.setCallbacks(onDismiss, onConfirm);
  *   // 放进一个全屏透明 Dialog 的 contentView，再 host.show()；
  *   // 关闭时 host.hide() 让 OverlayDialog 走退出动画。
  */
-class SonyPodsDialogHost @JvmOverloads constructor(
+class RestartScopeDialogHost @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : AbstractComposeView(context, attrs) {

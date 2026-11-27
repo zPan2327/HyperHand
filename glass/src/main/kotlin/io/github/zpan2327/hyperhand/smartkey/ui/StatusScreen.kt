@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,31 +21,31 @@ import top.yukonga.miuix.kmp.utils.PressFeedbackType
 fun ColumnScope.StatusScreenContent(
     status: ModuleStatus,
 ) {
-    SmallTitle(text = "Hook 状态")
+    SmallTitle(text = stringResource(R.string.sk_104))
     Card(
         modifier = Modifier.fillMaxWidth(),
         pressFeedbackType = PressFeedbackType.None,
     ) {
-        StatusRow("system_server Hook", if (status.hookActive) "已激活" else "未激活", status.hookActive)
-        StatusRow("LSPosed 安装", boolText(status.lsposedInstalled), status.lsposedInstalled)
-        StatusRow("HyperHand 模块", boolText(status.moduleInstalled), status.moduleInstalled)
-        StatusRow("最近 Hook 上报", status.lastHookReport, null)
-        StatusRow("最近配置同步", status.lastConfigSync, null)
-        StatusRow("当前规则数", status.ruleCount.toString(), null)
+        StatusRow("system_server Hook", if (status.hookActive) stringResource(R.string.sk_105) else stringResource(R.string.sk_106), status.hookActive)
+        StatusRow(stringResource(R.string.sk_107), boolText(status.lsposedInstalled), status.lsposedInstalled)
+        StatusRow(stringResource(R.string.sk_108), boolText(status.moduleInstalled), status.moduleInstalled)
+        StatusRow(stringResource(R.string.sk_109), status.lastHookReport, null)
+        StatusRow(stringResource(R.string.sk_110), status.lastConfigSync, null)
+        StatusRow(stringResource(R.string.sk_111), status.ruleCount.toString(), null)
     }
 
     if (!status.hookActive) {
         CardGap()
-        SmallTitle(text = "未激活时请检查")
+        SmallTitle(text = stringResource(R.string.sk_112))
         Card(
             modifier = Modifier.fillMaxWidth(),
             pressFeedbackType = PressFeedbackType.None,
         ) {
             Text(
-                text = "1. 在 LSPosed 中启用 HyperHand 模块\n" +
-                    "2. 勾选「系统框架(system)」「系统界面」「桌面」作用域\n" +
-                    "3. 重启 system_server 或设备\n" +
-                    "4. 返回此页查看 Hook 状态",
+                text = stringResource(R.string.sk_113) +
+                    stringResource(R.string.sk_114) +
+                    stringResource(R.string.sk_115) +
+                    stringResource(R.string.sk_116),
                 style = MiuixTheme.textStyles.body2,
                 color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -74,4 +76,5 @@ private fun StatusRow(label: String, value: String, ok: Boolean?) {
     )
 }
 
-private fun boolText(v: Boolean) = if (v) "是" else "否"
+@Composable
+private fun boolText(v: Boolean) = if (v) stringResource(R.string.sk_117) else stringResource(R.string.sk_118)

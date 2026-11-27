@@ -1,5 +1,6 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import io.github.zpan2327.hyperhand.glass.R
 import android.content.Context
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
@@ -7,6 +8,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import io.github.zpan2327.hyperhand.smartkey.data.ActionType
@@ -47,55 +50,89 @@ import top.yukonga.miuix.kmp.icon.extended.VolumeOff
 import top.yukonga.miuix.kmp.icon.extended.VolumeUp
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-// ---- 展示用中文标签 ----
+// ---- 展示用标签 ----
+// 这些属性被 Compose 页面和（少量）带 Context 的普通函数共用，所以统一改成
+// `xxx(context)` 取值：非 composable 的地方没法用 stringResource。
 
-val ConditionType.label: String get() = when (this) {
-    ConditionType.APP_PLAYING -> "指定应用正在播放"
-    ConditionType.APP_RUNNING -> "指定应用运行中"
-    ConditionType.APP_NOT_RUNNING -> "指定应用未运行"
-    ConditionType.ANY_APP_PLAYING -> "任意应用正在播放"
-    ConditionType.APP_FOREGROUND -> "指定应用在前台"
-    ConditionType.APP_NOT_FOREGROUND -> "指定应用不在前台"
-    ConditionType.APP_PAUSED -> "指定应用已暂停"
-    ConditionType.APP_NO_SESSION -> "指定应用无媒体会话"
-    ConditionType.SCREEN_ON -> "屏幕亮起"
-    ConditionType.SCREEN_OFF -> "屏幕熄灭"
-    ConditionType.UNLOCKED -> "已解锁"
-    ConditionType.LOCKED -> "锁屏状态"
-    ConditionType.CHARGING -> "正在充电"
-    ConditionType.NOT_CHARGING -> "未充电"
-    ConditionType.AUDIO_PLAYING -> "正在播放"
-    ConditionType.AUDIO_PAUSED -> "已暂停"
-    ConditionType.AUDIO_STOPPED -> "已停止"
-    ConditionType.NO_MEDIA_SESSION -> "无活动媒体会话"
-    ConditionType.MULTIPLE_SESSIONS -> "多个媒体会话"
-}
+fun ConditionType.label(c: Context): String = c.getString(
+    when (this) {
+        ConditionType.APP_PLAYING -> R.string.sk_cond_app_playing
+        ConditionType.APP_RUNNING -> R.string.sk_cond_app_running
+        ConditionType.APP_NOT_RUNNING -> R.string.sk_cond_app_not_running
+        ConditionType.ANY_APP_PLAYING -> R.string.sk_cond_any_app_playing
+        ConditionType.APP_FOREGROUND -> R.string.sk_cond_app_foreground
+        ConditionType.APP_NOT_FOREGROUND -> R.string.sk_cond_app_not_foreground
+        ConditionType.APP_PAUSED -> R.string.sk_cond_app_paused
+        ConditionType.APP_NO_SESSION -> R.string.sk_cond_app_no_session
+        ConditionType.SCREEN_ON -> R.string.sk_cond_screen_on
+        ConditionType.SCREEN_OFF -> R.string.sk_cond_screen_off
+        ConditionType.UNLOCKED -> R.string.sk_cond_unlocked
+        ConditionType.LOCKED -> R.string.sk_cond_locked
+        ConditionType.CHARGING -> R.string.sk_cond_charging
+        ConditionType.NOT_CHARGING -> R.string.sk_cond_not_charging
+        ConditionType.AUDIO_PLAYING -> R.string.sk_cond_audio_playing
+        ConditionType.AUDIO_PAUSED -> R.string.sk_cond_audio_paused
+        ConditionType.AUDIO_STOPPED -> R.string.sk_cond_audio_stopped
+        ConditionType.NO_MEDIA_SESSION -> R.string.sk_cond_no_session
+        ConditionType.MULTIPLE_SESSIONS -> R.string.sk_cond_multi_session
+    }
+)
 
-val KeyType.label: String get() = when (this) {
-    KeyType.VOLUME_UP -> "音量加"
-    KeyType.VOLUME_DOWN -> "音量减"
-}
+fun KeyType.label(c: Context): String = c.getString(
+    when (this) {
+        KeyType.VOLUME_UP -> R.string.sk_key_up
+        KeyType.VOLUME_DOWN -> R.string.sk_key_down
+    }
+)
 
-val PressType.label: String get() = when (this) {
-    PressType.SHORT -> "短按"
-    PressType.LONG -> "长按"
-    PressType.DOUBLE -> "双击"
-    PressType.REPEAT -> "连按"
-}
+fun PressType.label(c: Context): String = c.getString(
+    when (this) {
+        PressType.SHORT -> R.string.sk_press_short
+        PressType.LONG -> R.string.sk_press_long
+        PressType.DOUBLE -> R.string.sk_press_double
+        PressType.REPEAT -> R.string.sk_press_repeat
+    }
+)
 
-val ActionType.label: String get() = when (this) {
-    ActionType.PASS_THROUGH -> "保持原功能"
-    ActionType.NEXT -> "下一首"
-    ActionType.PREVIOUS -> "上一首"
-    ActionType.PLAY -> "播放"
-    ActionType.PAUSE -> "暂停"
-    ActionType.PLAY_PAUSE -> "播放/暂停"
-}
+fun ActionType.label(c: Context): String = c.getString(
+    when (this) {
+        ActionType.PASS_THROUGH -> R.string.sk_action_pass
+        ActionType.NEXT -> R.string.sk_action_next
+        ActionType.PREVIOUS -> R.string.sk_action_previous
+        ActionType.PLAY -> R.string.sk_action_play
+        ActionType.PAUSE -> R.string.sk_action_pause
+        ActionType.PLAY_PAUSE -> R.string.sk_action_play_pause
+    }
+)
 
-val Logic.label: String get() = when (this) {
-    Logic.AND -> "全部满足（AND）"
-    Logic.OR -> "任一满足（OR）"
-}
+fun Logic.label(c: Context): String = c.getString(
+    when (this) {
+        Logic.AND -> R.string.sk_logic_and
+        Logic.OR -> R.string.sk_logic_or
+    }
+)
+
+// Compose 里直接用属性写法（`mapping.key.label`），省得每个调用点都取一次 Context。
+// 与上面的 `label(c)` 是同一个映射，只是把 Context 换成 LocalContext。
+
+val ConditionType.label: String
+    @Composable get() = label(LocalContext.current)
+
+val KeyType.label: String
+    @Composable get() = label(LocalContext.current)
+
+val PressType.label: String
+    @Composable get() = label(LocalContext.current)
+
+val ActionType.label: String
+    @Composable get() = label(LocalContext.current)
+
+val Logic.label: String
+    @Composable get() = label(LocalContext.current)
+
+/** 「且满足全部/任一状态」用短标签，完整说明见 [Logic.label]。 */
+val Logic.shortLabel: String
+    @Composable get() = shortLabel(LocalContext.current)
 
 /** 需要选择具体应用的条件类型。 */
 val appConditionTypes: Set<ConditionType> = setOf(
@@ -118,30 +155,44 @@ val appConditionTypes: Set<ConditionType> = setOf(
 fun Condition.appNames(context: Context): String {
     if (packages.isEmpty()) return ""
     val names = packages.map { AppCatalog.labelOf(context, it) }
-    return if (names.size <= 2) names.joinToString("、")
-    else names.take(2).joinToString("、") + " 等 ${names.size} 个应用"
+    return if (names.size <= 2) {
+        context.getString(R.string.sk_app_join, names.joinToString(context.getString(R.string.sk_list_sep)))
+    } else {
+        context.getString(
+            R.string.sk_app_join_more,
+            names.take(2).joinToString(context.getString(R.string.sk_list_sep)),
+            names.size,
+        )
+    }
 }
 
 fun Condition.summary(context: Context): String =
-    type.label + if (packages.isEmpty()) "" else "（${appNames(context)}）"
+    type.label(context) + if (packages.isEmpty()) "" else
+        context.getString(R.string.sk_cond_with_apps, appNames(context))
 
 /** 条件行副标题：应用类条件显示已选**应用名称**，其它类型没有副标题。 */
 fun Condition.detail(context: Context): String? = when {
     packages.isNotEmpty() -> appNames(context)
-    type in appConditionTypes -> "尚未选择应用"
+    type in appConditionTypes -> context.getString(R.string.sk_no_app_selected)
     else -> null
 }
 
 /** 按压方式的说明（触发行的副标题），把该按压方式的可调参数一并写出来。 */
-fun KeyMapping.pressDetail(): String = when (press) {
-    PressType.SHORT -> "按下即触发"
-    PressType.LONG -> "长按 ${longPressMs} 毫秒触发"
-    PressType.DOUBLE -> "双击（间隔 ${doubleTapMs} 毫秒）"
-    PressType.REPEAT -> "连续按 ${repeatCount} 次触发"
+fun KeyMapping.pressDetail(c: Context): String = when (press) {
+    PressType.SHORT -> c.getString(R.string.sk_press_short_detail)
+    PressType.LONG -> c.getString(R.string.sk_press_long_detail, longPressMs)
+    PressType.DOUBLE -> c.getString(R.string.sk_press_double_detail, doubleTapMs)
+    PressType.REPEAT -> c.getString(R.string.sk_press_repeat_detail, repeatCount)
 }
 
+/** Compose 版本：不传 Context，其它逻辑与 [pressDetail] 相同。 */
+@Composable
+fun KeyMapping.pressDetail(): String = pressDetail(LocalContext.current)
+
 /** 「且满足全部/任一状态」用短标签，完整说明见 [Logic.label]。 */
-val Logic.shortLabel: String get() = if (this == Logic.AND) "全部状态" else "任一状态"
+fun Logic.shortLabel(c: Context): String = c.getString(
+    if (this == Logic.AND) R.string.sk_logic_short_and else R.string.sk_logic_short_or
+)
 
 // ---- 行图标（规则编辑页的信息行）----
 // 米家的每行左侧都有设备缩略图；这里没有设备，按条件的语义取 Miuix 图标。
@@ -189,14 +240,14 @@ val ConditionType.icon: ImageVector get() = when (this) {
 
 /** 规则摘要（首页列表用）：条件带上应用名称。 */
 fun Rule.conditionsDesc(context: Context): String =
-    if (conditions.isEmpty()) "无条件" else conditions.joinToString(" + ") { it.summary(context) }
+    if (conditions.isEmpty()) context.getString(R.string.sk_no_condition)
+    else conditions.joinToString(context.getString(R.string.sk_cond_sep)) { it.summary(context) }
 
-val Rule.mappingsDesc: String get() =
-    if (mappings.isEmpty()) "未配置按键" else mappings.joinToString("；") {
-        "${it.key.label}·${it.press.label} → ${it.action.label}"
+fun Rule.mappingsDesc(c: Context): String =
+    if (mappings.isEmpty()) c.getString(R.string.sk_no_mapping)
+    else mappings.joinToString(c.getString(R.string.sk_mapping_sep)) {
+        c.getString(R.string.sk_mapping_item, it.key.label(c), it.press.label(c), it.action.label(c))
     }
-
-fun KeyMapping.summary(): String = "${key.label} · ${press.label} → ${action.label}"
 
 /**
  * 智能按键映射页面统一骨架。
@@ -225,7 +276,7 @@ fun SmartKeyScaffold(
             IconButton(onClick = { haptics.click(); onBack() }) {
                 Icon(
                     imageVector = MiuixIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = stringResource(R.string.sk_back),
                     tint = MiuixTheme.colorScheme.onSurface,
                 )
             }

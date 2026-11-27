@@ -165,27 +165,47 @@ final class Cfg {
      * 括号里是 t=0.1 / t=0.3 时的位移完成度，这是判断"傻快"还是"线性"的直接依据：
      * 前段太快 = 傻快，中段接近直线 = 线性。
      */
+    static final int ANIM_CURVE_COUNT = 5;
+    static final int TOP_SIDE_COUNT = 3;
+    static final int MODE_COUNT = 3;
+
     static final int ANIM_CURVE_NATIVE = 0;
     static final int ANIM_CURVE_SOFT = 1;
     static final int ANIM_CURVE_SMOOTH = 2;
     static final int ANIM_CURVE_STANDARD = 3;
     static final int ANIM_CURVE_SNAPPY = 4;
 
-    static final String[] ANIM_CURVE_NAMES = new String[] {
-            "原生（系统曲线）", "舒缓（smoothstep）", "柔和（ease-out cubic）",
-            "标准（ease-out quart）", "迅捷（ease-out quint）"
-    };
-    static final String[] ANIM_CURVE_SHORT = new String[] {"原生", "舒缓", "柔和", "标准", "迅捷"};
+    // 文案改由资源提供（原来这里是 static final String[]，无法跟随界面语言）。
+    // 数组顺序与下面的 *_NATIVE..*_SNAPPY 常量一一对应，调用方仍按下标取值。
+    static String[] animCurveNames(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_001), c.getString(R.string.cfg_002),
+                c.getString(R.string.cfg_003), c.getString(R.string.cfg_004),
+                c.getString(R.string.cfg_005),
+        };
+    }
+
+    static String[] animCurveShort(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_006), c.getString(R.string.cfg_007),
+                c.getString(R.string.cfg_008), c.getString(R.string.cfg_009),
+                c.getString(R.string.cfg_010),
+        };
+    }
+
     // 说明只写曲线名与两个采样点，不带「手感如何」这类评价。
-    static final String[] ANIM_CURVE_SUMMARIES = new String[] {
-            "10% 时间走完 50% 位移",
-            "10% 走 3%，30% 走 27%",
-            "10% 走 27%，30% 走 66%",
-            "10% 走 34%，30% 走 76%",
-            "10% 走 41%，30% 走 83%",
-    };
+    static String[] animCurveSummaries(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_011), c.getString(R.string.cfg_012),
+                c.getString(R.string.cfg_013), c.getString(R.string.cfg_014),
+                c.getString(R.string.cfg_015),
+        };
+    }
+
     /** 原生曲线的一句话描述，设置页直接显示。 */
-    static final String ANIM_CURVE_RAW_DESC = "曲线 ease-out expo（10% 时间 → 50% 位移）";
+    static String animCurveRawDesc(Context c) {
+        return c.getString(R.string.cfg_016);
+    }
 
     /** 默认：标准的 ease-out quart + 稍长一点的时长，既有减速感又不至于冲。 */
     static final float DEF_ANIM_SCALE = 1.10f;
@@ -210,15 +230,26 @@ final class Cfg {
     static final int TOP_SIDE_SPLIT = 0;
     static final int TOP_SIDE_NOTIFY = 1;
     static final int TOP_SIDE_CONTROL = 2;
-    static final String[] TOP_SIDE_NAMES = new String[] {
-            "左侧通知、右侧控制", "总是通知中心", "总是控制中心"
-    };
-    static final String[] TOP_SIDE_SHORT = new String[] {"左侧 / 右侧", "通知中心", "控制中心"};
-    static final String[] TOP_SIDE_SUMMARIES = new String[] {
-            "按下滑所在半屏决定",
-            "任意位置下滑都展开通知中心",
-            "任意位置下滑都展开控制中心",
-    };
+    static String[] topSideNames(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_017), c.getString(R.string.cfg_018),
+                c.getString(R.string.cfg_019),
+        };
+    }
+
+    static String[] topSideShort(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_020), c.getString(R.string.cfg_021),
+                c.getString(R.string.cfg_022),
+        };
+    }
+
+    static String[] topSideSummaries(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_023), c.getString(R.string.cfg_024),
+                c.getString(R.string.cfg_025),
+        };
+    }
     static final int DEF_TOP_SHADE_SIDE = TOP_SIDE_SPLIT;
 
     /**
@@ -247,13 +278,24 @@ final class Cfg {
     static final int MODE_SENSITIVE = 1;
     static final int MODE_STABLE = 2;
 
-    static final String[] MODE_NAMES = new String[] {"自然", "灵敏", "防误触"};
-    static final String[] MODE_SHORT = new String[] {"自然", "灵敏", "防误触"};
-    static final String[] MODE_SUMMARIES = new String[] {
-            "速度与距离综合判定",
-            "阈值更低，轻扫即可触发",
-            "阈值更高，优先保证页面滚动",
-    };
+    static String[] modeNames(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_026), c.getString(R.string.cfg_027),
+                c.getString(R.string.cfg_028),
+        };
+    }
+
+    /** 卡片上显示的短名，与 modeNames 同文案（保持两个入口，避免调用方各自拼）。 */
+    static String[] modeShort(Context c) {
+        return modeNames(c);
+    }
+
+    static String[] modeSummaries(Context c) {
+        return new String[]{
+                c.getString(R.string.cfg_029), c.getString(R.string.cfg_030),
+                c.getString(R.string.cfg_031),
+        };
+    }
 
     /** 模式的默认敏感度。显式写入的键会覆盖这里的值。 */
     static final class Preset {

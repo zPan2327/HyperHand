@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -116,7 +118,7 @@ class SkEditRuleActivity : SkActivity() {
     @Composable
     override fun Content() {
         val isNew = intent.getStringExtra(EXTRA_RULE_ID) == null
-        val title = if (isNew) "新建规则" else "编辑规则"
+        val title = if (isNew) stringResource(R.string.sk_072) else stringResource(R.string.sk_136)
         val haptics = rememberSkHaptics()
         val overlayOpen = remember { mutableStateOf(false) }
 
@@ -153,7 +155,7 @@ class SkEditRuleActivity : SkActivity() {
                             if (saving.value) return@Button
                             haptics.clickPrimary()
                             val draft = draftState.value.let {
-                                if (it.name.isBlank()) it.copy(name = "未命名规则") else it
+                                if (it.name.isBlank()) it.copy(name = getString(R.string.sk_137)) else it
                             }
                             saving.value = true
                             // upsert 会写 Settings.Global（首次可能触发 su 授权），放后台线程；
@@ -169,7 +171,7 @@ class SkEditRuleActivity : SkActivity() {
                         colors = ButtonDefaults.buttonColorsPrimary(),
                     ) {
                         Text(
-                            text = "保存",
+                            text = stringResource(R.string.sk_138),
                             color = MiuixTheme.colorScheme.onPrimary,
                         )
                     }

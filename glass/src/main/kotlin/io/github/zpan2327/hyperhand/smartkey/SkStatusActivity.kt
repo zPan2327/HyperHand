@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import io.github.zpan2327.hyperhand.smartkey.data.ModuleStatus
@@ -18,7 +20,7 @@ class SkStatusActivity : SkActivity() {
             ModuleStatus.detect(this, rules.size)
         }
         SmartKeyScaffold(
-            title = "运行状态",
+            title = stringResource(R.string.sk_139),
             onBack = { finish() },
         ) { padding, behavior ->
             SmartKeyScaffoldContent(padding, behavior) {

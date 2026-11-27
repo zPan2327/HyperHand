@@ -1,5 +1,6 @@
 package io.github.zpan2327.hyperhand.smartkey.data
 
+import io.github.zpan2327.hyperhand.glass.R
 import android.content.Context
 import android.content.SharedPreferences
 import android.provider.Settings
@@ -117,7 +118,7 @@ class RuleRepository(private val context: Context) {
         val src = loadRules().firstOrNull { it.id == id } ?: return null
         val copy = src.copy(
             id = newId(),
-            name = "${src.name}（副本）",
+            name = src.name + context.getString(R.string.sk_copy_suffix),
             priority = src.priority - 1,
         )
         upsert(copy)

@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用 / 模块显示名：就叫 HyperHand，不附加任何副标题。
+         LSPosed 从 android:label 读这个名字，模块仓库 description 也是 HyperHand。 -->
+    <string name="app_name" translatable="false">HyperHand</string>
+    <!-- 语言下拉里的语言名用各自的语言书写，三种语言下都保持原样 -->
+    <string name="lang_zh_hans" translatable="false">简体中文</string>
+    <string name="lang_zh_hant" translatable="false">繁體中文</string>
+    <string name="lang_en" translatable="false">English</string>
+
+
+    <!-- 单手模式下拉：动画曲线 / 展开方向 / 触发模式 -->
+    <string name="cfg_001">原生（系統曲線）</string>
+    <string name="cfg_002">舒緩（smoothstep）</string>
+    <string name="cfg_003">柔和（ease-out cubic）</string>
+    <string name="cfg_004">標準（ease-out quart）</string>
+    <string name="cfg_005">迅捷（ease-out quint）</string>
+    <string name="cfg_006">原生</string>
+    <string name="cfg_007">舒緩</string>
+    <string name="cfg_008">柔和</string>
+    <string name="cfg_009">標準</string>
+    <string name="cfg_010">迅捷</string>
+    <string name="cfg_011" formatted="false">10% 時間走完 50% 位移</string>
+    <string name="cfg_012" formatted="false">10% 走 3%，30% 走 27%</string>
+    <string name="cfg_013" formatted="false">10% 走 27%，30% 走 66%</string>
+    <string name="cfg_014" formatted="false">10% 走 34%，30% 走 76%</string>
+    <string name="cfg_015" formatted="false">10% 走 41%，30% 走 83%</string>
+    <string name="cfg_016" formatted="false">曲線 ease-out expo（10% 時間 → 50% 位移）</string>
+    <string name="cfg_017">左側通知、右側控制</string>
+    <string name="cfg_018">總是通知中心</string>
+    <string name="cfg_019">總是控制中心</string>
+    <string name="cfg_020">左側 / 右側</string>
+    <string name="cfg_021">通知中心</string>
+    <string name="cfg_022">控制中心</string>
+    <string name="cfg_023">依下滑所在半螢幕決定</string>
+    <string name="cfg_024">任意位置下滑都展開通知中心</string>
+    <string name="cfg_025">任意位置下滑都展開控制中心</string>
+    <string name="cfg_026">自然</string>
+    <string name="cfg_027">靈敏</string>
+    <string name="cfg_028">防誤觸</string>
+    <string name="cfg_029">速度與距離綜合判定</string>
+    <string name="cfg_030">門檻更低，輕掃即可觸發</string>
+    <string name="cfg_031">門檻更高，優先保證頁面捲動</string>
+
+    <!-- 设置页 -->
+    <string name="set_001">按鍵對應</string>
+    <string name="set_002">啟用按鍵對應</string>
+    <string name="set_003">關閉後音量鍵恢復系統預設功能</string>
+    <string name="set_004">規則與按鍵</string>
+    <string name="set_005">單手模式增強</string>
+    <string name="set_006">啟用單手模式增強</string>
+    <string name="set_007">從螢幕底部下滑觸發；關閉後恢復系統手勢</string>
+    <string name="set_008">觸發模式</string>
+    <string name="set_009">選擇後寫入該模式預設參數</string>
+    <string name="set_010">模糊桌布背景</string>
+    <string name="set_011">以模糊桌布取代米白遮罩</string>
+    <string name="set_012">下滑展開面板</string>
+    <string name="set_013">從觸發區下滑直接拉出面板</string>
+    <string name="set_014">顯示進階參數</string>
+    <string name="set_015">辨識門檻、觸發區、外觀與演算法常數</string>
+    <string name="set_016">辨識判定</string>
+    <string name="set_017">擴展觸發</string>
+    <string name="set_018">由系統單手模式判定下滑</string>
+    <string name="set_019">最小下滑距離</string>
+    <string name="set_020">快速下滑觸發的最小距離</string>
+    <string name="set_021">觸發速度</string>
+    <string name="set_022">0 表示僅依距離判定</string>
+    <string name="set_023">慢滑辨識</string>
+    <string name="set_024">慢速長距離下拉也可觸發</string>
+    <string name="set_025">慢滑所需距離</string>
+    <string name="set_026">慢滑觸發所需的最小位移</string>
+    <string name="set_027">慢滑速度下限</string>
+    <string name="set_028">慢滑的平均速度下限</string>
+    <string name="set_029">要求拖到底邊</string>
+    <string name="set_030">未拖到底邊時視為頁面捲動</string>
+    <string name="set_031">貼底判定距離</string>
+    <string name="set_032">距底邊小於此值視為到底</string>
+    <string name="set_033">判定信賴度</string>
+    <string name="set_034">越低越靈敏，越高越嚴格</string>
+    <string name="set_035">觸發區</string>
+    <string name="set_036">延伸至 Dock 上方</string>
+    <string name="set_037">依螢幕比例計算，涵蓋底部 Dock</string>
+    <string name="set_038">螢幕佔比</string>
+    <string name="set_039" formatted="false">預設 15%，約等於 Dock 上緣高度</string>
+    <string name="set_040">觸發區高度</string>
+    <string name="set_041">固定高度；關閉上方開關後生效</string>
+    <string name="set_042">寬度佔比</string>
+    <string name="set_043">觸發區寬度，水平置中</string>
+    <string name="set_044">左右偏移</string>
+    <string name="set_045">依左右手習慣偏移中心</string>
+    <string name="set_046">外觀與動效</string>
+    <string name="set_047">模糊半徑</string>
+    <string name="set_048">越大越模糊，0 為不模糊</string>
+    <string name="set_049">壓暗程度</string>
+    <string name="set_050">在模糊桌布上疊加暗色</string>
+    <string name="set_051">緩動曲線</string>
+    <string name="set_052">由慢到快排列，變更立即生效</string>
+    <string name="set_053">動畫時長</string>
+    <string name="set_054">1.00 為原生 600ms，越大越慢</string>
+    <string name="set_055">動畫時長</string>
+    <string name="set_056">1.00 為原生 600ms，越大越慢</string>
+    <string name="set_057">面板手勢與互斥</string>
+    <string name="set_058">觸發距離</string>
+    <string name="set_059">判定為下滑所需的最小位移</string>
+    <string name="set_060">展開方向</string>
+    <string name="set_061">依下滑位置選擇面板</string>
+    <string name="set_062">與下拉手勢互斥</string>
+    <string name="set_063">面板手勢優先，放棄單手模式</string>
+    <string name="set_064">底部區域優先單手</string>
+    <string name="set_065">觸發區內下滑依單手處理</string>
+    <string name="set_066">原生膠囊條高度</string>
+    <string name="set_067">0 表示保持系統預設</string>
+    <string name="set_068">演算法細節</string>
+    <string name="set_069">自適應門檻</string>
+    <string name="set_070">快速手勢放寬，慢速手勢收緊</string>
+    <string name="set_071">速度取樣視窗</string>
+    <string name="set_072">越大越穩定，越小越靈敏</string>
+    <string name="set_073">速度上限</string>
+    <string name="set_074">超過此值視為雜訊截斷</string>
+    <string name="set_075">軌跡穩定度</string>
+    <string name="set_076">淨位移佔軌跡長度的下限</string>
+    <string name="set_077">最大橫向偏移</string>
+    <string name="set_078">超過此值視為斜滑</string>
+    <string name="set_079">觸發冷卻</string>
+    <string name="set_080">兩次觸發之間的最小間隔</string>
+    <string name="set_081">快捷選單滑選</string>
+    <string name="set_082">啟用長按滑選選單項目</string>
+    <string name="set_083">滑到選單項目放開即選取，需重新啟動桌面</string>
+    <string name="set_084">滑選判定夾角</string>
+    <string name="set_085">與選單方向的夾角上限，越小越嚴格</string>
+    <string name="set_086">命中容差</string>
+    <string name="set_087">選單項目向外擴展的命中範圍</string>
+    <string name="set_088">起判位移</string>
+    <string name="set_089">開始判定所需的最小位移</string>
+    <string name="set_090">恢復預設參數</string>
+    <string name="set_091">重新啟動系統介面與桌面</string>
+    <string name="set_092">重新注入鉤子，需要 root 授權</string>
+    <string name="set_093">變更會自動儲存並立即生效</string>
+    <string name="set_094">寫入總開關失敗：需要 root 授權（KernelSU / Magisk）後重試。</string>
+    <string name="set_095">已啟用按鍵對應。</string>
+    <string name="set_096">已關閉按鍵對應，音量鍵恢復系統預設功能。</string>
+    <string name="set_097">尚未建立規則</string>
+    <string name="set_098">依應用程式、音訊、狀態觸發</string>
+    <string name="set_099">已自動儲存並生效。可下滑底部區域測試，點「最近手勢」查看判定結果。</string>
+    <string name="set_100">在底部下滑一次，顯示起手點距底邊高度，用於校正</string>
+    <string name="set_101">重新啟動中…</string>
+    <string name="set_102">重新啟動系統介面與桌面</string>
+    <string name="set_native_hint">系統原生 %1$dms · %2$s；下滑一次後顯示實測值</string>
+    <string name="set_rules_count">%1$d 條規則</string>
+    <string name="set_rules_count_enabled">%1$d 條規則 · 啟用 %2$d 條</string>
+
+    <!-- 设置页 -->
+    <string name="unit_times">倍</string>
+
+    <!-- 主界面 -->
+    <string name="main_001">概覽</string>
+    <string name="main_002">設定</string>
+    <string name="main_003">關於</string>
+    <string name="main_004">變更後立即生效</string>
+    <string name="main_005">系統框架</string>
+    <string name="main_006">系統介面</string>
+    <string name="main_007">小米桌面</string>
+    <string name="main_008">未選擇任何作用域</string>
+    <string name="main_009">總開關關閉</string>
+    <string name="main_010">尚無注入紀錄</string>
+    <string name="main_011">"系統介面 "</string>
+    <string name="main_012">"桌面 "</string>
+    <string name="main_013">還沒有紀錄。開啟偵錯日誌後，在螢幕底部下滑一次再回來看。</string>
+    <string name="main_014">總開關：</string>
+    <string name="main_015">已啟用</string>
+    <string name="main_016">已關閉</string>
+    <string name="main_017">系統介面：</string>
+    <string name="main_018">桌面：</string>
+    <string name="main_019">辨識模式：</string>
+    <string name="main_020">觸發區：</string>
+    <string name="main_021">（螢幕高度 </string>
+    <string name="main_022">（固定高度）</string>
+    <string name="main_023">擴展觸發：</string>
+    <string name="main_024">　貼底直達：</string>
+    <string name="main_025">外觀：</string>
+    <string name="main_026">模糊桌布 </string>
+    <string name="main_027">原生遮罩</string>
+    <string name="main_028">動畫：</string>
+    <string name="main_029">注入紀錄由模組在系統介面 / 桌面程序啟動時寫入，</string>
+    <string name="main_030">換了模組版本或剛重新開機，這裡會顯示對應時間。</string>
+    <string name="main_031">執行狀態</string>
+    <string name="main_032">尚無紀錄</string>
+    <string name="main_033">剛剛</string>
+    <string name="main_034">%1$d 分鐘前</string>
+    <string name="main_035">%1$d 小時前</string>
+    <string name="main_036">%1$d 天前</string>
+    <string name="main_037">儲存失敗：</string>
+    <string name="main_038">已儲存</string>
+    <string name="main_039">已請求進入單手模式</string>
+    <string name="main_040">已請求退出</string>
+    <string name="main_041">重新啟動系統介面與桌面</string>
+    <string name="main_042">會結束這兩個程序，螢幕短暫黑屏後自動恢復。</string>
+    <string name="main_043">重新啟動</string>
+    <string name="main_044">系統框架</string>
+    <string name="main_045">系統介面</string>
+    <string name="main_046">小米桌面</string>
+    <string name="main_047">正在軟重啟系統框架，螢幕會短暫黑屏、約 20 秒後自動恢復，請不要手動操作。</string>
+    <string name="main_048">正在檢查 root 權限……若跳出授權請允許。</string>
+    <string name="main_049">正在軟重啟系統…</string>
+    <string name="main_050">未取得 root 權限，已取消重啟。請先在 </string>
+    <string name="main_051">KernelSU / Magisk 裡授予 HyperHand 超級使用者權限後重試。</string>
+    <string name="main_052">沒有 root，未執行重啟</string>
+    <string name="main_053">重啟系統框架失敗：</string>
+    <string name="main_054">重啟失敗</string>
+    <string name="main_055">已請求重啟系統框架，系統即將軟重啟。</string>
+    <string name="main_056">已結束</string>
+    <string name="main_057">，鉤子會在它重啟後重新注入。</string>
+    <string name="main_058">已重啟</string>
+    <string name="main_059">root 指令執行失敗：</string>
+    <string name="main_060">重啟失敗</string>
+    <string name="main_061">正在檢查 root 權限……若跳出授權請允許。</string>
+    <string name="main_062">未取得 root 權限，已取消重啟。請先在 KernelSU / Magisk </string>
+    <string name="main_063">裡授予 HyperHand 超級使用者權限後重試。</string>
+    <string name="main_064">沒有 root，未執行重啟</string>
+    <string name="main_065">已結束兩個程序，鉤子會在它們重啟後重新注入。</string>
+    <string name="main_066">現在可以下滑底部區域試試。</string>
+    <string name="main_067">已重啟</string>
+    <string name="main_068">root 指令執行失敗：</string>
+    <string name="main_069">\n已改為讓系統介面自行重啟（桌面端鉤子未更新，可稍後手動重啟）。</string>
+    <string name="main_070">已請求系統介面重啟</string>
+    <string name="main_071">未知錯誤</string>
+    <string name="main_072">等待授權逾時，請在 KernelSU / Magisk 裡允許 HyperHand</string>
+    <string name="main_073">結束碼 </string>
+    <string name="main_074">找不到可用的 su（</string>
+    <string name="main_075">）。請確認已 root，並允許 HyperHand 的超級使用者請求</string>
+    <string name="main_time_ago">%1$s（%2$s）</string>
+
+    <!-- 概览页 -->
+    <string name="ov_001">單手模式增強</string>
+    <string name="ov_002">快捷選單滑選</string>
+    <string name="ov_003">已啟用</string>
+    <string name="ov_004">已停用</string>
+    <string name="ov_005">系統資訊</string>
+    <string name="ov_006">裝置型號</string>
+    <string name="ov_007">Android 版本</string>
+    <string name="ov_008">系統版本</string>
+    <string name="ov_009">螢幕</string>
+    <string name="ov_010">模組版本</string>
+    <string name="ov_011">作用域</string>
+    <string name="ov_012">系統框架 system（按鍵對應）\n系統介面 com.android.systemui\n桌面 com.miui.home</string>
+    <string name="ov_013">安裝時間</string>
+    <string name="ov_014">所有參數都在「設定」裡，變更後立即生效。</string>
+    <string name="ov_015">未知</string>
+    <string name="ov_016">模組已啟用</string>
+    <string name="ov_017">鉤子已在系統介面生效</string>
+    <string name="ov_018">模組未啟用</string>
+    <string name="ov_019">總開關關閉</string>
+    <string name="ov_020">未在 LSPosed 啟用或作用域未注入</string>
+    <string name="ov_021">未知</string>
+
+    <!-- 关于页 -->
+    <string name="about_001">開發者</string>
+    <string name="about_002">不會買菜.</string>
+    <string name="about_003">原始碼</string>
+    <string name="about_004">GitHub 上的 HyperHand 儲存庫</string>
+    <string name="about_005">引用</string>
+    <string name="about_006">Miuix / KernelSU / SonyPods 等</string>
+    <string name="about_007">引用與致謝</string>
+    <string name="about_008">使用說明</string>
+    <string name="about_009">上手前值得看一眼的幾條</string>
+    <string name="about_011">授權</string>
+    <string name="about_013">偵錯</string>
+    <string name="about_014">執行狀態 / 手勢 / 快速操作</string>
+    <string name="about_015">偵錯開關</string>
+    <string name="about_016">偵錯日誌</string>
+    <string name="about_017">用 logcat -s HyperHand 觀察判定過程，並記錄最近手勢</string>
+    <string name="about_018">執行狀態</string>
+    <string name="about_019">擴展觸發</string>
+    <string name="about_020">已開啟</string>
+    <string name="about_021">已關閉</string>
+    <string name="about_022">模糊桌布背景</string>
+    <string name="about_023">"已開啟 · "</string>
+    <string name="about_024">" dp / 壓暗 "</string>
+    <string name="about_025">已關閉</string>
+    <string name="about_026">縮小動畫</string>
+    <string name="about_027">模糊區下滑</string>
+    <string name="about_028">已關閉</string>
+    <string name="about_029">貼底直達</string>
+    <string name="about_030"> dp 內視為到底</string>
+    <string name="about_031">已關閉</string>
+    <string name="about_032">最近手勢</string>
+    <string name="about_033">重新整理</string>
+    <string name="about_034">讀取系統介面寫回的最後一次判定</string>
+    <string name="about_035">已重新整理</string>
+    <string name="about_036">快速操作</string>
+    <string name="about_037">預覽單手模式</string>
+    <string name="about_038">立刻縮小視窗，直接看背景效果</string>
+    <string name="about_039">退出單手模式</string>
+    <string name="about_040">恢復正常視窗大小</string>
+    <string name="about_041">重新啟動兩個作用域</string>
+    <string name="about_042">結束系統介面與桌面程序，重新注入鉤子</string>
+    <string name="about_043">關閉</string>
+    <string name="about_044">未知</string>
+    <string name="about_046">沒有可用的瀏覽器</string>
+    <string name="about_references">Miuix（compose-miuix-ui/miuix）\n整套色彩、字級、圓角與元件規格的來源，Apache-2.0。\n\nKernelSU（tiann/KernelSU）\n頁面層級、卡片分組與資訊排布參考，GPL-3.0。\n\nSonyPods（Mercury000/SonyPods）\n懸浮底欄、背景模糊與關於頁版式參考。\n\nlibxposed API（libxposed/api）\n模組的現代 API 入口，Apache-2.0。\n\nAndroidLiquidGlass（Kyant0/AndroidLiquidGlass）\n液態玻璃的折射與高光思路，Apache-2.0。\n\n以上專案僅作為設計參考，HyperHand 的全部介面程式碼都是\n依 Miuix 的取值用原生 View 手寫實作的。</string>
+
+    <!-- 通用 / 个性化 / 动画诊断 -->
+    <string name="anim_info_line1">系統原生 %1$dms · %2$s</string>
+    <string name="anim_info_line2">目前 %1$dms（×%2$s）· %3$s%4$s</string>
+    <string name="anim_info_curve_unchanged">（未改動曲線）</string>
+    <string name="anim_info_measured">上次實測 %1$dms</string>
+    <string name="app_description">單手模式增強：擴大底部觸發區、依速度判定，保留原生動畫與退出方式</string>
+    <string name="section_personalize">個人化</string>
+    <string name="row_language">語言</string>
+    <string name="row_language_summary">切換後介面立即重新整理</string>
+    <string name="lang_system">跟隨系統</string>
+    <string name="lang_system_summary">使用系統語言設定</string>
+    <string name="lang_zh_hans_summary">始終使用簡體中文</string>
+    <string name="lang_zh_hant_summary">始終使用繁體中文</string>
+    <string name="lang_en_summary">始終使用英文</string>
+    <!-- 状态开关 -->
+    <string name="main_on">開</string>
+    <string name="main_off">關</string>
+    <!-- 各页 Activity 标题（最近任务里显示）/ 通用对话框按钮 -->
+    <string name="activity_key_mapping">按鍵對應</string>
+    <string name="activity_status">執行狀態</string>
+    <string name="activity_edit_rule">編輯規則</string>
+    <string name="activity_add_condition">新增觸發條件</string>
+    <string name="activity_pick_app">選擇應用</string>
+    <string name="activity_self_test">按鍵自檢</string>
+    <string name="dialog_cancel">取消</string>
+    <string name="about_license_link">在 GitHub 上查看完整的 MIT 授權條款</string>
+</resources>

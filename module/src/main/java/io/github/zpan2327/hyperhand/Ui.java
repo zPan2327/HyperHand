@@ -974,7 +974,7 @@ final class Ui {
                 dlg.dismiss();
                 cb.onConfirm();
             }
-        }, "取消", new MiuixDialog.OnClick() {
+        }, a.getString(R.string.dialog_cancel), new MiuixDialog.OnClick() {
             @Override
             public void onClick(MiuixDialog dlg) {
                 dlg.dismiss();

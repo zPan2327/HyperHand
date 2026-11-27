@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import android.os.Bundle
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,7 +62,7 @@ class SkAppPickerActivity : SkActivity() {
     override fun Content() {
         val haptics = rememberSkHaptics()
         SmartKeyScaffold(
-            title = "选择应用",
+            title = stringResource(R.string.sk_140),
             onBack = { finish() },
             bottomBar = {
                 Card(
@@ -82,7 +84,7 @@ class SkAppPickerActivity : SkActivity() {
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
                         colors = ButtonDefaults.buttonColorsPrimary(),
                     ) {
-                        Text("确定", color = MiuixTheme.colorScheme.onPrimary)
+                        Text(stringResource(R.string.sk_141), color = MiuixTheme.colorScheme.onPrimary)
                     }
                 }
             },

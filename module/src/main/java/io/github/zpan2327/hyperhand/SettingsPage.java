@@ -37,6 +37,7 @@ final class SettingsPage {
     private Ui.ChoiceRow cMode;
     private Ui.ChoiceRow cAnimCurve;
     private Ui.ChoiceRow cTopShadeSide;
+    private Ui.ChoiceRow cLang;
 
     private Ui.ValueRow rZone;
     private Ui.ValueRow rWidth;
@@ -109,13 +110,13 @@ final class SettingsPage {
         // 折叠只把 View 高度收掉，值仍留在各自的行里，提交时照常写回，不会丢参数。
 
         // ================================================== 1. 按键映射
-        page.add(Ui.section(c, pal, "按键映射"));
+        page.add(Ui.section(c, pal, c.getString(R.string.set_001)));
         LinearLayout cardKey = Ui.card(c, pal);
-        swKeyMap = Ui.switchRow(c, cardKey, pal, "启用按键映射",
-                "关闭后音量键恢复系统默认功能", smartKeyMaster());
+        swKeyMap = Ui.switchRow(c, cardKey, pal, c.getString(R.string.set_002),
+                c.getString(R.string.set_003), smartKeyMaster());
 
         keyMapBox = bodyBox();
-        Ui.navRow(c, keyMapBox, pal, -1, "规则与按键",
+        Ui.navRow(c, keyMapBox, pal, -1, c.getString(R.string.set_004),
                 smartKeySummary(), null,
                 new Runnable() {
                     @Override
@@ -139,10 +140,10 @@ final class SettingsPage {
         });
 
         // ================================================== 2. 单手模式增强
-        page.add(Ui.section(c, pal, "单手模式增强"));
+        page.add(Ui.section(c, pal, c.getString(R.string.set_005)));
         LinearLayout cardOne = Ui.card(c, pal);
-        swEnabled = Ui.switchRow(c, cardOne, pal, "启用单手模式增强",
-                "从屏幕底部下滑触发；关闭后恢复系统手势", cur.enabled);
+        swEnabled = Ui.switchRow(c, cardOne, pal, c.getString(R.string.set_006),
+                c.getString(R.string.set_007), cur.enabled);
 
         oneHandBox = bodyBox();
         cardOne.addView(oneHandBox, fullWidth());
@@ -151,14 +152,14 @@ final class SettingsPage {
         // 卡内 30+ 行全平铺时，「模糊壁纸」这类常用项要滑三四屏才找得到，被淹没在
         // 阈值里。这里只留日常会动的四项，其余全部收进「显示高级参数」——
         // 分组不变，只是不再默认占屏。
-        cMode = Ui.choiceRow(c, oneHandBox, pal, "触发模式",
-                "选择后写入该模式预设参数",
-                Cfg.MODE_SHORT, cur.mode, new Ui.OnChoice() {
+        cMode = Ui.choiceRow(c, oneHandBox, pal, c.getString(R.string.set_008),
+                c.getString(R.string.set_009),
+                Cfg.modeShort(c), cur.mode, new Ui.OnChoice() {
                     @Override
                     public void onChoice(int index) {
                         // 说明统一取 Cfg.MODE_SUMMARIES，别在这里再抄一份（两处容易写岔）。
-                        Ui.choiceDropdown(host, cMode, Cfg.MODE_NAMES,
-                                Cfg.MODE_SUMMARIES, new Ui.OnChoice() {
+                        Ui.choiceDropdown(host, cMode, Cfg.modeNames(c),
+                                Cfg.modeSummaries(c), new Ui.OnChoice() {
                                     @Override
                                     public void onChoice(int picked) {
                                         applyMode(picked);
@@ -166,132 +167,132 @@ final class SettingsPage {
                                 });
                     }
                 });
-        swBlur = Ui.switchRow(c, oneHandBox, pal, "模糊壁纸背景",
-                "以模糊壁纸替代米白遮罩", cur.blurBg);
+        swBlur = Ui.switchRow(c, oneHandBox, pal, c.getString(R.string.set_010),
+                c.getString(R.string.set_011), cur.blurBg);
         dirty(swBlur);
-        swTopShade = Ui.switchRow(c, oneHandBox, pal, "下滑展开面板",
-                "从触发区下滑直接拉出面板", cur.topShade);
+        swTopShade = Ui.switchRow(c, oneHandBox, pal, c.getString(R.string.set_012),
+                c.getString(R.string.set_013), cur.topShade);
         dirty(swTopShade);
 
-        swAdvanced = Ui.switchRow(c, oneHandBox, pal, "显示高级参数",
-                "识别阈值、触发区、外观与算法常量", sAdvancedOpen);
+        swAdvanced = Ui.switchRow(c, oneHandBox, pal, c.getString(R.string.set_014),
+                c.getString(R.string.set_015), sAdvancedOpen);
 
         advancedBox = bodyBox();
         advancedBox.setVisibility(sAdvancedOpen ? View.VISIBLE : View.GONE);
 
         // ---------------------------------------------------------- 识别判定
-        advancedBox.addView(Ui.cardSection(c, pal, "识别判定"));
-        swMonitor = Ui.switchRow(c, advancedBox, pal, "扩展触发",
-                "由系统单手模式判定下滑", cur.monitorEnabled);
+        advancedBox.addView(Ui.cardSection(c, pal, c.getString(R.string.set_016)));
+        swMonitor = Ui.switchRow(c, advancedBox, pal, c.getString(R.string.set_017),
+                c.getString(R.string.set_018), cur.monitorEnabled);
         dirty(swMonitor);
-        rMinDy = numberRow(advancedBox, "最小下滑距离", "快速下滑触发的最小距离", "dp",
+        rMinDy = numberRow(advancedBox, c.getString(R.string.set_019), c.getString(R.string.set_020), "dp",
                 cur.minDyDp, 0, 1, 60, 1);
-        rVelocity = numberRow(advancedBox, "触发速度", "0 表示仅按距离判定", "dp/s",
+        rVelocity = numberRow(advancedBox, c.getString(R.string.set_021), c.getString(R.string.set_022), "dp/s",
                 cur.minVelDp, 0, 0, 800, 10);
-        swSlow = Ui.switchRow(c, advancedBox, pal, "慢滑识别",
-                "慢速长距离下拉也可触发", cur.slowEnabled);
+        swSlow = Ui.switchRow(c, advancedBox, pal, c.getString(R.string.set_023),
+                c.getString(R.string.set_024), cur.slowEnabled);
         dirty(swSlow);
-        rSlowDy = numberRow(advancedBox, "慢滑所需距离", "慢滑触发所需的最小位移", "dp",
+        rSlowDy = numberRow(advancedBox, c.getString(R.string.set_025), c.getString(R.string.set_026), "dp",
                 cur.slowDyDp, 0, 1, 120, 1);
-        rSlowVel = numberRow(advancedBox, "慢滑速度下限", "慢滑的平均速度下限", "dp/s",
+        rSlowVel = numberRow(advancedBox, c.getString(R.string.set_027), c.getString(R.string.set_028), "dp/s",
                 cur.minAvgVelDp, 0, 0, 400, 5);
-        swEndBoost = Ui.switchRow(c, advancedBox, pal, "要求拖到底边",
-                "未拖到底边时按页面滚动处理", cur.endBoost);
+        swEndBoost = Ui.switchRow(c, advancedBox, pal, c.getString(R.string.set_029),
+                c.getString(R.string.set_030), cur.endBoost);
         dirty(swEndBoost);
-        rEndZone = numberRow(advancedBox, "贴底判定距离", "距底边小于该值视为到底", "dp",
+        rEndZone = numberRow(advancedBox, c.getString(R.string.set_031), c.getString(R.string.set_032), "dp",
                 cur.endZoneDp, 0, 8, 80, 1);
-        rConf = numberRow(advancedBox, "判定置信度", "越低越灵敏，越高越严格", "",
+        rConf = numberRow(advancedBox, c.getString(R.string.set_033), c.getString(R.string.set_034), "",
                 cur.minConfidence, 2, 0.10f, 1.0f, 0.02f);
 
         // ---------------------------------------------------------- 触发区
-        advancedBox.addView(Ui.cardSection(c, pal, "触发区"));
-        swZoneRatio = Ui.switchRow(c, advancedBox, pal, "延伸至 Dock 上方",
-                "按屏幕比例计算，覆盖底部 Dock", cur.zoneRatioMode);
+        advancedBox.addView(Ui.cardSection(c, pal, c.getString(R.string.set_035)));
+        swZoneRatio = Ui.switchRow(c, advancedBox, pal, c.getString(R.string.set_036),
+                c.getString(R.string.set_037), cur.zoneRatioMode);
         dirty(swZoneRatio);
-        rZoneRatio = numberRow(advancedBox, "屏幕占比", "默认 15%，约等于 Dock 上沿高度", "%",
+        rZoneRatio = numberRow(advancedBox, c.getString(R.string.set_038), c.getString(R.string.set_039), "%",
                 cur.zoneRatio * 100f, 0, 5, 30, 1);
-        rZone = numberRow(advancedBox, "触发区高度", "固定高度；关闭上方开关后生效", "dp",
+        rZone = numberRow(advancedBox, c.getString(R.string.set_040), c.getString(R.string.set_041), "dp",
                 cur.zoneDp, 0, 20, 200, 1);
-        rWidth = numberRow(advancedBox, "宽度占比", "触发区宽度，水平居中", "%",
+        rWidth = numberRow(advancedBox, c.getString(R.string.set_042), c.getString(R.string.set_043), "%",
                 cur.widthRatio * 100f, 0, 20, 100, 5);
-        rBias = numberRow(advancedBox, "左右偏置", "按左右手习惯偏移中心", "%",
+        rBias = numberRow(advancedBox, c.getString(R.string.set_044), c.getString(R.string.set_045), "%",
                 cur.zoneBias * 100f, 0, -40, 40, 5);
         downGap = Ui.hintBlock(c, pal, downGapText(), pal.primary);
         advancedBox.addView(downGap);
 
         // ---------------------------------------------------------- 外观与动效
-        advancedBox.addView(Ui.cardSection(c, pal, "外观与动效"));
-        rBlurRadius = numberRow(advancedBox, "模糊半径", "越大越模糊，0 为不模糊", "dp",
+        advancedBox.addView(Ui.cardSection(c, pal, c.getString(R.string.set_046)));
+        rBlurRadius = numberRow(advancedBox, c.getString(R.string.set_047), c.getString(R.string.set_048), "dp",
                 cur.blurRadiusDp, 0, 0, 60, 1);
-        rBlurDim = numberRow(advancedBox, "压暗程度", "在模糊壁纸上叠加暗色", "%",
+        rBlurDim = numberRow(advancedBox, c.getString(R.string.set_049), c.getString(R.string.set_050), "%",
                 cur.blurDim, 0, 0, 60, 1);
-        cAnimCurve = Ui.choiceRow(c, advancedBox, pal, "缓动曲线",
-                "由慢到快排列，改动立即生效",
-                Cfg.ANIM_CURVE_SHORT, cur.animCurve, new Ui.OnChoice() {
+        cAnimCurve = Ui.choiceRow(c, advancedBox, pal, c.getString(R.string.set_051),
+                c.getString(R.string.set_052),
+                Cfg.animCurveShort(c), cur.animCurve, new Ui.OnChoice() {
                     @Override
                     public void onChoice(int index) {
-                        Ui.choiceDropdown(host, cAnimCurve, Cfg.ANIM_CURVE_NAMES,
-                                Cfg.ANIM_CURVE_SUMMARIES, new Ui.OnChoice() {
+                        Ui.choiceDropdown(host, cAnimCurve, Cfg.animCurveNames(c),
+                                Cfg.animCurveSummaries(c), new Ui.OnChoice() {
                                     @Override
                                     public void onChoice(int picked) {
                                         cAnimCurve.value = picked;
-                                        cAnimCurve.label.setText(Cfg.ANIM_CURVE_SHORT[picked]);
+                                        cAnimCurve.label.setText(Cfg.animCurveShort(c)[picked]);
                                         markDirty();
                                         applyAnimNow();
                                     }
                                 });
                     }
                 });
-        rAnimScale = Ui.valueRow(c, advancedBox, pal, "动画时长",
-                "1.00 为原生 600ms，越大越慢", "×", cur.animScale, 2);
-        realTime(rAnimScale, "动画时长", "1.00 为原生 600ms，越大越慢",
+        rAnimScale = Ui.valueRow(c, advancedBox, pal, c.getString(R.string.set_053),
+                c.getString(R.string.set_054), "×", cur.animScale, 2);
+        realTime(rAnimScale, c.getString(R.string.set_055), c.getString(R.string.set_056),
                 "×", 0.60f, 2.00f, 0.05f, 2);
         animInfo = Ui.block(c, pal, animInfoText());
         Ui.addRow(c, advancedBox, pal, animInfo);
 
         // ---------------------------------------------------------- 面板手势与互斥
-        advancedBox.addView(Ui.cardSection(c, pal, "面板手势与互斥"));
-        rTopShadeDy = numberRow(advancedBox, "触发距离", "判定为下滑所需的最小位移", "dp",
+        advancedBox.addView(Ui.cardSection(c, pal, c.getString(R.string.set_057)));
+        rTopShadeDy = numberRow(advancedBox, c.getString(R.string.set_058), c.getString(R.string.set_059), "dp",
                 cur.topShadeDyDp, 0, 8, 80, 1);
-        cTopShadeSide = Ui.choiceRow(c, advancedBox, pal, "展开方向",
-                "按下滑位置选择面板",
-                Cfg.TOP_SIDE_SHORT, cur.topShadeSide, new Ui.OnChoice() {
+        cTopShadeSide = Ui.choiceRow(c, advancedBox, pal, c.getString(R.string.set_060),
+                c.getString(R.string.set_061),
+                Cfg.topSideShort(c), cur.topShadeSide, new Ui.OnChoice() {
                     @Override
                     public void onChoice(int index) {
-                        Ui.choiceDropdown(host, cTopShadeSide, Cfg.TOP_SIDE_NAMES,
-                                Cfg.TOP_SIDE_SUMMARIES, new Ui.OnChoice() {
+                        Ui.choiceDropdown(host, cTopShadeSide, Cfg.topSideNames(c),
+                                Cfg.topSideSummaries(c), new Ui.OnChoice() {
                                     @Override
                                     public void onChoice(int picked) {
                                         cTopShadeSide.value = picked;
-                                        cTopShadeSide.label.setText(Cfg.TOP_SIDE_SHORT[picked]);
+                                        cTopShadeSide.label.setText(Cfg.topSideShort(c)[picked]);
                                         markDirty();
                                     }
                                 });
                     }
                 });
-        swShadeGuard = Ui.switchRow(c, advancedBox, pal, "与下拉手势互斥",
-                "面板手势优先，放弃单手模式", cur.shadeGuard);
-        swClaimZone = Ui.switchRow(c, advancedBox, pal, "底部区域优先单手",
-                "触发区内下滑按单手处理", cur.claimZone);
-        rHotDp = numberRow(advancedBox, "原生胶囊条高度", "0 表示保持系统默认", "dp",
+        swShadeGuard = Ui.switchRow(c, advancedBox, pal, c.getString(R.string.set_062),
+                c.getString(R.string.set_063), cur.shadeGuard);
+        swClaimZone = Ui.switchRow(c, advancedBox, pal, c.getString(R.string.set_064),
+                c.getString(R.string.set_065), cur.claimZone);
+        rHotDp = numberRow(advancedBox, c.getString(R.string.set_066), c.getString(R.string.set_067), "dp",
                 cur.launcherHotDp, 0, 0, 40, 1);
         dirty(swShadeGuard);
         dirty(swClaimZone);
 
         // ---------------------------------------------------------- 算法细节
-        advancedBox.addView(Ui.cardSection(c, pal, "算法细节"));
-        swAdaptive = Ui.switchRow(c, advancedBox, pal, "自适应阈值",
-                "快速手势放宽，慢速手势收紧", cur.adaptive);
+        advancedBox.addView(Ui.cardSection(c, pal, c.getString(R.string.set_068)));
+        swAdaptive = Ui.switchRow(c, advancedBox, pal, c.getString(R.string.set_069),
+                c.getString(R.string.set_070), cur.adaptive);
         dirty(swAdaptive);
-        rWindow = numberRow(advancedBox, "速度采样窗口", "越大越稳定，越小越灵敏", "ms",
+        rWindow = numberRow(advancedBox, c.getString(R.string.set_071), c.getString(R.string.set_072), "ms",
                 cur.velWindowMs, 0, 20, 200, 5);
-        rMaxVel = numberRow(advancedBox, "速度上限", "超过该值按噪声截断", "dp/s",
+        rMaxVel = numberRow(advancedBox, c.getString(R.string.set_073), c.getString(R.string.set_074), "dp/s",
                 cur.maxVelocityDp, 0, 300, 8000, 100);
-        rMono = numberRow(advancedBox, "轨迹稳定度", "净位移占轨迹长度的下限", "",
+        rMono = numberRow(advancedBox, c.getString(R.string.set_075), c.getString(R.string.set_076), "",
                 cur.minMonotonic, 2, 0.40f, 1.0f, 0.02f);
-        rSlope = numberRow(advancedBox, "最大横向偏移", "超过该值视为斜滑", "倍",
+        rSlope = numberRow(advancedBox, c.getString(R.string.set_077), c.getString(R.string.set_078), c.getString(R.string.unit_times),
                 cur.maxSlope, 1, 0.5f, 4.0f, 0.1f);
-        rCooldown = numberRow(advancedBox, "触发冷却", "两次触发之间的最小间隔", "ms",
+        rCooldown = numberRow(advancedBox, c.getString(R.string.set_079), c.getString(R.string.set_080), "ms",
                 cur.cooldownMs, 0, 0, 2000, 50);
 
         oneHandBox.addView(advancedBox, fullWidth());
@@ -318,20 +319,20 @@ final class SettingsPage {
         });
 
         // ================================================== 3. 快捷菜单滑选
-        page.add(Ui.section(c, pal, "快捷菜单滑选"));
+        page.add(Ui.section(c, pal, c.getString(R.string.set_081)));
         LinearLayout cardSlide = Ui.card(c, pal);
-        swSlide = Ui.switchRow(c, cardSlide, pal, "启用长按滑选菜单项",
-                "滑到菜单项抬起即选中，需重启桌面", cur.slideEnabled);
+        swSlide = Ui.switchRow(c, cardSlide, pal, c.getString(R.string.set_082),
+                c.getString(R.string.set_083), cur.slideEnabled);
 
         slideBox = bodyBox();
-        rSlideAngle = numberRow(slideBox, "滑选判定夹角",
-                "与菜单方向的夹角上限，越小越严格", "°",
+        rSlideAngle = numberRow(slideBox, c.getString(R.string.set_084),
+                c.getString(R.string.set_085), "°",
                 cur.slideAngleDeg, 0, 15, 90, 5);
-        rSlideSlop = numberRow(slideBox, "命中容差",
-                "菜单项向外扩展的命中范围", "dp",
+        rSlideSlop = numberRow(slideBox, c.getString(R.string.set_086),
+                c.getString(R.string.set_087), "dp",
                 cur.slideSlopDp, 0, 2, 40, 1);
-        rSlideTravel = numberRow(slideBox, "起判位移",
-                "开始判定所需的最小位移", "dp",
+        rSlideTravel = numberRow(slideBox, c.getString(R.string.set_088),
+                c.getString(R.string.set_089), "dp",
                 cur.slideMinTravelDp, 0, 4, 60, 1);
         cardSlide.addView(slideBox, fullWidth());
         page.add(cardSlide);
@@ -345,13 +346,37 @@ final class SettingsPage {
             }
         });
 
+        // ================================================== 个性化
+        // 语言只影响界面、不影响 Hook 行为，所以单独成组放在最后，不和上面三个功能模块混在一起。
+        // 切换走应用级 locale（Lang），系统会重建 Activity，整页文案随之切换。
+        page.add(Ui.section(c, pal, c.getString(R.string.section_personalize)));
+        LinearLayout cardPersonalize = Ui.card(c, pal);
+        cLang = Ui.choiceRow(c, cardPersonalize, pal,
+                c.getString(R.string.row_language),
+                c.getString(R.string.row_language_summary),
+                Lang.names(c), Lang.currentIndex(c), new Ui.OnChoice() {
+                    @Override
+                    public void onChoice(int index) {
+                        Ui.choiceDropdown(host, cLang, Lang.names(c), Lang.summaries(c),
+                                new Ui.OnChoice() {
+                                    @Override
+                                    public void onChoice(int picked) {
+                                        if (picked != Lang.currentIndex(c)) {
+                                            Lang.select(c, picked);
+                                        }
+                                    }
+                                });
+                    }
+                });
+        page.add(cardPersonalize);
+
         // ================================================== 底部操作
         // 改动即时保存并生效，不再需要「保存并立即生效」按钮 / 胶囊二次确认。
         LinearLayout actions = new LinearLayout(c);
         actions.setOrientation(LinearLayout.VERTICAL);
         actions.setPadding(0, Theme.dp(c, 20), 0, 0);
 
-        TextView reset = Ui.secondaryButton(c, pal, "恢复默认参数");
+        TextView reset = Ui.secondaryButton(c, pal, c.getString(R.string.set_090));
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(c, 48));
         rlp.topMargin = Theme.dp(c, 10);
@@ -364,7 +389,7 @@ final class SettingsPage {
         });
         actions.addView(reset, rlp);
 
-        restartBtn = Ui.secondaryButton(c, pal, "重启系统界面与桌面");
+        restartBtn = Ui.secondaryButton(c, pal, c.getString(R.string.set_091));
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(c, 48));
         slp.topMargin = Theme.dp(c, 10);
@@ -377,14 +402,14 @@ final class SettingsPage {
         actions.addView(restartBtn, slp);
 
         TextView restartHint = Ui.text(c,
-                "重新注入钩子，需要 root 授权",
+                c.getString(R.string.set_092),
                 Theme.T_CAP, pal.summary, false);
         restartHint.setPadding(Theme.dp(c, 4), Theme.dp(c, 10), Theme.dp(c, 4), 0);
         restartHint.setLineSpacing(Theme.dp(c, 3), 1f);
         actions.addView(restartHint);
         page.add(actions);
 
-        statusText = Ui.text(c, "改动自动保存并立即生效",
+        statusText = Ui.text(c, c.getString(R.string.set_093),
                 Theme.T_CAP, pal.section, false);
         statusText.setPadding(Theme.dp(c, 4), Theme.dp(c, 12), Theme.dp(c, 4), 0);
         statusText.setLineSpacing(Theme.dp(c, 3), 1f);
@@ -452,14 +477,14 @@ final class SettingsPage {
                                 keyMapBox.setVisibility(enabled ? View.GONE : View.VISIBLE);
                             }
                             if (statusText != null) {
-                                statusText.setText("写入总开关失败：需要 root 授权（KernelSU / Magisk）后重试。");
+                                statusText.setText(c.getString(R.string.set_094));
                             }
                             return;
                         }
                         if (statusText != null) {
                             statusText.setText(enabled
-                                    ? "已启用按键映射。"
-                                    : "已关闭按键映射，音量键恢复系统默认功能。");
+                                    ? c.getString(R.string.set_095)
+                                    : c.getString(R.string.set_096));
                         }
                     }
                 });
@@ -479,13 +504,13 @@ final class SettingsPage {
                 }
             }
             if (rules.isEmpty()) {
-                return "尚未创建规则";
+                return c.getString(R.string.set_097);
             }
             return enabled == rules.size()
-                    ? rules.size() + " 条规则"
-                    : rules.size() + " 条规则 · 启用 " + enabled + " 条";
+                    ? c.getString(R.string.set_rules_count, rules.size())
+                    : c.getString(R.string.set_rules_count_enabled, rules.size(), enabled);
         } catch (Throwable t) {
-            return "按应用、音频、状态触发";
+            return c.getString(R.string.set_098);
         }
     }
 
@@ -716,14 +741,14 @@ final class SettingsPage {
 
     void onSaved() {
         if (statusText != null) {
-            statusText.setText("已自动保存并生效。可下滑底部区域测试，点「最近手势」查看判定结果。");
+            statusText.setText(c.getString(R.string.set_099));
         }
     }
 
     /** 切换模式：把该模式的推荐值填进参数行，并立即提交。 */
     private void applyMode(int mode) {
         cMode.value = mode;
-        cMode.label.setText(Cfg.MODE_SHORT[mode]);
+        cMode.label.setText(Cfg.modeShort(c)[mode]);
         Cfg.Preset p = Cfg.preset(mode);
         rMinDy.set(p.minDyDp);
         rVelocity.set(p.velLowDp);
@@ -743,7 +768,7 @@ final class SettingsPage {
         switchWithoutMark(swBlur, true);
 
         cMode.value = Cfg.MODE_NATURAL;
-        cMode.label.setText(Cfg.MODE_SHORT[Cfg.MODE_NATURAL]);
+        cMode.label.setText(Cfg.modeShort(c)[Cfg.MODE_NATURAL]);
         Cfg.Preset p = Cfg.preset(Cfg.MODE_NATURAL);
         rMinDy.set(p.minDyDp);
         rVelocity.set(p.velLowDp);
@@ -764,14 +789,14 @@ final class SettingsPage {
         rBlurRadius.set(Cfg.DEF_BLUR_RADIUS);
         rBlurDim.set(Cfg.DEF_BLUR_DIM);
         cAnimCurve.value = Cfg.DEF_ANIM_CURVE;
-        cAnimCurve.label.setText(Cfg.ANIM_CURVE_SHORT[Cfg.DEF_ANIM_CURVE]);
+        cAnimCurve.label.setText(Cfg.animCurveShort(c)[Cfg.DEF_ANIM_CURVE]);
         rAnimScale.set(Cfg.DEF_ANIM_SCALE);
         switchWithoutMark(swEndBoost, true);
         rEndZone.set(Cfg.DEF_END_ZONE_DP);
         switchWithoutMark(swTopShade, true);
         rTopShadeDy.set(Cfg.DEF_TOP_SHADE_DY_DP);
         cTopShadeSide.value = Cfg.DEF_TOP_SHADE_SIDE;
-        cTopShadeSide.label.setText(Cfg.TOP_SIDE_SHORT[Cfg.DEF_TOP_SHADE_SIDE]);
+        cTopShadeSide.label.setText(Cfg.topSideShort(c)[Cfg.DEF_TOP_SHADE_SIDE]);
         switchWithoutMark(swSlide, true);
         rSlideAngle.set(Cfg.DEF_SLIDE_ANGLE_DEG);
         rSlideSlop.set(Cfg.DEF_SLIDE_SLOP_DP);
@@ -887,8 +912,8 @@ final class SettingsPage {
         } catch (Throwable ignored) {
             // 下面走静态说明
         }
-        return "系统原生 " + Cfg.SYSTEM_ANIM_MS + "ms · " + Cfg.ANIM_CURVE_RAW_DESC
-                + "；下滑一次后显示实测值";
+        return c.getString(R.string.set_native_hint, Cfg.SYSTEM_ANIM_MS,
+                Cfg.animCurveRawDesc(c));
     }
 
     private String downGapText() {
@@ -901,13 +926,13 @@ final class SettingsPage {
         } catch (Throwable ignored) {
             // 走默认提示
         }
-        return "在底部下滑一次，显示起手点距底边高度，用于校准";
+        return c.getString(R.string.set_100);
     }
 
 
     void setRestarting(boolean restarting) {
         if (restartBtn != null) {
-            restartBtn.setText(restarting ? "重启中…" : "重启系统界面与桌面");
+            restartBtn.setText(restarting ? c.getString(R.string.set_101) : c.getString(R.string.set_102));
             restartBtn.setEnabled(!restarting);
             restartBtn.setAlpha(restarting ? 0.6f : 1f);
         }

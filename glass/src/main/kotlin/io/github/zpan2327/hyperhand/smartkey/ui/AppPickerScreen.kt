@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import androidx.compose.foundation.background
@@ -146,7 +148,7 @@ fun AppPickerScreen(
                         expanded = expanded.value,
                         onExpandedChange = { expanded.value = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = "搜索应用名称或包名",
+                        label = stringResource(R.string.sk_119),
                     )
                 },
                 onExpandedChange = { expanded.value = it },
@@ -171,7 +173,7 @@ fun AppPickerScreen(
             if (loading.value && matched.isEmpty()) {
                 // 磁盘快照也没有时才可能是这句；保留提示避免白屏。
                 Text(
-                    text = "正在读取应用列表…",
+                    text = stringResource(R.string.sk_120),
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -186,20 +188,20 @@ fun AppPickerScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (pinnedApps.isNotEmpty()) {
-                        item(key = "header-pinned") { SkListGroupTitle("已选择") }
+                        item(key = "header-pinned") { SkListGroupTitle(stringResource(R.string.sk_121)) }
                         items(pinnedApps, key = { it.pkg }) { app ->
                             // 分组成员是进来那一刻定格的（行不会跳走），但勾选状态必须跟着实时走。
                             AppRow(app, checked = app.pkg in selected, recommended = app.pkg in recommended, onToggle)
                         }
                     }
                     if (recommendApps.isNotEmpty()) {
-                        item(key = "header-recommend") { SkListGroupTitle("推荐") }
+                        item(key = "header-recommend") { SkListGroupTitle(stringResource(R.string.sk_122)) }
                         items(recommendApps, key = { it.pkg }) { app ->
                             AppRow(app, checked = app.pkg in selected, recommended = true, onToggle)
                         }
                     }
                     if (hasGroups && otherApps.isNotEmpty()) {
-                        item(key = "header-all") { SkListGroupTitle("全部应用") }
+                        item(key = "header-all") { SkListGroupTitle(stringResource(R.string.sk_123)) }
                     }
                     items(otherApps, key = { it.pkg }) { app ->
                         AppRow(app, checked = app.pkg in selected, recommended = false, onToggle)
@@ -207,7 +209,7 @@ fun AppPickerScreen(
                     if (matched.isEmpty() && !loading.value) {
                         item(key = "empty") {
                             Text(
-                                text = "没有匹配的应用",
+                                text = stringResource(R.string.sk_124),
                                 style = MiuixTheme.textStyles.body2,
                                 color = MiuixTheme.colorScheme.onSurfaceSecondary,
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -275,7 +277,7 @@ fun SkRecommendBadge() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "推荐",
+            text = stringResource(R.string.sk_122),
             style = MiuixTheme.textStyles.footnote1,
             color = MiuixTheme.colorScheme.primary,
         )
@@ -283,17 +285,19 @@ fun SkRecommendBadge() {
 }
 
 /**
- * 下拉刷新文案按系统语言取。
+ * 下拉刷新文案。
  *
- * 顺序与 Miuix `PullToRefreshDefaults.refreshTexts` 一致：
+ * 原来按 `Locale.getDefault()` 手写中英两套；现在文案在资源里（values / values-en /
+ * values-b+zh+Hant），语言由应用级 locale 决定，这里只管按 Miuix 约定的顺序取值：
  * 下拉 / 松手 / 刷新中 / 刷新完成。
  */
-private fun refreshTextsForSystemLocale(): List<String> =
-    if (java.util.Locale.getDefault().language.startsWith("zh")) {
-        listOf("下拉刷新", "松手刷新", "正在刷新…", "刷新完成")
-    } else {
-        listOf("Pull down to refresh", "Release to refresh", "Refreshing…", "Refreshed")
-    }
+@Composable
+private fun refreshTextsForSystemLocale(): List<String> = listOf(
+    stringResource(R.string.sk_125),
+    stringResource(R.string.sk_126),
+    stringResource(R.string.sk_127),
+    stringResource(R.string.sk_128),
+)
 
 /**
  * 行图标：先看 LRU 里有没有（组合期同步取，滚动回来不会闪），没有再去后台解码。

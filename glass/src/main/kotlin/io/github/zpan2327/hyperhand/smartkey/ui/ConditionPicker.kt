@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.smartkey.ui
 
+import io.github.zpan2327.hyperhand.glass.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -25,20 +27,20 @@ fun ColumnScope.ConditionTypePickerContent(
 ) {
     val haptics = rememberSkHaptics()
     val groups = listOf(
-        "应用状态" to listOf(
+        stringResource(R.string.sk_129) to listOf(
             ConditionType.APP_PLAYING, ConditionType.APP_RUNNING, ConditionType.APP_NOT_RUNNING,
             ConditionType.APP_FOREGROUND, ConditionType.APP_NOT_FOREGROUND,
             ConditionType.APP_PAUSED, ConditionType.APP_NO_SESSION, ConditionType.ANY_APP_PLAYING,
         ),
-        "音频状态" to listOf(
+        stringResource(R.string.sk_130) to listOf(
             ConditionType.AUDIO_PLAYING, ConditionType.AUDIO_PAUSED, ConditionType.AUDIO_STOPPED,
             ConditionType.NO_MEDIA_SESSION, ConditionType.MULTIPLE_SESSIONS,
         ),
-        "屏幕与锁定" to listOf(
+        stringResource(R.string.sk_131) to listOf(
             ConditionType.SCREEN_ON, ConditionType.SCREEN_OFF,
             ConditionType.UNLOCKED, ConditionType.LOCKED,
         ),
-        "设备状态" to listOf(
+        stringResource(R.string.sk_132) to listOf(
             ConditionType.CHARGING, ConditionType.NOT_CHARGING,
         ),
     )

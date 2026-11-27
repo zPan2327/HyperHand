@@ -1,5 +1,6 @@
 package io.github.zpan2327.hyperhand.smartkey.data
 
+import io.github.zpan2327.hyperhand.glass.R
 import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.Settings
@@ -31,14 +32,14 @@ data class ModuleStatus(
             val hookReport = safeGetGlobal(context, KEY_HOOK_PROBE)
             val hookActive = hookReport != null && hookReport.isNotBlank()
             // 配置同步时间由 App 写入 Settings.Global（首次写入时用 root 授予 WRITE_SECURE_SETTINGS）。
-            val sync = safeGetGlobal(context, KEY_LAST_SYNC) ?: "尚未同步"
+            val sync = safeGetGlobal(context, KEY_LAST_SYNC) ?: context.getString(R.string.sk_142)
 
             return ModuleStatus(
                 lsposedInstalled = lsposed,
                 moduleInstalled = module,
                 hookActive = hookActive,
                 lastHookReport = hookReport?.let(::formatTimestamp)
-                    ?: "无上报（可能未激活或未重启）",
+                    ?: context.getString(R.string.sk_143),
                 lastConfigSync = sync,
                 ruleCount = ruleCount,
             )

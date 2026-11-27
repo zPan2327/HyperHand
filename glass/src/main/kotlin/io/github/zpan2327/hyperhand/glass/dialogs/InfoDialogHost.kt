@@ -1,5 +1,7 @@
 package io.github.zpan2327.hyperhand.glass.dialogs
 
+import androidx.compose.ui.res.stringResource
+import io.github.zpan2327.hyperhand.glass.R
 import android.content.Context
 import android.content.res.Configuration
 import android.util.AttributeSet
@@ -32,7 +34,7 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  * Java 友好桥接：把长文本信息对话框（引用 / 使用说明 / 许可 / 运行状态）交给
  * MIUIX 原生的 [OverlayDialog] 渲染，而不是 Java 手写仿制品。
  *
- * 宿主结构与 [SonyPodsDialogHost] 完全一致——OverlayDialog（经 DialogLayout）
+ * 宿主结构与 [RestartScopeDialogHost] 完全一致——OverlayDialog（经 DialogLayout）
  * 必须有 root 级 MiuixPopupHost 才能渲染，因此这里用透明、零 insets 的 Scaffold
  * 提供宿主。Java 侧把本 View 叠到 Activity 根容器（与宿主同 window），再 show()。
  */
@@ -130,7 +132,7 @@ private fun InfoDialog(
                     .verticalScroll(rememberScrollState()),
             )
             TextButton(
-                text = S.got_it,
+                text = stringResource(R.string.sk_got_it),
                 onClick = onDismissRequest,
                 modifier = Modifier
                     .fillMaxWidth()

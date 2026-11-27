@@ -197,7 +197,7 @@ final class AnimCtl {
                 counted = false;
                 if (c.debug) {
                     HyperHand.log("anim: start duration=" + a.getDuration() + "ms curve="
-                            + Cfg.ANIM_CURVE_SHORT[safeCurve(c.animCurve)]);
+                            + safeCurve(c.animCurve));
                 }
             }
 
@@ -245,7 +245,7 @@ final class AnimCtl {
             if (c.debug) {
                 HyperHand.log("anim: duration " + sSystemMs + "ms -> " + target + "ms"
                         + " (x" + String.format(java.util.Locale.US, "%.2f", c.animScale)
-                        + "), curve=" + Cfg.ANIM_CURVE_SHORT[safeCurve(c.animCurve)]);
+                        + "), curve=" + safeCurve(c.animCurve));
             }
         } catch (Throwable t) {
             HyperHand.log("anim: apply duration failed: " + t);
@@ -265,12 +265,16 @@ final class AnimCtl {
     private static void publish(Context ctx, Cfg c, int appliedMs) {
         try {
             ContentResolver cr = ctx.getContentResolver();
-            String s = "系统原生 " + sSystemMs + "ms · " + Cfg.ANIM_CURVE_RAW_DESC + "\n"
-                    + "当前 " + appliedMs + "ms（×" + String.format(java.util.Locale.US, "%.2f", c.animScale)
-                    + "）· " + Cfg.ANIM_CURVE_SHORT[safeCurve(c.animCurve)]
-                    + (c.animCurve == Cfg.ANIM_CURVE_NATIVE ? "（未改动曲线）" : "");
+            // 诊断串会直接显示在设置页，所以也走资源；分成两行是因为中间那句带条件后缀。
+            String s = ctx.getString(R.string.anim_info_line1, sSystemMs, Cfg.animCurveRawDesc(ctx))
+                    + "\n" + ctx.getString(R.string.anim_info_line2,
+                    appliedMs,
+                    String.format(java.util.Locale.US, "%.2f", c.animScale),
+                    Cfg.animCurveShort(ctx)[safeCurve(c.animCurve)],
+                    c.animCurve == Cfg.ANIM_CURVE_NATIVE
+                            ? ctx.getString(R.string.anim_info_curve_unchanged) : "");
             if (sLastMeasuredMs > 0) {
-                s += "\n上次实测 " + sLastMeasuredMs + "ms";
+                s += "\n" + ctx.getString(R.string.anim_info_measured, sLastMeasuredMs);
             }
             Settings.Global.putString(cr, Cfg.K_ANIM_INFO, s);
         } catch (Throwable t) {
@@ -279,7 +283,7 @@ final class AnimCtl {
     }
 
     private static int safeCurve(int v) {
-        return v < 0 || v >= Cfg.ANIM_CURVE_NAMES.length ? Cfg.ANIM_CURVE_NATIVE : v;
+        return v < 0 || v >= Cfg.ANIM_CURVE_COUNT ? Cfg.ANIM_CURVE_NATIVE : v;
     }
 
     private static Context contextOf(Object organizer) {

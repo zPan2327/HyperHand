@@ -38,6 +38,13 @@ import java.util.Locale;
 final class AboutPage {
 
     static final String REPO = "https://github.com/zPan2327/HyperHand";
+    /**
+     * 使用说明与许可证都不在 App 内渲染：正文放在仓库里，改一次两边都最新。
+     * 使用说明有中英两版，按当前界面语言选（繁體也用中文版，简体标题读得懂）。
+     */
+    static final String USAGE_DOC_ZH = REPO + "/blob/main/docs/USAGE.md";
+    static final String USAGE_DOC_EN = REPO + "/blob/main/docs/USAGE_EN.md";
+    static final String LICENSE_DOC = REPO + "/blob/main/LICENSE";
     static final String AUTHOR = "https://github.com/zPan2327";
 
     private final MainActivity host;
@@ -269,7 +276,7 @@ final class AboutPage {
         buildHero();
         // ---------------------------------------------------------- 开发者
         // 滚动上限就锚在这个标题上：字样的顶不允许越过顶栏的底（见 scrollLimit）。
-        devSection = Ui.section(c, pal, "开发者");
+        devSection = Ui.section(c, pal, c.getString(R.string.about_001));
         page.add(devSection);
         LinearLayout cardDev = Ui.cardGlass(c, pal);
         LinearLayout row = Ui.rowShell(c);
@@ -282,7 +289,7 @@ final class AboutPage {
                 Theme.dp(c, 56), Theme.dp(c, 56)));
         LinearLayout col = new LinearLayout(c);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.addView(Ui.text(c, "不会买菜.", Theme.T_HERO, pal.title, Theme.medium()));
+        col.addView(Ui.text(c, c.getString(R.string.about_002), Theme.T_HERO, pal.title, Theme.medium()));
         TextView sub = Ui.text(c, "@zPan2327", 14, pal.summary, false);
         sub.setPadding(0, Theme.dp(c, 1), 0, 0);
         col.addView(sub);
@@ -306,32 +313,33 @@ final class AboutPage {
         // ---------------------------------------------------------- 项目
         // 参考版式里开发者卡片下面直接就是这张卡片，没有「项目」小标题。
         LinearLayout cardProj = Ui.cardGlass(c, pal);
-        Ui.navRow(c, cardProj, pal, -1, "源码", "GitHub 上的 HyperHand 仓库", "GitHub",
+        Ui.navRow(c, cardProj, pal, -1, c.getString(R.string.about_003), c.getString(R.string.about_004), "GitHub",
                 new Runnable() {
                     @Override
                     public void run() {
                         openUrl(REPO);
                     }
                 });
-        Ui.navRow(c, cardProj, pal, -1, "引用", "Miuix / KernelSU / SonyPods 等", null,
+        Ui.navRow(c, cardProj, pal, -1, c.getString(R.string.about_005), c.getString(R.string.about_006), null,
                 new Runnable() {
                     @Override
                     public void run() {
-                        Ui.infoDialog(host, pal, "引用与致谢", REFERENCES);
+                        Ui.infoDialog(host, pal, c.getString(R.string.about_007), references());
                     }
                 });
-        Ui.navRow(c, cardProj, pal, -1, "使用说明", "上手前值得看一眼的几条", null,
+        Ui.navRow(c, cardProj, pal, -1, c.getString(R.string.about_008), c.getString(R.string.about_009), "GitHub",
                 new Runnable() {
                     @Override
                     public void run() {
-                        Ui.infoDialog(host, pal, "使用说明", USAGE);
+                        openUrl(usageUrl());
                     }
                 });
-        Ui.navRow(c, cardProj, pal, -1, "许可", "MIT License", null,
+        Ui.navRow(c, cardProj, pal, -1, c.getString(R.string.about_011),
+                c.getString(R.string.about_license_link), "GitHub",
                 new Runnable() {
                     @Override
                     public void run() {
-                        Ui.infoDialog(host, pal, "许可", LICENSE);
+                        openUrl(LICENSE_DOC);
                     }
                 });
         page.add(cardProj, Ui.cardLp(c, Theme.CARD_GAP));
@@ -363,21 +371,21 @@ final class AboutPage {
      */
     private void showDebugPage() {
         final MiuixDialog d = new MiuixDialog(host, pal);
-        d.title("调试");
+        d.title(c.getString(R.string.about_013));
 
         Ui.Page dbg = Ui.page(c, pal);
         dbg.scroll.setBackground(Theme.round(pal.night ? 0xFF242424 : 0xFFFFFFFF, 0f));
         dbg.column.setPadding(MiuixDialog.pad(c), Theme.dp(c, 8),
                 MiuixDialog.pad(c), Theme.dp(c, 16));
-        TextView dbgTitle = Ui.text(c, "运行状态 / 手势 / 快速操作",
+        TextView dbgTitle = Ui.text(c, c.getString(R.string.about_014),
                 Theme.T_SUM, pal.summary, false);
         dbg.add(dbgTitle);
 
         // ---- 调试开关（原「设置 → 调试」搬到这里，设置主界面不再展示）
-        dbg.add(Ui.section(c, pal, "调试开关"));
+        dbg.add(Ui.section(c, pal, c.getString(R.string.about_015)));
         LinearLayout swCard = Ui.card(c, pal);
-        Ui.SwitchView swDbg = Ui.switchRow(c, swCard, pal, "调试日志",
-                "用 logcat -s HyperHand 观察判定过程，并记录最近手势", host.cfg().debug);
+        Ui.SwitchView swDbg = Ui.switchRow(c, swCard, pal, c.getString(R.string.about_016),
+                c.getString(R.string.about_017), host.cfg().debug);
         swDbg.setOnCheckedChange(new Ui.SwitchView.OnCheckedChange() {
             @Override
             public void onCheckedChanged(boolean checked) {
@@ -387,51 +395,51 @@ final class AboutPage {
         dbg.add(swCard, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---- 运行状态
-        dbg.add(Ui.section(c, pal, "运行状态"));
+        dbg.add(Ui.section(c, pal, c.getString(R.string.about_018)));
         LinearLayout status = Ui.card(c, pal);
         Cfg cfg = host.cfg();
-        Ui.infoPair(c, status, pal, "扩展触发").setText(cfg.monitorEnabled ? "已开启" : "已关闭");
-        Ui.infoPair(c, status, pal, "模糊壁纸背景").setText(cfg.blurBg
-                ? "已开启 · " + Ui.fmt(cfg.blurRadiusDp, 0) + " dp / 压暗 " + Ui.fmt(cfg.blurDim, 0) + "%"
-                : "已关闭");
-        Ui.infoPair(c, status, pal, "缩小动画").setText(Cfg.ANIM_CURVE_SHORT[safe(cfg.animCurve)] + " · "
+        Ui.infoPair(c, status, pal, c.getString(R.string.about_019)).setText(cfg.monitorEnabled ? c.getString(R.string.about_020) : c.getString(R.string.about_021));
+        Ui.infoPair(c, status, pal, c.getString(R.string.about_022)).setText(cfg.blurBg
+                ? c.getString(R.string.about_023) + Ui.fmt(cfg.blurRadiusDp, 0) + c.getString(R.string.about_024) + Ui.fmt(cfg.blurDim, 0) + "%"
+                : c.getString(R.string.about_025));
+        Ui.infoPair(c, status, pal, c.getString(R.string.about_026)).setText(Cfg.animCurveShort(c)[safe(cfg.animCurve)] + " · "
                 + Ui.fmt(cfg.animScale, 2) + "× · " + Math.round(Cfg.SYSTEM_ANIM_MS * cfg.animScale) + " ms");
-        Ui.infoPair(c, status, pal, "模糊区下滑").setText(
-                cfg.topShade ? Cfg.TOP_SIDE_SHORT[safeSide(cfg.topShadeSide)] : "已关闭");
-        Ui.infoPair(c, status, pal, "贴底直达").setText(
-                cfg.endBoost ? Ui.fmt(cfg.endZoneDp, 0) + " dp 内算到底" : "已关闭");
+        Ui.infoPair(c, status, pal, c.getString(R.string.about_027)).setText(
+                cfg.topShade ? Cfg.topSideShort(c)[safeSide(cfg.topShadeSide)] : c.getString(R.string.about_028));
+        Ui.infoPair(c, status, pal, c.getString(R.string.about_029)).setText(
+                cfg.endBoost ? Ui.fmt(cfg.endZoneDp, 0) + c.getString(R.string.about_030) : c.getString(R.string.about_031));
         dbg.add(status, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---- 最近手势
-        dbg.add(Ui.section(c, pal, "最近手势"));
+        dbg.add(Ui.section(c, pal, c.getString(R.string.about_032)));
         LinearLayout log = Ui.card(c, pal);
         final TextView gestureText = Ui.block(c, pal, host.gestureLog());
         log.addView(gestureText);
-        Ui.actionRow(c, log, pal, "刷新记录", "读取系统界面写回的最近一次判定", new Runnable() {
+        Ui.actionRow(c, log, pal, c.getString(R.string.about_033), c.getString(R.string.about_034), new Runnable() {
             @Override
             public void run() {
                 gestureText.setText(host.gestureLog());
-                host.toast("已刷新");
+                host.toast(c.getString(R.string.about_035));
             }
         });
         dbg.add(log, Ui.cardLp(c, Theme.CARD_GAP));
 
         // ---- 快速操作
-        dbg.add(Ui.section(c, pal, "快速操作"));
+        dbg.add(Ui.section(c, pal, c.getString(R.string.about_036)));
         LinearLayout quick = Ui.card(c, pal);
-        Ui.actionRow(c, quick, pal, "预览单手模式", "立刻缩小窗口，直接看背景效果", new Runnable() {
+        Ui.actionRow(c, quick, pal, c.getString(R.string.about_037), c.getString(R.string.about_038), new Runnable() {
             @Override
             public void run() {
                 host.previewOneHanded();
             }
         });
-        Ui.actionRow(c, quick, pal, "退出单手模式", "恢复正常窗口大小", new Runnable() {
+        Ui.actionRow(c, quick, pal, c.getString(R.string.about_039), c.getString(R.string.about_040), new Runnable() {
             @Override
             public void run() {
                 host.stopOneHanded();
             }
         });
-        Ui.actionRow(c, quick, pal, "重启两个作用域", "结束系统界面与桌面进程，重新注入钩子", new Runnable() {
+        Ui.actionRow(c, quick, pal, c.getString(R.string.about_041), c.getString(R.string.about_042), new Runnable() {
             @Override
             public void run() {
                 host.restartScopes();
@@ -442,7 +450,7 @@ final class AboutPage {
         int maxH = Math.min(Theme.dp(c, 340),
                 (int) (c.getResources().getDisplayMetrics().heightPixels * 0.50f));
         d.content(dbg.scroll, maxH);
-        d.button("关闭", false, new MiuixDialog.OnClick() {
+        d.button(c.getString(R.string.about_043), false, new MiuixDialog.OnClick() {
             @Override
             public void onClick(MiuixDialog dlg) {
                 dlg.dismiss();
@@ -452,11 +460,11 @@ final class AboutPage {
     }
 
     private static int safe(int curve) {
-        return curve < 0 || curve >= Cfg.ANIM_CURVE_SHORT.length ? 0 : curve;
+        return curve < 0 || curve >= Cfg.ANIM_CURVE_COUNT ? 0 : curve;
     }
 
     private static int safeSide(int side) {
-        return side < 0 || side >= Cfg.TOP_SIDE_SHORT.length ? 0 : side;
+        return side < 0 || side >= Cfg.TOP_SIDE_COUNT ? 0 : side;
     }
 
     // ---------------------------------------------------------------- 顶部
@@ -828,12 +836,15 @@ final class AboutPage {
             SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
             return f.format(new Date(pi.lastUpdateTime));
         } catch (Throwable t) {
-            return "未知";
+            return c.getString(R.string.about_044);
         }
     }
 
-    private static String safe(String s) {
-        return s == null || s.length() == 0 ? "未知" : s;
+
+    /** 当前界面语言是不是英文（en / en-US 等）：是就开英文版使用说明。 */
+    private String usageUrl() {
+        String tag = c.getResources().getConfiguration().getLocales().get(0).getLanguage();
+        return "en".equals(tag) ? USAGE_DOC_EN : USAGE_DOC_ZH;
     }
 
     private void openUrl(String url) {
@@ -842,65 +853,13 @@ final class AboutPage {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             c.startActivity(i);
         } catch (Throwable t) {
-            host.toast("没有可用的浏览器");
+            host.toast(c.getString(R.string.about_046));
         }
     }
 
     // ---------------------------------------------------------------- 文案
 
-    private static final String REFERENCES =
-            "Miuix（compose-miuix-ui/miuix）\n"
-                    + "整套色彩、字号、圆角与组件规格的来源，Apache-2.0。\n\n"
-                    + "KernelSU（tiann/KernelSU）\n"
-                    + "页面层级、卡片分组与信息排布参考，GPL-3.0。\n\n"
-                    + "SonyPods（Mercury000/SonyPods）\n"
-                    + "悬浮底栏、背景模糊与关于页版式参考。\n\n"
-                    + "libxposed API（libxposed/api）\n"
-                    + "模块的现代 API 入口，Apache-2.0。\n\n"
-                    + "AndroidLiquidGlass（Kyant0/AndroidLiquidGlass）\n"
-                    + "液态玻璃的折射与高光思路，Apache-2.0。\n\n"
-                    + "以上项目仅作为设计参考，HyperHand 的全部界面代码都是\n"
-                    + "按 Miuix 的取值用原生 View 手写实现的。";
-
-    private static final String USAGE =
-            "• 在 Vector / LSPosed 里启用 HyperHand 即可：作用域已经静态声明，\n"
-                    + "  不用手动勾「系统界面 / 小米桌面」，也没法挂到别的应用上。\n\n"
-                    + "• 改动后立即自动保存并生效，不需要重启；由系统界面进程写入 Settings.Global。\n\n"
-                    + "• 自然模式：底部连续下滑即可，不要求甩；灵敏模式门槛更低；防误触模式更保守。\n\n"
-                    + "• 速度单位是 dp/s，与屏幕密度无关；旧版的 px/s 参数会自动折算过来。\n\n"
-                    + "• 想完全恢复原状：关掉「启用模块」，或在管理器里停用模块。";
-
-    private static final String LICENSE =
-            "MIT 许可证（中文翻译）\n\n"
-                    + "版权所有 (c) 2026 zPan2327\n\n"
-                    + "特此授予任何获得本软件及相关文档文件（以下简称“软件”）副本的人，\n"
-                    + "免费、不受限制地处理本软件，包括但不限于使用、复制、修改、合并、\n"
-                    + "发布、分发、再许可和/或出售本软件副本的权利，并允许被授予者这样操作，\n"
-                    + "但须满足以下条件：\n\n"
-                    + "上述版权声明和本许可声明应包含在本软件的所有副本或实质部分中。\n\n"
-                    + "本软件按“原样”提供，不提供任何形式的担保，无论是明示的、暗示的，\n"
-                    + "还是其他的，包括但不限于对适销性、特定用途适用性和不侵权的担保。\n"
-                    + "在任何情况下，作者或版权持有人均不对任何索赔、损害或其他责任负责，\n"
-                    + "无论是在合同、侵权或其他诉讼中，因本软件或与使用本软件、\n"
-                    + "本软件的其他交易有关的或由此产生的。\n\n"
-                    + "——————————————————\n"
-                    + "以下为英文原文\n"
-                    + "——————————————————\n\n"
-                    + "MIT License\n\n"
-                    + "Copyright (c) 2026 zPan2327\n\n"
-                    + "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
-                    + "of this software and associated documentation files (the \"Software\"), to deal\n"
-                    + "in the Software without restriction, including without limitation the rights\n"
-                    + "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n"
-                    + "copies of the Software, and to permit persons to whom the Software is\n"
-                    + "furnished to do so, subject to the following conditions:\n\n"
-                    + "The above copyright notice and this permission notice shall be included in all\n"
-                    + "copies or substantial portions of the Software.\n\n"
-                    + "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n"
-                    + "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n"
-                    + "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n"
-                    + "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n"
-                    + "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n"
-                    + "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n"
-                    + "SOFTWARE.";
+    private String references() {
+        return c.getString(R.string.about_references);
+    }
 }

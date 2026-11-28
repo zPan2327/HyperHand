@@ -152,4 +152,22 @@
     <string name="sk_restart_scope_title">Restart scopes</string>
     <string name="sk_restart_scope_summary">Choose the processes to restart with root. Checking “System framework” soft-reboots the whole system; it recovers in about 20 seconds.</string>
     <string name="sk_got_it">Got it</string>
+    <!-- 引用与致谢（关于页 → 引用，二级页面） -->
+    <string name="cr_title">Credits</string>
+    <string name="cr_subtitle">Open-source projects HyperHand builds on</string>
+    <string name="cr_intro">These are the projects actually referenced in the source code. Tap any item to open its repository.</string>
+    <string name="cr_miuix_title">Miuix</string>
+    <string name="cr_miuix_summary">compose-miuix-ui/miuix · Source of the colour scheme, type scale, corner radii and component specs; the key-mapping pages use its Compose components directly · Apache-2.0</string>
+    <string name="cr_liquidglass_title">AndroidLiquidGlass</string>
+    <string name="cr_liquidglass_summary">Kyant0/AndroidLiquidGlass · Refraction and highlight ideas for the liquid glass · Apache-2.0</string>
+    <string name="cr_liquiddemo_title">LiquidDemo</string>
+    <string name="cr_liquiddemo_summary">zPan2327/LiquidDemo · The liquid-glass bottom bar’s renderer was brought over from here (a re-creation of miuix / AndroidLiquidGlass)</string>
+    <string name="cr_sonypods_title">SonyPods</string>
+    <string name="cr_sonypods_summary">Mercury000/SonyPods · Layout reference for the floating bar, background blur, and the Overview and About pages</string>
+    <string name="cr_kernelsu_title">KernelSU</string>
+    <string name="cr_kernelsu_summary">tiann/KernelSU · Reference for page hierarchy, card grouping and information layout · GPL-3.0</string>
+    <string name="cr_libxposed_title">libxposed API</string>
+    <string name="cr_libxposed_summary">libxposed/api · The module’s modern API (102) entry point; also provides the compile-time stub · Apache-2.0</string>
+    <string name="cr_footnote">These projects are design and implementation references. Apart from the key-mapping pages, which use Miuix components directly, and the bottom bar, which uses LiquidDemo’s renderer, the rest of the interface is HyperHand’s own code. Each project belongs to its authors; see the individual repositories for their licences.</string>
+    <string name="cr_no_browser">No browser available</string>
 </resources>

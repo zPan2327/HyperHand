@@ -225,7 +225,7 @@
     <string name="main_066">现在可以下滑底部区域试试。</string>
     <string name="main_067">已重启</string>
     <string name="main_068">root 命令执行失败：</string>
-    <string name="main_069">\\n已改为让系统界面自行重启（桌面侧钩子未刷新，可稍后手动重启）。</string>
+    <string name="main_069">\n已改为让系统界面自行重启（桌面侧钩子未刷新，可稍后手动重启）。</string>
     <string name="main_070">已请求系统界面重启</string>
     <string name="main_071">未知错误</string>
     <string name="main_072">等待授权超时，请在 KernelSU / Magisk 里允许 HyperHand</string>
@@ -246,7 +246,7 @@
     <string name="ov_009">屏幕</string>
     <string name="ov_010">模块版本</string>
     <string name="ov_011">作用域</string>
-    <string name="ov_012">系统框架 system（按键映射）\\n系统界面 com.android.systemui\\n桌面 com.miui.home</string>
+    <string name="ov_012">系统框架 system（按键映射）\n系统界面 com.android.systemui\n桌面 com.miui.home</string>
     <string name="ov_013">安装时间</string>
     <string name="ov_014">所有参数都在「设置」里，改动后立即生效。</string>
     <string name="ov_015">未知</string>
@@ -264,7 +264,6 @@
     <string name="about_004">GitHub 上的 HyperHand 仓库</string>
     <string name="about_005">引用</string>
     <string name="about_006">Miuix / KernelSU / SonyPods 等</string>
-    <string name="about_007">引用与致谢</string>
     <string name="about_008">使用说明</string>
     <string name="about_009">上手前值得看一眼的几条</string>
     <string name="about_011">许可</string>
@@ -301,7 +300,6 @@
     <string name="about_043">关闭</string>
     <string name="about_044">未知</string>
     <string name="about_046">没有可用的浏览器</string>
-    <string name="about_references">Miuix（compose-miuix-ui/miuix）\n整套色彩、字号、圆角与组件规格的来源，Apache-2.0。\n\nKernelSU（tiann/KernelSU）\n页面层级、卡片分组与信息排布参考，GPL-3.0。\n\nSonyPods（Mercury000/SonyPods）\n悬浮底栏、背景模糊与关于页版式参考。\n\nlibxposed API（libxposed/api）\n模块的现代 API 入口，Apache-2.0。\n\nAndroidLiquidGlass（Kyant0/AndroidLiquidGlass）\n液态玻璃的折射与高光思路，Apache-2.0。\n\n以上项目仅作为设计参考，HyperHand 的全部界面代码都是\n按 Miuix 的取值用原生 View 手写实现的。</string>
 
     <!-- 通用 / 个性化 / 动画诊断 -->
     <string name="anim_info_line1">系统原生 %1$dms · %2$s</string>
@@ -328,5 +326,5 @@
     <string name="activity_pick_app">选择应用</string>
     <string name="activity_self_test">按键自检</string>
     <string name="dialog_cancel">取消</string>
-    <string name="about_license_link">在 GitHub 上查看完整的 MIT 许可证</string>
+    <string name="about_license_link">在 GitHub 上查看完整的 MIT 许可证</string>    <string name="activity_credits">引用与致谢</string>
 </resources>

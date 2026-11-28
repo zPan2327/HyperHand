@@ -72,6 +72,12 @@
             android:exported="false"
             android:label="@string/activity_pick_app" />
 
+        <!-- 关于页「引用」的二级页面：逐项列出引用到的开源项目，点击打开对应仓库。 -->
+        <activity
+            android:name="io.github.zpan2327.hyperhand.credits.CreditsActivity"
+            android:exported="false"
+            android:label="@string/activity_credits" />
+
         <!-- 按键手势自检（无界面）：跑 SkEngine 的全组合用例，结果打到 logcat TAG=HHSKTest。 -->
         <activity
             android:name="io.github.zpan2327.hyperhand.smartkey.SkSelfTestActivity"

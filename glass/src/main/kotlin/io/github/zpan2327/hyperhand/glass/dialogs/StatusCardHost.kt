@@ -55,6 +55,11 @@ class StatusCardHost @JvmOverloads constructor(
 
     init {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        // Miuix 的 Tilt 是 graphicsLayer 三维倾斜，四角会画到卡片边界之外。
+        // ViewGroup 默认把子内容裁在自己的边界内，倾斜/回正那几帧的角就被削平，看起来像
+        // 「按完卡片缺了一块」。这里和父布局（OverviewPage）都要放开裁剪，角才能完整画出来。
+        clipChildren = false
+        clipToPadding = false
     }
 
     /** 传入 module 侧 Canvas 图标 View；颜色、尺寸由该 View 自身管理，宿主只摆放位置。 */

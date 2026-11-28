@@ -152,4 +152,22 @@
     <string name="sk_restart_scope_title">重啟作用域</string>
     <string name="sk_restart_scope_summary">選擇要用 root 重啟的程序。勾選「系統框架」會軟重啟整個系統，約 20 秒後自動恢復。</string>
     <string name="sk_got_it">知道了</string>
+    <!-- 引用与致谢（关于页 → 引用，二级页面） -->
+    <string name="cr_title">引用與致謝</string>
+    <string name="cr_subtitle">HyperHand 的介面與實作參考了這些開源專案</string>
+    <string name="cr_intro">以下是原始碼中實際引用到的專案，點擊任一項可開啟對應倉庫。</string>
+    <string name="cr_miuix_title">Miuix</string>
+    <string name="cr_miuix_summary">compose-miuix-ui/miuix · 色彩、字號、圓角與元件規格的來源；按鍵對應各頁直接使用其 Compose 元件 · Apache-2.0</string>
+    <string name="cr_liquidglass_title">AndroidLiquidGlass</string>
+    <string name="cr_liquidglass_summary">Kyant0/AndroidLiquidGlass · 液態玻璃的折射與高光思路 · Apache-2.0</string>
+    <string name="cr_liquiddemo_title">LiquidDemo</string>
+    <string name="cr_liquiddemo_summary">zPan2327/LiquidDemo · 液態玻璃底欄的渲染實作由此遷入，複刻自 miuix / AndroidLiquidGlass</string>
+    <string name="cr_sonypods_title">SonyPods</string>
+    <string name="cr_sonypods_summary">Mercury000/SonyPods · 懸浮底欄、背景模糊、概覽頁與關於頁的版式參考</string>
+    <string name="cr_kernelsu_title">KernelSU</string>
+    <string name="cr_kernelsu_summary">tiann/KernelSU · 頁面層級、卡片分組與資訊排布參考 · GPL-3.0</string>
+    <string name="cr_libxposed_title">libxposed API</string>
+    <string name="cr_libxposed_summary">libxposed/api · 模組的現代 API（102）入口，並提供編譯期 stub · Apache-2.0</string>
+    <string name="cr_footnote">以上專案作為設計與實作參考。除按鍵對應各頁直接使用 Miuix 元件、底欄使用 LiquidDemo 的渲染實作外，其餘介面程式碼均由 HyperHand 自行編寫。各專案版權歸其作者所有，授權條款以各自倉庫為準。</string>
+    <string name="cr_no_browser">沒有可用的瀏覽器</string>
 </resources>

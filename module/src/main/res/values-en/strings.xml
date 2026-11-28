@@ -262,7 +262,6 @@
     <string name="about_004">HyperHand on GitHub</string>
     <string name="about_005">Credits</string>
     <string name="about_006">Miuix / KernelSU / SonyPods and more</string>
-    <string name="about_007">Credits</string>
     <string name="about_008">Usage</string>
     <string name="about_009">A few things worth reading first</string>
     <string name="about_011">License</string>
@@ -299,7 +298,6 @@
     <string name="about_043">Close</string>
     <string name="about_044">Unknown</string>
     <string name="about_046">No browser available</string>
-    <string name="about_references">Miuix (compose-miuix-ui/miuix)\nWhere the colour scheme, type scale, corner radii and component specs come from. Apache-2.0.\n\nKernelSU (tiann/KernelSU)\nReference for page hierarchy, card grouping and information layout. GPL-3.0.\n\nSonyPods (Mercury000/SonyPods)\nReference for the floating bar, background blur and the About page layout.\n\nlibxposed API (libxposed/api)\nThe module\'s modern API entry point. Apache-2.0.\n\nAndroidLiquidGlass (Kyant0/AndroidLiquidGlass)\nRefraction and highlight ideas for the liquid glass. Apache-2.0.\n\nThese projects are design references only; all HyperHand UI code is\nhand-written with native Views using Miuix\'s values.</string>
 
     <!-- 通用 / 个性化 / 动画诊断 -->
     <string name="anim_info_line1">System default %1$dms · %2$s</string>
@@ -326,5 +324,5 @@
     <string name="activity_pick_app">Select app</string>
     <string name="activity_self_test">Key self-test</string>
     <string name="dialog_cancel">Cancel</string>
-    <string name="about_license_link">Read the full MIT license on GitHub</string>
+    <string name="about_license_link">Read the full MIT license on GitHub</string>    <string name="activity_credits">Credits</string>
 </resources>

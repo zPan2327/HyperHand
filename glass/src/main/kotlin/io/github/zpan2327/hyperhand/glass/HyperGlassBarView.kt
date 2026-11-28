@@ -67,6 +67,21 @@ class HyperGlassBarView @JvmOverloads constructor(
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
     }
 
+    /**
+     * 胶囊底边到本 View 底边的距离（dp）。
+     *
+     * 按下 / 拖动时胶囊会放大并带 10dp 投影，这些都要画在胶囊之外；而 Compose 在 Android 上
+     * **画不出宿主 View 的边界**，余量不够时下缘的投影和放大量就被一条水平线切掉
+     * （「拖动时底栏下面缺一截」）。宿主把自己贴到屏幕底，把胶囊下方本来空着的
+     * 「12dp 外边距 + 系统手势区」全部算进这里，胶囊的屏幕位置不变，投影有地方画。
+     */
+    private var bottomRoomDp by mutableStateOf(7f)
+
+    /** 胶囊底边以下预留的绘制余量（dp）。宿主在 insets 回调里按实际手势区高度设置。 */
+    fun setBottomRoom(dp: Float) {
+        if (bottomRoomDp != dp) bottomRoomDp = dp
+    }
+
     /** Selects a tab without notifying [setOnTabSelected]. */
     fun select(index: Int, animate: Boolean) {
         // 动画交给组件自己的 selectedIndex 变化；先清掉跟手位置，否则它会立刻把指示器钉住。
@@ -168,7 +183,7 @@ class HyperGlassBarView @JvmOverloads constructor(
                 backdrop = backdrop,
                 position = pagePosition,
                 // 宿主已经用 margin 让开系统导航栏，组件不要再叠加一遍 inset。
-                bottomPadding = BottomGap,
+                bottomPadding = bottomRoomDp.dp,
                 // 胶囊在这个 Composable 里是顶格画的，按下时容器会整体放大 + 10dp 投影。
                 // ComposeView 的绘制会被自己的边界裁掉，没有余量时胶囊顶边会被削平成一条直线。
                 modifier = Modifier.padding(top = OverhangRoom),
@@ -182,9 +197,6 @@ class HyperGlassBarView @JvmOverloads constructor(
             Configuration.UI_MODE_NIGHT_YES
 
     private companion object {
-        /** 胶囊底边到 View 底边的距离，与原 GlassBar 的 7dp 溢出量一致。 */
-        val BottomGap = 7.dp
-
         /** 按下放大 + 投影需要的溢出余量（只加在顶部，胶囊视觉位置不变）。 */
         val OverhangRoom = 14.dp
 

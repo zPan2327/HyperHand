@@ -320,11 +320,12 @@ final class AboutPage {
                         openUrl(REPO);
                     }
                 });
+        // 「引用」从对话框改成二级页面：逐项列出引用到的开源项目，点击可打开对应仓库。
         Ui.navRow(c, cardProj, pal, -1, c.getString(R.string.about_005), c.getString(R.string.about_006), null,
                 new Runnable() {
                     @Override
                     public void run() {
-                        Ui.infoDialog(host, pal, c.getString(R.string.about_007), references());
+                        host.startActivity(new Intent(c, io.github.zpan2327.hyperhand.credits.CreditsActivity.class));
                     }
                 });
         Ui.navRow(c, cardProj, pal, -1, c.getString(R.string.about_008), c.getString(R.string.about_009), "GitHub",
@@ -854,9 +855,4 @@ final class AboutPage {
         }
     }
 
-    // ---------------------------------------------------------------- 文案
-
-    private String references() {
-        return c.getString(R.string.about_references);
-    }
 }

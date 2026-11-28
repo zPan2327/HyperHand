@@ -260,7 +260,6 @@
     <string name="about_004">GitHub 上的 HyperHand 儲存庫</string>
     <string name="about_005">引用</string>
     <string name="about_006">Miuix / KernelSU / SonyPods 等</string>
-    <string name="about_007">引用與致謝</string>
     <string name="about_008">使用說明</string>
     <string name="about_009">上手前值得看一眼的幾條</string>
     <string name="about_011">授權</string>
@@ -297,7 +296,6 @@
     <string name="about_043">關閉</string>
     <string name="about_044">未知</string>
     <string name="about_046">沒有可用的瀏覽器</string>
-    <string name="about_references">Miuix（compose-miuix-ui/miuix）\n整套色彩、字級、圓角與元件規格的來源，Apache-2.0。\n\nKernelSU（tiann/KernelSU）\n頁面層級、卡片分組與資訊排布參考，GPL-3.0。\n\nSonyPods（Mercury000/SonyPods）\n懸浮底欄、背景模糊與關於頁版式參考。\n\nlibxposed API（libxposed/api）\n模組的現代 API 入口，Apache-2.0。\n\nAndroidLiquidGlass（Kyant0/AndroidLiquidGlass）\n液態玻璃的折射與高光思路，Apache-2.0。\n\n以上專案僅作為設計參考，HyperHand 的全部介面程式碼都是\n依 Miuix 的取值用原生 View 手寫實作的。</string>
 
     <!-- 通用 / 个性化 / 动画诊断 -->
     <string name="anim_info_line1">系統原生 %1$dms · %2$s</string>
@@ -324,5 +322,5 @@
     <string name="activity_pick_app">選擇應用</string>
     <string name="activity_self_test">按鍵自檢</string>
     <string name="dialog_cancel">取消</string>
-    <string name="about_license_link">在 GitHub 上查看完整的 MIT 授權條款</string>
+    <string name="about_license_link">在 GitHub 上查看完整的 MIT 授權條款</string>    <string name="activity_credits">引用與致謝</string>
 </resources>

@@ -338,7 +338,8 @@ fun ColumnScope.EditRuleScreenContent(
         show = priorityOpen,
         title = stringResource(R.string.sk_101),
         summary = stringResource(R.string.sk_102),
-        options = (0..10).map { stringResource(R.string.sk_103) },
+        // sk_103 是带 %1$d 的格式串，必须把档位数值传进去，否则选项里原样显示「优先级 %1$d」。
+        options = (0..10).map { stringResource(R.string.sk_103, it) },
         selectedIndex = state.priority.coerceIn(0, 10),
         onSelect = { state = state.copy(priority = it) },
         onDismiss = { priorityOpen = false },

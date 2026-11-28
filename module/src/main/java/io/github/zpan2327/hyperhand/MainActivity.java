@@ -5,8 +5,12 @@ import android.app.Dialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.database.ContentObserver;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
@@ -67,6 +71,7 @@ public class MainActivity extends ComponentActivity {
         @Override
         public void run() {
             if (overviewPage != null) {
+                reloadCfg();
                 overviewPage.refresh();
             }
         }
@@ -74,6 +79,38 @@ public class MainActivity extends ComponentActivity {
 
     private FrameLayout contentHost;
     private FrameLayout root;
+
+    /**
+     * 监听两个功能开关在 {@code Settings.Global} 里的**真实写入**。
+     *
+     * <p>保存走的是异步广播：App 发出后立刻去读，SystemUI 那边往往还没写进去，读到的是旧值，
+     * 概览页于是停在「已启用」。之后切回概览只刷新界面、不重读配置，就一直错到下一次保存。
+     * 改成盯着这两个键：写进去的那一刻再重读 + 刷新，既准确又实时。</p>
+     */
+    private final ContentObserver switchObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+        @Override
+        public void onChange(boolean selfChange, Uri uri) {
+            if (isFinishing() || isDestroyed()) return;
+            reloadCfg();
+            if (overviewPage != null) {
+                overviewPage.refresh();
+            }
+        }
+    };
+
+    /**
+     * 页面内容的布局一变就让底栏重新采样。滚动有滚动事件驱动，但「高级参数」展开 / 收起、
+     * 关掉总开关收起卡片这类变化不产生滚动事件，玻璃会停在变化前那一帧。
+     */
+    private final View.OnLayoutChangeListener contentLayoutListener = new View.OnLayoutChangeListener() {
+        @Override
+        public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                   int oldLeft, int oldTop, int oldRight, int oldBottom) {
+            if (nav != null) {
+                nav.onContentScrolled();
+            }
+        }
+    };
     private io.github.zpan2327.hyperhand.glass.dialogs.RestartScopeDialogHost dialogHost;
     private io.github.zpan2327.hyperhand.glass.dialogs.InfoDialogHost infoDialogHost;
     private io.github.zpan2327.hyperhand.glass.dialogs.MiuixDropdownHost dropdownHost;
@@ -82,6 +119,8 @@ public class MainActivity extends ComponentActivity {
     /** 每页一条独立顶栏（挂在 {@link PageHost} 里，随页面一起横移）。 */
     private final TopBar[] pageBars = new TopBar[3];
     private HyperGlassBarView nav;
+    /** 系统底部手势区 / 导航条的高度（px）。底栏下方余量与内容底部留白都按它算。 */
+    private int bottomInsetPx;
     private FrameLayout.LayoutParams navLp;
 
     private View[] pages = new View[3];
@@ -201,6 +240,10 @@ public class MainActivity extends ComponentActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         overviewPage = new OverviewPage(this);
+        for (String key : new String[]{Cfg.K_ENABLED, Cfg.K_SLIDE_ENABLED, Cfg.K_MONITOR_ENABLED}) {
+            getContentResolver().registerContentObserver(
+                    Settings.Global.getUriFor(key), false, switchObserver);
+        }
         settingsPage = new SettingsPage(this);
         aboutPage = new AboutPage(this);
         pages[TAB_OVERVIEW] = overviewPage.view();
@@ -319,10 +362,16 @@ public class MainActivity extends ComponentActivity {
                     }
                 }
 
-                navLp.bottomMargin = Theme.dp(MainActivity.this, 12) + bars.bottom;
+                // 底栏 View 直接贴到屏幕底：胶囊下方空着的「12dp 外边距 + 手势区」不留给
+                // 外边距，而是算进 View 内部的绘制余量（见 HyperGlassBarView.setBottomRoomDp）。
+                // 胶囊的屏幕位置与原来一致，但按下放大 + 投影不再被宿主边界切掉下缘。
+                bottomInsetPx = bars.bottom;
+                navLp.bottomMargin = 0;
                 navLp.leftMargin = Theme.dp(MainActivity.this, 20);
                 navLp.rightMargin = Theme.dp(MainActivity.this, 20);
                 nav.setLayoutParams(navLp);
+                // 原来的 7dp 溢出量 + 12dp 外边距 + 手势区，三者之和才是胶囊底边到屏幕底的真实距离。
+                nav.setBottomRoom(7f + 12f + bars.bottom / getResources().getDisplayMetrics().density);
 
                 applyInsets();
                 nav.setBackdropSource(contentHost, pal.bg);
@@ -356,8 +405,9 @@ public class MainActivity extends ComponentActivity {
         int top = pageBars[0] == null
                 ? statusInset + Theme.dp(this, Theme.BAR_H + Theme.HEADER_BLOCK)
                 : pageBars[0].expandedHeight();
-        // 底栏自身 78dp（64 + 上下 7 的溢出）+ 12dp 外边距 + 16dp 呼吸
-        int bottom = navLp.bottomMargin + Theme.dp(this, 78 + 16);
+        // 底栏整体 78dp（顶部 14dp 余量 + 64dp 胶囊）+ 12dp 视觉间距 + 16dp 呼吸，与原值一致
+        // （底栏 View 现在贴屏幕底、外边距为 0，所以这里不能再用 navLp.bottomMargin）。
+        int bottom = bottomInsetPx + Theme.dp(this, 12 + 78 + 16);
         // 关于页的 hero 顶距也要状态栏高度：页面是在 insets 下发之前构建的，
         // 那会儿 statusInset 还是 0，必须在这里补一次。
         if (aboutPage != null) {
@@ -369,6 +419,8 @@ public class MainActivity extends ComponentActivity {
                 sv.setClipToPadding(false);
                 View child = sv.getChildAt(0);
                 if (child != null) {
+                    child.removeOnLayoutChangeListener(contentLayoutListener);
+                    child.addOnLayoutChangeListener(contentLayoutListener);
                     // 关于页的渐变要铺到状态栏下面，所以顶部不加内边距，由页内自行处理
                     int padTop = i == TAB_ABOUT ? 0 : top;
                     child.setPadding(child.getPaddingLeft(), padTop,
@@ -447,6 +499,8 @@ public class MainActivity extends ComponentActivity {
     /** 切到某一页时刷新它的数据（三页常驻，不重建）。 */
     private void refreshPage(int index) {
         if (index == TAB_OVERVIEW) {
+            // 配置缓存有 800ms 有效期，且可能是在设置页保存之前读的；切进来先重读一次。
+            reloadCfg();
             probeModule();
             overviewPage.refresh();
         } else if (index == TAB_SETTINGS) {
@@ -741,6 +795,16 @@ public class MainActivity extends ComponentActivity {
 
     /** 注册在 OnBackPressedDispatcher 上的返回键回调；需要「交回系统退出」时先把它禁用一下。 */
     private OnBackPressedCallback backCallback;
+
+    @Override
+    protected void onDestroy() {
+        try {
+            getContentResolver().unregisterContentObserver(switchObserver);
+        } catch (Throwable ignored) {
+            // 未注册过就销毁（极端情况下 onCreate 中途抛出）时忽略
+        }
+        super.onDestroy();
+    }
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {

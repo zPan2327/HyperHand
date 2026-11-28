@@ -60,6 +60,11 @@ final class OverviewPage {
 
         LinearLayout grid = new LinearLayout(c);
         grid.setOrientation(LinearLayout.HORIZONTAL);
+        // 状态卡按压倾斜时四角会越出自己的边界，它的直接父容器不能裁剪（否则角被削平）。
+        // 只放开这一层即可：再往上的滚动容器比卡片大得多，裁不到它——而且给滚动容器的
+        // 直接子 View 关掉裁剪会让 Compose 宿主走到软件画布上，玻璃高亮着色器直接抛异常。
+        grid.setClipChildren(false);
+        grid.setClipToPadding(false);
         page.column.addView(grid, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, square));
 

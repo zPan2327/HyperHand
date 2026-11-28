@@ -16,7 +16,7 @@ plugins {
 //   已发布正式版 2.9.10 (20910) < beta (29903) < 正式版 3.0.2 (30002)
 // 于是测试版能覆盖安装到正式版上，正式版发布后也能把测试版顶掉。
 // ===========================================================================
-val defaultVersionName = "3.4.7"
+val defaultVersionName = "3.4.8"
 
 fun fromEnvOrProperty(name: String): String? =
     providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -59,7 +59,7 @@ val derivedVersionCode: Int = run {
 //   开发者卡内边距 16dp、版本号格式统一为 `版本名(版本号)`）。
 // 3.4.5 = 30405（关于页卡片改半透明对齐 LSPosed；单手模式设 常用/高级 两层，
 //   总开关统一「启用 + 功能名」；设置页文案重写去口语）。
-val minVersionCode = 30407
+val minVersionCode = 30408
 
 val versionCodeValue = fromEnvOrProperty("VERSION_CODE")?.toIntOrNull()
     ?: maxOf(derivedVersionCode, minVersionCode)
